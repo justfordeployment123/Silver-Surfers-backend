@@ -49,47 +49,20 @@ async function performAudit(url, options, attemptNumber = 1) {
 
     try {
 
-        // Enhanced launch options to prevent connection issues
-
-        const launchOptions = {
-
+        browser = await puppeteer.launch({
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
             headless: 'new',
-
             args: [
-
                 '--no-sandbox',
-
                 '--disable-setuid-sandbox',
-
                 '--disable-dev-shm-usage',
-
                 '--disable-accelerated-2d-canvas',
-
                 '--no-first-run',
-
                 '--no-zygote',
-
                 '--disable-gpu',
-
-                '--disable-background-timer-throttling',
-
-                '--disable-backgrounding-occluded-windows',
-
-                '--disable-renderer-backgrounding',
-
-                ...(useAdvancedFeatures ? ['--single-process'] : [])
-
             ],
+            });
 
-            timeout: 30000, // 30 second timeout for browser launch
-
-            protocolTimeout: 60000 // 60 second timeout for protocol operations
-
-        };
-
-
-
-        browser = await puppeteer.launch(launchOptions);
 
         console.log(`[Attempt ${attemptNumber}] Browser launched successfully`);
 

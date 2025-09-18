@@ -80,8 +80,21 @@ async function performAudit(url, options) {
 
   let browser = null;
   try {
-    const launchOptions = { headless: 'new', args: useAdvancedFeatures ? ['--single-process', '--no-zygote'] : [] };
-    browser = await puppeteer.launch(launchOptions);
+      browser = await puppeteer.launch({
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+      ],
+    });
+
+
     
     const page = await browser.newPage();
 
