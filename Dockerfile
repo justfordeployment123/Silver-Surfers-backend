@@ -57,6 +57,7 @@ RUN mkdir -p $PUPPETEER_CACHE_DIR && chown -R node:node /usr/src/app
 USER node
 
 # Render provides PORT; our server respects it
-EXPOSE 10000
+EXPOSE 5000
+
 
 CMD ["node", "my-app/services/server/server.js"]
