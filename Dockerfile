@@ -10,9 +10,10 @@ ENV NODE_ENV=production \
 
 WORKDIR /usr/src/app
 
-# Install Chromium and required dependencies
+# Install Chromium and all required dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
+    chromium-sandbox \
     ca-certificates \
     fonts-liberation \
     libasound2 \
@@ -33,12 +34,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libx11-6 \
+    libx11-xcb1 \
     libxcomposite1 \
+    libxcursor1 \
     libxdamage1 \
     libxext6 \
     libxfixes3 \
+    libxi6 \
     libxkbcommon0 \
     libxrandr2 \
+    libxrender1 \
+    libxshmfence1 \
+    libxss1 \
+    libxtst6 \
     xdg-utils \
     wget \
     && rm -rf /var/lib/apt/lists/*
@@ -56,8 +64,7 @@ RUN mkdir -p $PUPPETEER_CACHE_DIR && chown -R node:node /usr/src/app
 
 USER node
 
-# Render provides PORT; our server respects it
+# Render / Coolify provides PORT; our server respects it
 EXPOSE 5000
-
 
 CMD ["node", "my-app/services/server/server.js"]
