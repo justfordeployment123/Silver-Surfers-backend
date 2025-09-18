@@ -283,7 +283,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 // Ensure preflight requests are handled
-app.options('*', cors(corsOptions));
+// Express 5 uses path-to-regexp v6+: use '/(.*)' instead of '*' for wildcard
+app.options('/(.*)', cors(corsOptions));
 
 // Simple health route for uptime checks
 app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
