@@ -156,6 +156,33 @@ const runQuickScanProcess = async (job) => {
           const pdfResult = await generateLiteAccessibilityReport(jsonReportPath, userSpecificOutputDir);
 
         console.log(`✅ Quick scan PDF generated for ${email} at ${pdfResult.reportPath}`);
+
+        // Send the quick scan report via email (attachments from the output folder)
+        await sendAuditReportEmail({
+          to: email,
+          subject: 'Your SilverSurfers Quick Scan Results',
+          text: 'Attached is your senior-friendly quick scan report. Thanks for trying SilverSurfers! For a full multi-page audit with screenshots and detailed guidance, consider upgrading.',
+          folderPath: userSpecificOutputDir,
+        });
+
+        // Cleanup the quick scan folder using the cleanup route (same pattern as full audit)
+        try {
+          const axios = await import('axios');
+          const apiBaseUrl = process.env.API_BASE_URL || `http://localhost:${PORT}`;
+          await axios.default.post(`${apiBaseUrl}/cleanup`, { folderPath: userSpecificOutputDir });
+          console.log('Quick scan folder cleaned up:', userSpecificOutputDir);
+        } catch (cleanupErr) {
+          console.error('Quick scan cleanup error:', cleanupErr?.message || cleanupErr);
+        }
+
+        // Signal backend that quick scan is completed
+        await signalBackend({
+          status: 'completed',
+          mode: 'quick',
+          clientEmail: email,
+          folderPath: userSpecificOutputDir,
+        });
+
         return pdfResult;
 
     } catch (error) {
