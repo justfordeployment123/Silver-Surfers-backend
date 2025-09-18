@@ -286,6 +286,15 @@ app.post('/start-audit', (req, res) => {
     res.status(202).json({ message: 'Full audit request has been queued.' });
 });
 
+app.post('/quick-audit', (req, res) => {
+    const { email, url } = req.body;
+    if (!email || !url) {
+        return res.status(400).json({ error: 'Email and URL are required.' });
+    }
+    quickScanQueue.addBgJob({ email, url });
+    res.status(202).json({ message: 'Quick audit request has been queued.' });
+});
+
 // Create Stripe Checkout Session
 app.post('/create-checkout-session', authRequired, async (req, res) => {
   try {
@@ -302,7 +311,7 @@ app.post('/create-checkout-session', authRequired, async (req, res) => {
     };
     const amount = packagePricing[packageId] || packagePricing[1];
 
-    const successUrlBase = process.env.FRONTEND_URL || 'http://localhost:3001';
+    const successUrlBase = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
