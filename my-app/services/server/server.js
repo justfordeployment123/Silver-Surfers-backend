@@ -257,38 +257,7 @@ class JobQueue {
 
 const app = express();
 app.use(express.json());
-
-// Robust CORS configuration to support frontend dev and deployed domains
-const allowedStaticOrigins = [
-  'http://localhost:3000',
-  process.env.FRONTEND_URL,
-  process.env.CORS_ORIGIN,
-].filter(Boolean);
-
-const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow non-browser or same-origin requests with no Origin header
-    if (!origin) return callback(null, true);
-    const isAllowed =
-      allowedStaticOrigins.includes(origin) ||
-      /\.sslip\.io(?::\d+)?$/i.test(new URL(origin).hostname + (new URL(origin).port ? ':' + new URL(origin).port : ''));
-    if (isAllowed) return callback(null, true);
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 204,
-};
-
-app.use(cors(corsOptions));
-// Ensure preflight requests are handled
-// Express 5 uses path-to-regexp v6+: use '/(.*)' instead of '*' for wildcard
-app.options('/(.*)', cors(corsOptions));
-
-// Simple health route for uptime checks
-app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
-
+app.use(cors());
 app.use('/auth', authRoutes);
 const PORT = process.env.PORT || 5000;
 
@@ -399,6 +368,7 @@ app.post('/cleanup', async (req, res) => {
     res.status(500).json({ error: 'Failed to perform cleanup.' });
   }
 });
+
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Audit server listening on port ${PORT}`);
