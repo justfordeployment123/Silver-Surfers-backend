@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import User from './models/User.js';
-import { sendAuditReportEmail, sendBasicEmail } from './email.js';
+import AnalysisRecord from './models/AnalysisRecord.js';
+import { sendAuditReportEmail, sendBasicEmail, sendVerificationEmail, sendPasswordResetEmail } from './email.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
@@ -29,15 +30,8 @@ router.post('/register', async (req, res) => {
   const verificationTokenHash = hashToken(tokenPlain);
     const verificationExpires = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24h
     const user = await User.create({ email, passwordHash, role: 'user', provider: 'local', verified: false, verificationTokenHash, verificationExpires });
-    // Re-use email sender; subject & text minimal (ideally separate template function)
     try {
-      const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
-      const verifyLink = `${frontendBase}/verify-email?token=${encodeURIComponent(tokenPlain)}`;
-      await sendBasicEmail({
-        to: email,
-        subject: 'Verify your SilverSurfers account',
-        text: `Welcome to SilverSurfers! Click the link below (or copy/paste into your browser) to verify your account. This link is valid for 24 hours.\n\n${verifyLink}\n\nIf you did not create this account, you can ignore this email.`,
-      });
+      await sendVerificationEmail(email, tokenPlain);
     } catch (e) {
       console.warn('Failed to send verification email:', e.message);
     }
@@ -80,13 +74,7 @@ router.post('/resend-verification', async (req, res) => {
     user.verificationExpires = new Date(Date.now() + 1000 * 60 * 60 * 24);
     await user.save();
     try {
-      const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3001';
-      const verifyLink = `${frontendBase}/verify-email?token=${encodeURIComponent(tokenPlain)}`;
-      await sendBasicEmail({
-        to: user.email,
-        subject: 'Verify your SilverSurfers account',
-        text: `Use the link below to verify your account (valid 24h):\n\n${verifyLink}`,
-      });
+      await sendVerificationEmail(user.email, tokenPlain);
     } catch (e) {
       console.warn('Failed to send verification email:', e.message);
     }
@@ -114,6 +102,59 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// Forgot password: always respond success (do not reveal existence)
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email required' });
+    const norm = String(email).trim().toLowerCase();
+    const user = await User.findOne({ email: norm });
+    if (user) {
+      const tokenPlain = randomToken();
+      user.resetTokenHash = hashToken(tokenPlain);
+      user.resetExpires = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+      await user.save();
+      try {
+        const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const link = `${frontendBase}/reset-password?token=${encodeURIComponent(tokenPlain)}`;
+        await sendBasicEmail({
+          to: user.email,
+          subject: 'Reset your SilverSurfers password',
+          text: `We received a request to reset your password. Use the link below within 1 hour:\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
+        });
+      } catch (e) {
+        console.warn('Failed to send reset email:', e.message);
+      }
+    }
+    return res.json({ message: 'If that email exists, a reset link has been sent.' });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Reset password with token
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) return res.status(400).json({ error: 'Token and new password required' });
+    if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const hashed = hashToken(String(token));
+    const user = await User.findOne({ resetTokenHash: hashed, resetExpires: { $gt: new Date() } });
+    if (!user) return res.status(400).json({ error: 'Invalid or expired token' });
+    user.passwordHash = await bcrypt.hash(String(password), 10);
+    user.resetTokenHash = undefined;
+    user.resetExpires = undefined;
+    await user.save();
+    // Auto-login after reset
+    const jwtToken = signToken(user);
+    return res.json({ message: 'Password has been reset.', token: jwtToken, user: { email: user.email, role: user.role, verified: user.verified } });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.get('/me', async (req, res) => {
   try {
     const auth = req.headers.authorization || '';
@@ -125,6 +166,70 @@ router.get('/me', async (req, res) => {
     return res.json({ user: { email: user.email, role: user.role, verified: user.verified } });
   } catch (err) {
     return res.status(200).json({ user: null });
+  }
+});
+
+// Forgot password: generic response to avoid user enumeration
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email required' });
+    const norm = String(email).trim().toLowerCase();
+    const user = await User.findOne({ email: norm });
+    if (user) {
+      const tokenPlain = randomToken();
+      user.resetTokenHash = hashToken(tokenPlain);
+      user.resetExpires = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+      await user.save();
+      try {
+        await sendPasswordResetEmail(user.email, tokenPlain);
+      } catch (e) {
+        console.warn('Failed to send reset email:', e.message);
+      }
+    }
+    return res.json({ message: 'If that email exists, a reset link has been sent.' });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Reset password with token
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) return res.status(400).json({ error: 'Token and new password required' });
+    if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const hashed = hashToken(String(token));
+    const user = await User.findOne({ resetTokenHash: hashed, resetExpires: { $gt: new Date() } });
+    if (!user) return res.status(400).json({ error: 'Invalid or expired token' });
+    user.passwordHash = await bcrypt.hash(String(password), 10);
+    user.resetTokenHash = undefined;
+    user.resetExpires = undefined;
+    await user.save();
+    const jwtToken = signToken(user);
+    return res.json({ message: 'Password has been reset.', token: jwtToken, user: { email: user.email, role: user.role, verified: user.verified } });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// List my analysis records (requires auth)
+router.get('/my-analysis', async (req, res) => {
+  try {
+    const auth = req.headers.authorization || '';
+    if (!auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    const token = auth.split(' ')[1];
+    const payload = jwt.verify(token, JWT_SECRET);
+    const { limit } = req.query || {};
+    // Prefer user id match; fallback to email if user field is missing in record
+    const q = { $or: [ { user: payload.id }, { email: payload.email } ] };
+    const items = await AnalysisRecord.find(q).sort({ createdAt: -1 }).limit(Number(limit) || 50).lean();
+    return res.json({ items });
+  } catch (err) {
+    console.error('My analysis error:', err?.message || err);
+    return res.status(500).json({ error: 'Server error' });
   }
 });
 

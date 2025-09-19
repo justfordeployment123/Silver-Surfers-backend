@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import authRoutes from './authRoutes.js';
+import adminRoutes from './adminRoutes.js';
 import { connectDB } from './db.js';
 import { authRequired } from './auth.js';
 
@@ -20,7 +21,8 @@ import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite
 import { generateSeniorAccessibilityReport } from '../report_generation/pdf_generator.js';
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
-import { sendAuditReportEmail } from './email.js';
+import { sendAuditReportEmail, collectAttachmentsRecursive } from './email.js';
+import AnalysisRecord from './models/AnalysisRecord.js';
 
 // --- Placeholder for signaling the backend (assumed to be the same) ---
 const signalBackend = async (payload) => {
@@ -35,7 +37,7 @@ const signalBackend = async (payload) => {
 // =================================================================
 
 const runFullAuditProcess = async (job) => {
-  const { email, url } = job;
+  const { email, url, userId, taskId } = job;
   console.log(`\n\n--- [STARTING FULL JOB] ---`);
   console.log(`Processing job for ${email} to audit ${url}`);
 
@@ -50,7 +52,31 @@ const runFullAuditProcess = async (job) => {
   await fs.mkdir(finalReportFolder, { recursive: true });
   await fs.mkdir(jobFolder, { recursive: true });
 
+  // Find existing queued record by taskId (preferred) or by email/url; otherwise create one
+  let record = null;
   try {
+    if (taskId) {
+      record = await AnalysisRecord.findOne({ taskId });
+    }
+    if (!record) {
+      record = await AnalysisRecord.findOne({ email, url, status: 'queued' }, {}, { sort: { createdAt: -1 } });
+    }
+    if (!record) {
+      record = await AnalysisRecord.create({
+        user: userId || undefined,
+        email,
+        url,
+        taskId: taskId || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        status: 'queued',
+        emailStatus: 'pending',
+        reportDirectory: finalReportFolder,
+      });
+    }
+    // Move to processing and persist destination folder
+    record.status = 'processing';
+    record.reportDirectory = finalReportFolder;
+    await record.save().catch(()=>{});
+
     const extractor = new InternalLinksExtractor();
     const extractionResult = await extractor.extractInternalLinks(url);
 
@@ -97,13 +123,49 @@ const runFullAuditProcess = async (job) => {
 
     console.log(`🎉 All links for ${email} have been processed for both desktop and mobile.`);
 
+    // Pre-check attachments to ensure we have content to send
+    const attachmentsPreview = await collectAttachmentsRecursive(finalReportFolder).catch(() => []);
+    if (record) {
+      record.attachmentCount = Array.isArray(attachmentsPreview) ? attachmentsPreview.length : 0;
+      await record.save().catch(()=>{});
+    }
+
+    // If no attachments were produced, treat as a failed job instead of "completed"
+    if (!attachmentsPreview || attachmentsPreview.length === 0) {
+      const defaultReason = 'No reports generated (0 attachments). Possible browser/runtime issue (e.g., missing Chromium).';
+      console.error(`❌ No attachments found for ${email}. Marking record as failed.`);
+      if (record) {
+        record.status = 'failed';
+        record.failureReason = record.failureReason || defaultReason;
+        // Use a valid enum value for emailStatus to avoid validation errors
+        record.emailStatus = 'failed';
+        record.emailError = 'Email skipped because no attachments were generated.';
+        record.attachmentCount = 0;
+        await record.save().catch(()=>{});
+      }
+      await signalBackend({ status: 'failed', clientEmail: email, error: 'no-attachments' });
+      return; // Exit early to avoid sending email and marking as completed
+    }
     // Send a single email with all files in the report folder
-    await sendAuditReportEmail({
+    if (record) { record.emailStatus = 'sending'; await record.save().catch(()=>{}); }
+    const sendResult = await sendAuditReportEmail({
       to: email,
       subject: 'Your SilverSurfers Audit Results',
       text: 'Attached are all your senior accessibility audit results. Thank you for using SilverSurfers!',
       folderPath: finalReportFolder,
     });
+    if (record) {
+      if (sendResult?.success) {
+        record.emailStatus = 'sent';
+        record.emailAccepted = sendResult.accepted || [];
+        record.emailRejected = sendResult.rejected || [];
+        record.attachmentCount = typeof sendResult.attachmentCount === 'number' ? sendResult.attachmentCount : record.attachmentCount;
+      } else {
+        record.emailStatus = 'failed';
+        record.emailError = sendResult?.error || 'Unknown send error';
+      }
+      await record.save().catch(()=>{});
+    }
 
     // Cleanup the report folder using the cleanup route
     try {
@@ -115,6 +177,19 @@ const runFullAuditProcess = async (job) => {
       console.error('Cleanup error:', cleanupErr);
     }
 
+    // Normalize final status: mark failed if email failed or attachments are zero; otherwise completed
+    if (record) {
+      if (record.emailStatus === 'failed') {
+        record.status = 'failed';
+        record.failureReason = record.failureReason || `Email send failed: ${record.emailError || 'Unknown error'}`;
+      } else if (!record.attachmentCount || record.attachmentCount === 0) {
+        record.status = 'failed';
+        record.failureReason = record.failureReason || 'No reports generated (0 attachments).';
+      } else {
+        record.status = 'completed';
+      }
+      await record.save().catch(()=>{});
+    }
     await signalBackend({
       status: 'completed',
       clientEmail: email,
@@ -122,6 +197,7 @@ const runFullAuditProcess = async (job) => {
     });
   } catch (jobError) {
     console.error(`A critical error occurred during the full job for ${email}:`, jobError.message);
+    if (record) { record.status = 'failed'; record.failureReason = jobError.message; await record.save().catch(()=>{}); }
     await signalBackend({ status: 'failed', clientEmail: email, error: jobError.message });
   } finally {
     // Always cleanup temp working folder
@@ -286,6 +362,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: '*' }));
 app.use('/auth', authRoutes);
+app.use('/admin', adminRoutes);
 const PORT = process.env.PORT || 5000;
 
 // --- Create two independent queues that will share the global lock ---
@@ -304,22 +381,114 @@ await (async () => {
   }
 })();
 
-app.post('/start-audit', (req, res) => {
-    const { email, url } = req.body;
-    if (!email || !url) {
-        return res.status(400).json({ error: 'Email and URL are required.' });
+// ------------------------------------------------------------
+// URL Precheck utilities
+// ------------------------------------------------------------
+function buildCandidateUrls(input) {
+  const original = (input || '').trim();
+  const out = { input: original, candidateUrls: [] };
+  if (!original) return out;
+  try {
+    // If it already parses with a scheme, keep it first
+    const u = new URL(original);
+    out.candidateUrls.push(u.toString());
+  } catch {
+    // Try common schemes and www
+    const bare = original.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    const variants = [
+      `https://${bare}`,
+      `http://${bare}`,
+      `https://www.${bare}`,
+      `http://www.${bare}`,
+    ];
+    out.candidateUrls.push(...variants);
+  }
+  // Deduplicate while preserving order
+  out.candidateUrls = [...new Set(out.candidateUrls)];
+  return out;
+}
+
+async function tryFetch(url, timeoutMs = 8000) {
+  try {
+    const axios = (await import('axios')).default;
+    const resp = await axios.get(url, {
+      timeout: timeoutMs,
+      maxRedirects: 5,
+      validateStatus: () => true,
+    });
+    const finalUrl = resp.request?.res?.responseUrl || resp.request?.responseURL || url;
+    const ok = resp.status >= 200 && resp.status < 400;
+    return { ok, status: resp.status, redirected: finalUrl !== url, finalUrl };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'request failed' };
+  }
+}
+
+// URL precheck endpoint
+app.post('/precheck-url', async (req, res) => {
+  const { url } = req.body || {};
+  const { candidateUrls, input } = buildCandidateUrls(url);
+  if (!candidateUrls.length) {
+    return res.status(400).json({ success: false, error: 'URL is required' });
+  }
+  let last = null;
+  for (const candidate of candidateUrls) {
+    const result = await tryFetch(candidate, 8000);
+    last = result;
+    if (result.ok) {
+      return res.json({ success: true, input, normalizedUrl: candidate, finalUrl: result.finalUrl, status: result.status, redirected: !!result.redirected });
     }
-    fullAuditQueue.addBgJob({ email, url });
-    res.status(202).json({ message: 'Full audit request has been queued.' });
+  }
+  return res.status(400).json({ success: false, input, error: 'URL not reachable. Please check the domain and try again.' });
 });
 
-app.post('/quick-audit', (req, res) => {
-    const { email, url } = req.body;
-    if (!email || !url) {
-        return res.status(400).json({ error: 'Email and URL are required.' });
-    }
-    quickScanQueue.addBgJob({ email, url });
-    res.status(202).json({ message: 'Quick audit request has been queued.' });
+app.post('/start-audit', async (req, res) => {
+  const { email, url, userId } = req.body || {};
+  if (!email || !url) {
+    return res.status(400).json({ error: 'Email and URL are required.' });
+  }
+  // Precheck and normalize URL
+  const { candidateUrls } = buildCandidateUrls(url);
+  if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
+  let normalizedUrl = null;
+  for (const candidate of candidateUrls) {
+    const r = await tryFetch(candidate, 8000);
+    if (r.ok) { normalizedUrl = r.finalUrl || candidate; break; }
+  }
+  if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
+
+  // Pre-create a queued record so clients can see it immediately
+  const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  AnalysisRecord.create({
+    user: userId || undefined,
+    email,
+    url: normalizedUrl,
+    taskId,
+    status: 'queued',
+    emailStatus: 'pending',
+  }).catch(() => {});
+
+  fullAuditQueue.addBgJob({ email, url: normalizedUrl, userId, taskId });
+  res.status(202).json({ message: 'Full audit request has been queued.' });
+});
+
+app.post('/quick-audit', async (req, res) => {
+  const { email, url } = req.body || {};
+  if (!email || !url) {
+    return res.status(400).json({ error: 'Email and URL are required.' });
+  }
+  // Precheck and normalize URL
+  const { candidateUrls } = buildCandidateUrls(url);
+  if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
+  let normalizedUrl = null;
+  for (const candidate of candidateUrls) {
+    const r = await tryFetch(candidate, 8000);
+    if (r.ok) { normalizedUrl = r.finalUrl || candidate; break; }
+  }
+  if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
+
+  quickScanQueue.addBgJob({ email, url: normalizedUrl });
+  res.status(202).json({ message: 'Quick audit request has been queued.' });
 });
 
 // Create Stripe Checkout Session
@@ -383,8 +552,30 @@ app.get('/confirm-payment', async (req, res) => {
       return res.status(400).json({ error: 'Missing metadata to start audit.' });
     }
 
-  // Queue the full audit as a background job after successful payment
-  fullAuditQueue.addBgJob({ email, url });
+    // Idempotency: if we've already processed this session, do not enqueue again
+    let existing = await AnalysisRecord.findOne({ stripeSessionId: session.id });
+    if (!existing) {
+      // Or if there's already a queued/processing record for this email+url, reuse it
+      existing = await AnalysisRecord.findOne({ email, url, status: { $in: ['queued','processing'] } }, {}, { sort: { createdAt: -1 } });
+    }
+
+    if (existing) {
+      // Ensure the session id is linked for future idempotency
+      if (!existing.stripeSessionId) {
+        existing.stripeSessionId = session.id;
+        await existing.save().catch(()=>{});
+      }
+      // If not already queued through another path, queue now
+      if (existing.status === 'queued' || existing.status === 'processing') {
+        fullAuditQueue.addBgJob({ email, url, taskId: existing.taskId });
+      }
+      return res.json({ message: 'Payment confirmed. Audit job queued (existing record).' });
+    }
+
+    // Otherwise, create a fresh record and queue
+    const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    await AnalysisRecord.create({ email, url, taskId, stripeSessionId: session.id, status: 'queued', emailStatus: 'pending' }).catch(() => {});
+    fullAuditQueue.addBgJob({ email, url, taskId });
     return res.json({ message: 'Payment confirmed. Audit job queued.' });
   } catch (err) {
     console.error('Confirm payment error:', err);
@@ -405,7 +596,65 @@ app.post('/cleanup', async (req, res) => {
   }
 });
 
+// Simple listing endpoints for AnalysisRecord visibility
+app.get('/records', async (req, res) => {
+  try {
+    const { email, limit } = req.query;
+    const q = {};
+    if (email) q.email = String(email);
+    const items = await AnalysisRecord.find(q).sort({ createdAt: -1 }).limit(Number(limit) || 50).lean();
+    res.json(items);
+  } catch (err) {
+    console.error('List records error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch records' });
+  }
+});
+
+app.get('/records/:taskId', async (req, res) => {
+  try {
+    const item = await AnalysisRecord.findOne({ taskId: req.params.taskId }).lean();
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    res.json(item);
+  } catch (err) {
+    console.error('Get record error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch record' });
+  }
+});
+
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Audit server listening on port ${PORT}`);
 });
+
+// ------------------------------------------------------------
+// Watchdog: prevent records from staying stuck in queued/processing
+// Marks records as failed after a timeout window.
+// ------------------------------------------------------------
+const START_WATCHDOG = true;
+if (START_WATCHDOG) {
+  const PROCESSING_TIMEOUT_MS = Number(process.env.PROCESSING_TIMEOUT_MS || 2 * 60 * 60 * 1000); // 2 hours default
+  const QUEUED_TIMEOUT_MS = Number(process.env.QUEUED_TIMEOUT_MS || 12 * 60 * 60 * 1000); // 12 hours default
+  const INTERVAL_MS = Number(process.env.WATCHDOG_INTERVAL_MS || 10 * 60 * 1000); // run every 10 minutes
+
+  setInterval(async () => {
+    try {
+      const now = Date.now();
+      const procCutoff = new Date(now - PROCESSING_TIMEOUT_MS);
+      const queuedCutoff = new Date(now - QUEUED_TIMEOUT_MS);
+
+      const procResult = await AnalysisRecord.updateMany(
+        { status: 'processing', updatedAt: { $lt: procCutoff } },
+        { $set: { status: 'failed', failureReason: 'Processing watchdog timeout exceeded.' } }
+      );
+      const queuedResult = await AnalysisRecord.updateMany(
+        { status: 'queued', updatedAt: { $lt: queuedCutoff } },
+        { $set: { status: 'failed', failureReason: 'Queued watchdog timeout exceeded.' } }
+      );
+      if ((procResult?.modifiedCount || 0) > 0 || (queuedResult?.modifiedCount || 0) > 0) {
+        console.log(`🕒 Watchdog updated: processing->failed=${procResult?.modifiedCount || 0}, queued->failed=${queuedResult?.modifiedCount || 0}`);
+      }
+    } catch (e) {
+      console.error('Watchdog error:', e?.message || e);
+    }
+  }, INTERVAL_MS).unref();
+}
