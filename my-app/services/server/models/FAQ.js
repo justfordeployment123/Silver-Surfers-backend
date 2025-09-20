@@ -10,4 +10,7 @@ const FAQSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+FAQSchema.index({ order: 1 });
+FAQSchema.index({ question: 1 }, { unique: false });
+
 export default mongoose.model('FAQ', FAQSchema);

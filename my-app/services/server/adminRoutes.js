@@ -3,6 +3,7 @@ import BlogPost from './models/BlogPost.js';
 import Service from './models/Service.js';
 import FAQ from './models/FAQ.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
+import ContactMessage from './models/ContactMessage.js';
 import { authRequired } from './auth.js';
 
 const router = Router();
@@ -23,15 +24,40 @@ router.get('/blog', authRequired, adminOnly, asyncH(async (req, res) => {
 }));
 
 router.post('/blog', authRequired, adminOnly, asyncH(async (req, res) => {
-  const { title, slug, excerpt, content, published } = req.body || {};
+  let { title, slug, excerpt, content, category, author, date, readTime, featured, published } = req.body || {};
   if (!title || !slug) return res.status(400).json({ error: 'title and slug required' });
-  const created = await BlogPost.create({ title, slug, excerpt, content, published: !!published });
+  slug = String(slug).toLowerCase().trim();
+  const payload = {
+    title: String(title).trim(),
+    slug,
+    excerpt: String(excerpt || ''),
+    content: String(content || ''),
+    category: String(category || ''),
+    author: String(author || ''),
+    date: date ? new Date(date) : undefined,
+    readTime: String(readTime || ''),
+    featured: !!featured,
+    published: !!published,
+  };
+  const created = await BlogPost.create(payload);
   res.status(201).json({ item: created });
 }));
 
 router.put('/blog/:id', authRequired, adminOnly, asyncH(async (req, res) => {
   const { id } = req.params;
-  const updated = await BlogPost.findByIdAndUpdate(id, req.body, { new: true });
+  const body = req.body || {};
+  const update = {};
+  if (body.title != null) update.title = String(body.title).trim();
+  if (body.slug != null) update.slug = String(body.slug).toLowerCase().trim();
+  if (body.excerpt != null) update.excerpt = String(body.excerpt);
+  if (body.content != null) update.content = String(body.content);
+  if (body.category != null) update.category = String(body.category);
+  if (body.author != null) update.author = String(body.author);
+  if (body.date != null) update.date = body.date ? new Date(body.date) : undefined;
+  if (body.readTime != null) update.readTime = String(body.readTime);
+  if (body.featured != null) update.featured = !!body.featured;
+  if (body.published != null) update.published = !!body.published;
+  const updated = await BlogPost.findByIdAndUpdate(id, update, { new: true });
   if (!updated) return res.status(404).json({ error: 'Not found' });
   res.json({ item: updated });
 }));
@@ -78,14 +104,25 @@ router.get('/faqs', authRequired, adminOnly, asyncH(async (req, res) => {
 
 router.post('/faqs', authRequired, adminOnly, asyncH(async (req, res) => {
   const { question, answer, order, published } = req.body || {};
-  if (!question) return res.status(400).json({ error: 'question required' });
-  const created = await FAQ.create({ question, answer, order: Number(order) || 0, published: published !== false });
+  if (!question || typeof question !== 'string') return res.status(400).json({ error: 'question required' });
+  const created = await FAQ.create({
+    question: question.trim(),
+    answer: typeof answer === 'string' ? answer : '',
+    order: Number(order) || 0,
+    published: published !== false,
+  });
   res.status(201).json({ item: created });
 }));
 
 router.put('/faqs/:id', authRequired, adminOnly, asyncH(async (req, res) => {
   const { id } = req.params;
-  const updated = await FAQ.findByIdAndUpdate(id, req.body, { new: true });
+  const body = req.body || {};
+  const update = {};
+  if (body.question != null) update.question = String(body.question).trim();
+  if (body.answer != null) update.answer = String(body.answer);
+  if (body.order != null) update.order = Number(body.order) || 0;
+  if (body.published != null) update.published = !!body.published;
+  const updated = await FAQ.findByIdAndUpdate(id, update, { new: true });
   if (!updated) return res.status(404).json({ error: 'Not found' });
   res.json({ item: updated });
 }));
@@ -114,6 +151,44 @@ router.get('/analysis/:taskId', authRequired, adminOnly, asyncH(async (req, res)
   const item = await AnalysisRecord.findOne({ taskId: req.params.taskId }).lean();
   if (!item) return res.status(404).json({ error: 'Not found' });
   res.json({ item });
+}));
+
+// CONTACT MESSAGES (Admin)
+router.get('/contact', authRequired, adminOnly, asyncH(async (req, res) => {
+  const { status, q, limit = 200 } = req.query || {};
+  const filter = {};
+  if (status && ['new','read','closed'].includes(String(status))) filter.status = String(status);
+  const items = await ContactMessage.find(filter).sort({ createdAt: -1 }).limit(Number(limit) || 200).lean();
+  const term = (q||'').toString().trim().toLowerCase();
+  const filtered = term
+    ? items.filter(m => [m.name, m.email, m.subject, m.message].some(v => (v||'').toLowerCase().includes(term)))
+    : items;
+  res.json({ items: filtered });
+}));
+
+router.get('/contact/:id', authRequired, adminOnly, asyncH(async (req, res) => {
+  const item = await ContactMessage.findById(req.params.id).lean();
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  res.json({ item });
+}));
+
+router.put('/contact/:id', authRequired, adminOnly, asyncH(async (req, res) => {
+  const { status, subject, message, name, email } = req.body || {};
+  const update = {};
+  if (status != null) update.status = ['new','read','closed'].includes(String(status)) ? String(status) : 'new';
+  if (subject != null) update.subject = String(subject);
+  if (message != null) update.message = String(message);
+  if (name != null) update.name = String(name);
+  if (email != null) update.email = String(email);
+  const item = await ContactMessage.findByIdAndUpdate(req.params.id, update, { new: true });
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  res.json({ item });
+}));
+
+router.delete('/contact/:id', authRequired, adminOnly, asyncH(async (req, res) => {
+  const deleted = await ContactMessage.findByIdAndDelete(req.params.id);
+  if (!deleted) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
 }));
 
 export default router;

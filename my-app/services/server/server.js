@@ -23,6 +23,9 @@ import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
 import { sendAuditReportEmail, collectAttachmentsRecursive } from './email.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
+import BlogPost from './models/BlogPost.js';
+import FAQ from './models/FAQ.js';
+import ContactMessage from './models/ContactMessage.js';
 
 // --- Placeholder for signaling the backend (assumed to be the same) ---
 const signalBackend = async (payload) => {
@@ -292,11 +295,6 @@ class JobQueue {
 
   addBgJob(job) {
     const key = jobKey(job);
-    // Skip if same job is already queued or running
-    if (activeJobs.has(key) || this.queue.some(t => jobKey(t.job) === key)) {
-      console.log(`[${this.queueName}] Duplicate job skipped for ${job.email} (${job.url}).`);
-      return;
-    }
     activeJobs.add(key);
     this.queue.push({ job, key, isBg: true });
     this.processQueue();
@@ -593,6 +591,87 @@ app.post('/cleanup', async (req, res) => {
     res.status(200).json({ message: 'Cleanup successful.' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to perform cleanup.' });
+  }
+});
+
+// Admin: Rerun an existing analysis on the same record
+function adminOnly(req, res, next) {
+  const role = req.user?.role;
+  if (role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  next();
+}
+
+app.post('/admin/analysis/:idOrTaskId/rerun', authRequired, adminOnly, async (req, res) => {
+  try {
+    const { idOrTaskId } = req.params;
+    let rec = null;
+    // Try by _id first, then by taskId
+    try { rec = await AnalysisRecord.findById(idOrTaskId); } catch {}
+    if (!rec) rec = await AnalysisRecord.findOne({ taskId: String(idOrTaskId) });
+    if (!rec) return res.status(404).json({ error: 'Record not found' });
+    if (!rec.email || !rec.url) return res.status(400).json({ error: 'Record missing email or url' });
+
+    // Reset fields for rerun on the same record
+    rec.status = 'queued';
+    rec.emailStatus = 'pending';
+    rec.emailError = undefined;
+    rec.failureReason = undefined;
+    rec.attachmentCount = 0;
+    rec.emailAccepted = undefined;
+    rec.emailRejected = undefined;
+    await rec.save().catch(()=>{});
+
+    // Enqueue using the same taskId so the processor picks this record up
+    fullAuditQueue.addBgJob({ email: rec.email, url: rec.url, userId: rec.user || undefined, taskId: rec.taskId });
+    return res.json({ message: 'Re-run queued on existing record', taskId: rec.taskId, id: rec._id });
+  } catch (err) {
+    console.error('Admin rerun error:', err?.message || err);
+    return res.status(500).json({ error: 'Failed to queue re-run' });
+  }
+});
+
+// Public Contact route: submit message
+app.post('/contact', async (req, res) => {
+  try {
+    const { name, email, subject, message } = req.body || {};
+    if (!message || typeof message !== 'string' || message.trim().length < 5) {
+      return res.status(400).json({ error: 'Message is required (min 5 chars).' });
+    }
+    const doc = await ContactMessage.create({
+      name: typeof name === 'string' ? name.trim() : '',
+      email: typeof email === 'string' ? email.trim() : '',
+      subject: typeof subject === 'string' ? subject.trim() : '',
+      message: message.trim(),
+    });
+    res.status(201).json({ success: true, item: doc });
+  } catch (err) {
+    console.error('Contact submit error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to submit message' });
+  }
+});
+
+// Public content endpoints (no auth): Blogs & FAQs
+app.get('/blogs', async (req, res) => {
+  try {
+    const publishedOnly = req.query.published !== 'false';
+    const q = publishedOnly ? { published: true } : {};
+    const items = await BlogPost.find(q).sort({ createdAt: -1 }).lean();
+    res.json({ items });
+  } catch (err) {
+    console.error('Public blogs error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch blogs' });
+  }
+});
+
+app.get('/faqs', async (req, res) => {
+  try {
+    const publishedOnly = req.query.published !== 'false';
+    const q = publishedOnly ? { published: true } : {};
+    const items = await FAQ.find(q).sort({ order: 1, createdAt: -1 }).lean();
+    res.json({ items });
+  } catch (err) {
+    console.error('Public FAQs error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch FAQs' });
   }
 });
 
