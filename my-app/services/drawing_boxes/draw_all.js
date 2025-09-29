@@ -23,15 +23,29 @@ export async function createAllHighlightedImages(jsonFilePath, outputFolder) {
     const targetPath = path.join(outputFolder, `${reportName}-target-size.png`);
     const fontPath = path.join(outputFolder, `${reportName}-text-font.png`);
 
-    // 2. Call each of your modified functions, passing the unique output path to each
-    imagePaths['layout-brittle-audit'] = await processLayoutBrittleAudit(jsonFilePath, brittlePath);
-    imagePaths['interactive-color-audit'] = await processInteractiveColorAudit(jsonFilePath, interactivePath);
-    imagePaths['color-contrast'] = await processColorContrastAudit(jsonFilePath, contrastPath);
-    imagePaths['target-size'] = await processTargetSizeAudit(jsonFilePath, targetPath);
-    imagePaths['text-font-audit'] = await processTextFontAudit(jsonFilePath, fontPath);
-    
-    console.log('✅ All highlighted images created successfully in job folder.');
-    
-    // 3. Return the object containing all the final image paths
-    return imagePaths;
+    // Add overall timeout for the entire image generation process
+    const overallTimeout = 300000; // 5 minutes
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Image generation timeout')), overallTimeout)
+    );
+
+    const processPromise = async () => {
+        // 2. Call each of your modified functions, passing the unique output path to each
+        imagePaths['layout-brittle-audit'] = await processLayoutBrittleAudit(jsonFilePath, brittlePath);
+        imagePaths['interactive-color-audit'] = await processInteractiveColorAudit(jsonFilePath, interactivePath);
+        imagePaths['color-contrast'] = await processColorContrastAudit(jsonFilePath, contrastPath);
+        imagePaths['target-size'] = await processTargetSizeAudit(jsonFilePath, targetPath);
+        imagePaths['text-font-audit'] = await processTextFontAudit(jsonFilePath, fontPath);
+        
+        console.log('✅ All highlighted images created successfully in job folder.');
+        return imagePaths;
+    };
+
+    try {
+        return await Promise.race([processPromise(), timeoutPromise]);
+    } catch (error) {
+        console.error(`❌ Image generation failed: ${error.message}`);
+        // Return partial results if some images were created
+        return imagePaths;
+    }
 }

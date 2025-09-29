@@ -4,13 +4,26 @@ import sharp from 'sharp';
 async function isVisuallyDistinct(imagePathOrBuffer, rect) {
     try {
         if (rect.width < 2 || rect.height < 2) return false;
-        const region = await sharp(imagePathOrBuffer)
-            .extract({ left: Math.floor(rect.left), top: Math.floor(rect.top), width: Math.ceil(rect.width), height: Math.ceil(rect.height) })
+        
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 5000)
+        );
+        
+        const analysisPromise = sharp(imagePathOrBuffer)
+            .extract({ 
+                left: Math.floor(rect.left), 
+                top: Math.floor(rect.top), 
+                width: Math.ceil(rect.width), 
+                height: Math.ceil(rect.height) 
+            })
             .stats();
+            
+        const region = await Promise.race([analysisPromise, timeoutPromise]);
         const VISIBILITY_THRESHOLD = 5;
         return region.channels.some(c => c.stdev > VISIBILITY_THRESHOLD);
     } catch (error) {
-        console.warn(`⚠️  Could not analyze region for box at (${rect.left}, ${rect.top}).`);
+        console.warn(`⚠️  Could not analyze region for box at (${rect.left}, ${rect.top}): ${error.message}`);
         return false;
     }
 }
@@ -136,7 +149,16 @@ export async function processTextFontAudit(jsonReportPath, outputImagePath) {
 
     const finalBoxes = [];
     const visuallyEmptyBoxes = [];
-    for (const box of nonContainerBoxes) {
+    
+    // Limit processing to prevent hanging on large datasets
+    const maxBoxesToProcess = 50;
+    const boxesToProcess = nonContainerBoxes.slice(0, maxBoxesToProcess);
+    
+    if (nonContainerBoxes.length > maxBoxesToProcess) {
+        console.log(`⚠️  Limiting processing to ${maxBoxesToProcess} boxes out of ${nonContainerBoxes.length} to prevent timeout`);
+    }
+    
+    for (const box of boxesToProcess) {
         // 4. Pass the buffer directly to the helper function
         if (await isVisuallyDistinct(screenshotBuffer, box.rect)) {
             finalBoxes.push(box);
