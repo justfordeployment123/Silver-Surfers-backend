@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import PDFDocument from 'pdfkit';
 import customConfig from '../load_and_audit/custom-config.js';
@@ -15,126 +14,126 @@ const AUDIT_INFO = {
         title: 'Text Size and Readability Analysis',
         category: 'Vision Accessibility',
         importance: 'Font size is critical for elderly users who often experience presbyopia. Text smaller than 16px can be extremely difficult to read, causing eye strain.',
-        why: 'Age-related vision changes make small text nearly impossible to read. Seniors need larger fonts to browse websites comfortably.',
+        why: 'Age-related vision changes make small text nearly impossible to read. Older adults need larger fonts to browse websites comfortably.',
         recommendation: 'Ensure all body text is at least 16 pixels. Use relative units like "rem" to allow users to easily scale the font size in their browser settings.',
     },
     'color-contrast': {
         title: 'Color Contrast for Clear Vision',
         category: 'Vision Accessibility',
-        importance: 'Adequate color contrast is essential for seniors whose vision may be affected by cataracts or macular degeneration, making text invisible.',
+        importance: 'Adequate color contrast is essential for older adults whose vision may be affected by cataracts or macular degeneration, making text invisible.',
         why: 'Aging eyes require higher contrast to distinguish text from backgrounds. Without it, content becomes inaccessible.',
         recommendation: 'Aim for a contrast ratio of at least 4.5:1 for normal text and 3:1 for large text to meet WCAG AA standards, ensuring readability for most users.',
     },
     'interactive-color-audit': {
         title: 'Interactive Elements Visual Clarity',
         category: 'Vision Accessibility',
-        importance: 'Seniors need clear visual cues to identify clickable elements. Relying on color alone can make navigation impossible for those with color vision changes.',
+        importance: 'Older adults need clear visual cues to identify clickable elements. Relying on color alone can make navigation impossible for those with color vision changes.',
         why: 'Reduced visual acuity makes it difficult to distinguish interactive elements without clear, multi-sensory indicators (e.g., underlines, icons).',
         recommendation: 'Do not rely on color alone to indicate interactivity. Combine color with other visual cues like underlines for links or bold font weight for buttons.',
     },
     'target-size': {
-        title: 'Touch Target Size for Seniors',
+        title: 'Touch Target Size for Older Adults',
         category: 'Motor Accessibility',
-        importance: 'Seniors often experience tremors or arthritis. Small buttons and links are difficult to accurately tap, creating barriers to use.',
+        importance: 'Older adults often experience tremors or arthritis. Small buttons and links are difficult to accurately tap, creating barriers to use.',
         why: 'Age-related motor changes require larger, well-spaced interactive elements. Small targets lead to frustration and prevent task completion.',
         recommendation: 'Ensure all buttons, links, and other interactive elements are at least 48x48 pixels. Provide ample spacing between targets to prevent accidental taps.',
     },
     'layout-brittle-audit': {
         title: 'Text Spacing Flexibility for Readability',
         category: 'Motor Accessibility',
-        importance: 'Seniors often need to increase text spacing for better readability. Rigid layouts that break when text spacing is adjusted prevent this customization.',
-        why: 'Many seniors require personalized text spacing to read comfortably. Inflexible layouts deny them this ability.',
+        importance: 'Older adults often need to increase text spacing for better readability. Rigid layouts that break when text spacing is adjusted prevent this customization.',
+        why: 'Many older adults require personalized text spacing to read comfortably. Inflexible layouts deny them this ability.',
         recommendation: 'Use flexible layout techniques (like CSS Flexbox or Grid) and avoid fixed heights on containers with text to ensure the layout adapts to user-adjusted text spacing.',
     },
     'heading-order': {
         title: 'Logical Content Structure',
         category: 'Cognitive Accessibility',
-        importance: 'Proper heading hierarchy helps seniors understand content organization. A confusing structure increases cognitive load.',
-        why: 'Clear information hierarchy reduces cognitive burden and helps seniors find and understand content without becoming overwhelmed.',
+        importance: 'Proper heading hierarchy helps older adults understand content organization. A confusing structure increases cognitive load.',
+        why: 'Clear information hierarchy reduces cognitive burden and helps older adults find and understand content without becoming overwhelmed.',
         recommendation: 'Structure content with a single H1 heading, followed by H2s for main sections, H3s for sub-sections, etc. Do not skip heading levels.',
     },
     'button-name': {
         title: 'Clear Button Labels',
         category: 'Cognitive Accessibility',
-        importance: 'Seniors benefit from descriptive button names that clearly explain the resulting action. Vague labels like "Click here" create confusion.',
-        why: 'Clear, descriptive labels help seniors understand website functionality and build confidence in their interactions.',
+        importance: 'Older adults benefit from descriptive button names that clearly explain the resulting action. Vague labels like "Click here" create confusion.',
+        why: 'Clear, descriptive labels help older adults understand website functionality and build confidence in their interactions.',
         recommendation: 'Button text should describe the action it will perform. For example, use "Submit Application" or "Download Report" instead of generic labels.',
     },
     'link-name': {
         title: 'Descriptive Link Text',
         category: 'Cognitive Accessibility',
-        importance: 'Meaningful link text helps seniors understand where links will take them. Generic text like "Read more" creates uncertainty.',
-        why: 'Descriptive links reduce confusion and help seniors navigate with confidence, understanding the purpose of each link.',
-        recommendation: 'Link text should make sense out of context. Instead of a "click here" link, phrase it as "Read more about our senior services".',
+        importance: 'Meaningful link text helps older adults understand where links will take them. Generic text like "Read more" creates uncertainty.',
+        why: 'Descriptive links reduce confusion and help older adults navigate with confidence, understanding the purpose of each link.',
+        recommendation: 'Link text should make sense out of context. Instead of a "click here" link, phrase it as "Read more about our older adults services".',
     },
     'label': {
         title: 'Form Field Labels',
         category: 'Cognitive Accessibility',
-        importance: 'Clear form labels are essential for seniors who may have difficulty understanding form purposes. Missing labels create confusion.',
-        why: 'Proper labels help seniors complete forms successfully, reducing frustration and abandonment of important tasks.',
+        importance: 'Clear form labels are essential for older adults who may have difficulty understanding form purposes. Missing labels create confusion.',
+        why: 'Proper labels help older adults complete forms successfully, reducing frustration and abandonment of important tasks.',
         recommendation: 'Every form input should have a clearly visible and programmatically associated <label> tag. Place labels above the input field for clarity.',
     },
     'largest-contentful-paint': {
         title: 'Page Loading Speed',
-        category: 'Performance for Seniors',
-        importance: 'Slow-loading pages can confuse seniors who may think the site is broken. Fast loading builds confidence.',
-        why: 'Seniors may have less patience for slow technology and may abandon sites that don\'t load quickly.',
+        category: 'Performance for Older Adults',
+        importance: 'Slow-loading pages can confuse older adults who may think the site is broken. Fast loading builds confidence.',
+        why: 'Older adults may have less patience for slow technology and may abandon sites that don\'t load quickly.',
         recommendation: 'Optimize images, use a content delivery network (CDN), and minimize render-blocking scripts to ensure the main content loads in under 2.5 seconds.',
     },
     'cumulative-layout-shift': {
         title: 'Stable Page Layout',
-        category: 'Performance for Seniors',
-        importance: 'Pages that shift unexpectedly can confuse seniors and cause them to click wrong elements. Stable layouts provide predictable experiences.',
-        why: 'Layout stability is crucial for seniors who need consistent, predictable interfaces.',
+        category: 'Performance for Older Adults',
+        importance: 'Pages that shift unexpectedly can confuse older adults and cause them to click wrong elements. Stable layouts provide predictable experiences.',
+        why: 'Layout stability is crucial for older adults who need consistent, predictable interfaces.',
         recommendation: 'Specify dimensions for all images and ads to prevent content from shifting as it loads. Avoid inserting new content above existing content.',
     },
     'total-blocking-time': {
         title: 'Page Responsiveness',
-        category: 'Performance for Seniors',
-        importance: 'Unresponsive pages frustrate seniors who may interpret delays as system failures. Quick responsiveness builds trust.',
-        why: 'Seniors need immediate feedback from interactions to feel confident that their actions are being processed.',
+        category: 'Performance for Older Adults',
+        importance: 'Unresponsive pages frustrate older adults who may interpret delays as system failures. Quick responsiveness builds trust.',
+        why: 'Older adults need immediate feedback from interactions to feel confident that their actions are being processed.',
         recommendation: 'Break up long-running JavaScript tasks and minimize main-thread work to ensure the page responds to user input (like clicks) quickly.',
     },
     'is-on-https': {
         title: 'Secure Connection Protection',
-        category: 'Security for Seniors',
-        importance: 'HTTPS is crucial for protecting seniors who are often targets of online scams. It protects sensitive information from interception.',
-        why: 'Seniors are frequently targeted by cybercriminals. Secure connections provide essential protection for their personal and financial information.',
+        category: 'Security for Older Adults',
+        importance: 'HTTPS is crucial for protecting older adults who are often targets of online scams. It protects sensitive information from interception.',
+        why: 'Older adults are frequently targeted by cybercriminals. Secure connections provide essential protection for their personal and financial information.',
         recommendation: 'The website should use a secure (HTTPS) connection on all pages to protect user data and build trust. This is indicated by a padlock icon in the browser\'s address bar.',
     },
     'geolocation-on-start': {
         title: 'Privacy-Respecting Location Requests',
-        category: 'Security for Seniors',
-        importance: 'Unexpected location requests can alarm seniors who may not understand why a website needs their location. Clear explanations build trust.',
-        why: 'Seniors value privacy and may be suspicious of unexpected requests for personal information.',
+        category: 'Security for Older Adults',
+        importance: 'Unexpected location requests can alarm older adults who may not understand why a website needs their location. Clear explanations build trust.',
+        why: 'Older adults value privacy and may be suspicious of unexpected requests for personal information.',
         recommendation: 'Only request the user\'s location in response to a direct user action (e.g., clicking a "Find stores near me" button). Never ask on page load.',
     },
     'viewport': {
         title: 'Mobile-Friendly Design',
         category: 'Technical Accessibility',
-        importance: 'Proper viewport configuration ensures content displays correctly on all devices, which is vital as many seniors use tablets or phones.',
-        why: 'Responsive design helps seniors access content on their preferred devices without text being too small or requiring horizontal scrolling.',
+        importance: 'Proper viewport configuration ensures content displays correctly on all devices, which is vital as many older adults use tablets or phones.',
+        why: 'Responsive design helps older adults access content on their preferred devices without text being too small or requiring horizontal scrolling.',
         recommendation: 'Include the `<meta name="viewport" content="width=device-width, initial-scale=1">` tag in the `<head>` of all pages to ensure proper rendering on mobile devices.',
     },
     'dom-size': {
         title: 'Page Complexity Management',
         category: 'Technical Accessibility',
-        importance: 'Overly complex pages can slow down assistive technologies and confuse seniors. Simpler pages load faster and are easier to navigate.',
-        why: 'Seniors benefit from simpler, more focused page designs that don\'t overwhelm them with too many choices.',
+        importance: 'Overly complex pages can slow down assistive technologies and confuse older adults. Simpler pages load faster and are easier to navigate.',
+        why: 'Older adults benefit from simpler, more focused page designs that don\'t overwhelm them with too many choices.',
         recommendation: 'Keep the number of DOM elements on a page below 1,500. Simplify the page structure where possible to improve performance and reduce complexity.',
     },
     'errors-in-console': {
         title: 'Technical Stability',
         category: 'Technical Accessibility',
-        importance: 'JavaScript errors can break website functionality in unexpected ways, particularly affecting assistive technologies that seniors may rely on.',
+        importance: 'JavaScript errors can break website functionality in unexpected ways, particularly affecting assistive technologies that older adults may rely on.',
         why: 'Elderly users often depend on assistive technologies, and technical errors can make websites completely unusable for them.',
         recommendation: 'Regularly check the browser\'s developer console for errors and fix them promptly to ensure a stable and reliable experience for all users.',
     },
     'font-size': {
         title: 'Overall Font Size Assessment',
         category: 'Vision Accessibility',
-        importance: 'Consistent, readable font sizes ensure seniors can access all content without strain. Mixed small font sizes create accessibility barriers.',
-        why: 'Predictable, large font sizes help elderly users read content comfortably and maintain their independence online.',
+        importance: 'Consistent, readable font sizes ensure older adults can access all content without strain. Mixed small font sizes create accessibility barriers.',
+        why: 'Predictable, large font sizes help older adults read content comfortably and maintain their independence online.',
         recommendation: 'Audit the entire site to ensure no text (other than logos or decorative text) falls below a 16 pixel computed size.',
     }
 };
@@ -143,8 +142,8 @@ const CATEGORY_COLORS = {
     'Vision Accessibility': { bg: '#E3F2FD', border: '#1976D2', text: '#0D47A1' },
     'Motor Accessibility': { bg: '#F3E5F5', border: '#7B1FA2', text: '#4A148C' },
     'Cognitive Accessibility': { bg: '#E8F5E8', border: '#388E3C', text: '#1B5E20' },
-    'Performance for Seniors': { bg: '#FFF3E0', border: '#F57C00', text: '#E65100' },
-    'Security for Seniors': { bg: '#FFEBEE', border: '#D32F2F', text: '#B71C1C' },
+    'Performance for Older Adults': { bg: '#FFF3E0', border: '#F57C00', text: '#E65100' },
+    'Security for Older Adults': { bg: '#FFEBEE', border: '#D32F2F', text: '#B71C1C' },
     'Technical Accessibility': { bg: '#F5F5F5', border: '#616161', text: '#212121' }
 };
 
@@ -242,10 +241,10 @@ class ElderlyAccessibilityPDFGenerator {
             scoreText = 'Not Applicable';
         } else if (score === 1) {
             scoreColor = '#27AE60';
-            scoreText = 'Excellent for Seniors';
+            scoreText = 'Excellent for Older Adults';
         } else if (score > 0.8) {
             scoreColor = '#2ECC71';
-            scoreText = 'Good for Seniors';
+            scoreText = 'Good for Older Adults';
         } else if (score > 0.5) {
             scoreColor = '#F39C12';
             scoreText = 'Moderate Issues';
@@ -258,25 +257,69 @@ class ElderlyAccessibilityPDFGenerator {
         this.currentY += barHeight + 15;
     }
 
-    addOverallScoreDisplay(scoreData) {
-        const score = scoreData.finalScore;
-        const centerX = this.doc.page.width / 2;
-        const radius = 60;
+addOverallScoreDisplay(scoreData) {
+    const score = scoreData.finalScore;
+    const roundedScore = Math.round(score);
+    const centerX = this.doc.page.width / 2;
+    const radius = 60;
 
-        let scoreColor = '#E74C3C'; // Red (Poor)
-        if (score >= 90) {
-            scoreColor = '#27AE60'; // Green (Excellent)
-        } else if (score >= 50) {
-            scoreColor = '#F39C12'; // Yellow (Moderate)
-        }
+    // Determine pass/fail status based on 80% threshold
+    const isPassing = roundedScore >= 80;
+    const resultText = isPassing ? 'PASS' : 'FAIL';
+    const resultColor = isPassing ? '#27AE60' : '#E74C3C';
 
-        this.doc.circle(centerX, this.currentY + radius, radius).fill(scoreColor);
-        this.doc.fontSize(50).font('BoldFont').fillColor('#FFFFFF').text(Math.round(score), centerX - (radius / 2), this.currentY + (radius / 2) + 5, { width: radius, align: 'center' });
-        this.currentY += (radius * 2) + 15;
-        this.doc.fontSize(16).font('BoldFont').fillColor('#2C3E50').text('Overall Silver Surfers Score', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
-        this.currentY += 40;
+    let scoreColor = '#E74C3C'; // Red (Poor/Fail)
+    if (score >= 80) {
+        scoreColor = '#27AE60'; // Green (Pass)
     }
 
+    // Add prominent PASS/FAIL indicator with background box
+    const resultBoxHeight = 45;
+    const resultBoxWidth = 200;
+    const resultBoxX = centerX - (resultBoxWidth / 2);
+    
+    // Draw colored background box for the result
+    this.doc.rect(resultBoxX, this.currentY, resultBoxWidth, resultBoxHeight)
+        .fill(resultColor)
+        .stroke('#FFFFFF', 3);
+    
+    // Add white border for contrast
+    this.doc.rect(resultBoxX - 2, this.currentY - 2, resultBoxWidth + 4, resultBoxHeight + 4)
+        .stroke('#2C3E50', 2);
+    
+    // Add PASS/FAIL text with large, prominent styling
+    this.doc.fontSize(28).font('BoldFont').fillColor('#FFFFFF')
+        .text(resultText, resultBoxX, this.currentY + 8,
+            { width: resultBoxWidth, align: 'center' });
+    
+    this.currentY += resultBoxHeight + 25;
+
+    // Draw the score circle
+    this.doc.circle(centerX, this.currentY + radius, radius).fill(scoreColor);
+    this.doc.fontSize(50).font('BoldFont').fillColor('#FFFFFF')
+        .text(roundedScore, centerX - (radius / 2), this.currentY + (radius / 2) + 5,
+            { width: radius, align: 'center' });
+    this.currentY += (radius * 2) + 15;
+    
+    // Add the score label
+    this.doc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
+        .text('Overall Silver Surfers Score', this.margin, this.currentY,
+            { width: this.pageWidth, align: 'center' });
+    this.currentY += 40;
+
+    // Add explanatory text about pass/fail threshold
+    if (!isPassing) {
+        this.doc.fontSize(12).font('RegularFont').fillColor('#E74C3C')
+            .text('This website did not meet the Silver Surfers accessibility standards (80% minimum required)',
+                this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+        this.currentY += 20;
+    } else {
+        this.doc.fontSize(12).font('RegularFont').fillColor('#27AE60')
+            .text('This website meets Silver Surfers accessibility standards for senior-friendly design',
+                this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+        this.currentY += 20;
+    }
+}
     addIntroPage(reportData, scoreData) {
         this.doc.rect(0, 0, this.doc.page.width, 120).fill('#34495E');
         this.doc.fontSize(32).font('BoldFont').fillColor('white').text('Silver Surfers', this.margin, 30, { width: this.pageWidth, align: 'center' });
@@ -292,15 +335,15 @@ class ElderlyAccessibilityPDFGenerator {
         const timestamp = new Date(reportData.fetchTime).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
         this.addBodyText(`Report Generated: ${timestamp}`, 12, '#7F8C8D');
         this.currentY += 10;
-        this.addHeading('Our Mission: Digital Inclusion for Seniors', 18, '#2980B9');
-        this.addBodyText('This comprehensive Silver Surfers audit evaluates website accessibility specifically from the perspective of elderly users. We focus on the unique challenges seniors face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.');
+        this.addHeading('Our Mission: Digital Inclusion for Older Adults', 18, '#2980B9');
+        this.addBodyText('This comprehensive Silver Surfers audit evaluates website accessibility specifically from the perspective of elderly users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.');
     }
 
     // New method to show score calculation breakdown
     addScoreCalculationPage(reportData, scoreData) {
         this.addPage();
         this.addTitle('How Your Score Was Calculated', 24);
-        this.addBodyText('The final score is a weighted average of individual audits. Audits that have a greater impact on the user experience for seniors are given a higher "weight," meaning they contribute more to the final score.');
+        this.addBodyText('The final score is a weighted average of individual audits. Audits that have a greater impact on the user experience for older adults are given a higher "weight," meaning they contribute more to the final score.');
         this.currentY += 10;
 
         const auditRefs = customConfig.categories['senior-friendly']?.auditRefs || [];
@@ -443,7 +486,7 @@ class ElderlyAccessibilityPDFGenerator {
                     extractors: [
                         item => item.textSnippet || 'N/A',
                         item => item.containerSelector || 'N/A',
-                        item => 'Font smaller than 16px - difficult for seniors to read'
+                        item => 'Font smaller than 16px - difficult for older adults to read'
                     ]
                 };
             case 'interactive-color-audit':
@@ -463,7 +506,7 @@ class ElderlyAccessibilityPDFGenerator {
                     extractors: [
                         item => this.extractNodeLabel(item.node) || 'Layout Element',
                         item => this.extractSelector(item.node) || 'N/A',
-                        item => 'Layout may break when seniors adjust text size for better readability'
+                        item => 'Layout may break when older adults adjust text size for better readability'
                     ]
                 };
             default:
@@ -473,7 +516,7 @@ class ElderlyAccessibilityPDFGenerator {
                     extractors: [
                         item => item.node?.nodeLabel || item.nodeLabel || 'Page Element',
                         item => item.node?.selector || item.selector || 'N/A',
-                        item => item.node?.explanation || item.explanation || 'May impact senior users'
+                        item => item.node?.explanation || item.explanation || 'May impact older adult users'
                     ]
                 };
         }
@@ -548,32 +591,17 @@ class ElderlyAccessibilityPDFGenerator {
         try {
             const reportData = JSON.parse(fs.readFileSync(inputFile, 'utf8'));
             const clientEmail = options.clientEmail || 'unknown-client';
-            const formFactor = reportData.configSettings?.formFactor || 'desktop';
+            const formFactor = options.formFactor || reportData.configSettings?.formFactor || 'desktop';
             const url = reportData.finalUrl || 'unknown-url';
+            
+            // Create sanitized filename from URL
+            const sanitizedUrl = url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '-').replace(/-+/g, '-');
+            const fileName = `${sanitizedUrl}-${formFactor}.pdf`;
 
-            // Build a safe, short filename from URL (strip query/hash, slugify, truncate, add short hash)
-            let hostname = 'site';
-            let pathname = '';
-            try {
-                const u = new URL(url);
-                hostname = u.hostname || 'site';
-                pathname = (u.pathname || '/').replace(/\/+$/, ''); // drop trailing slash
-            } catch {}
-            const rawBase = `${hostname}${pathname}` || hostname;
-            // slugify: allow letters, numbers, dots and dashes
-            let slug = rawBase.replace(/[^a-zA-Z0-9.-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
-            if (!slug) slug = hostname.replace(/[^a-zA-Z0-9.-]/g, '-');
-            // limit slug length to avoid Windows path limits
-            const MAX_SLUG = 80;
-            if (slug.length > MAX_SLUG) slug = slug.slice(0, MAX_SLUG).replace(/-+$/g, '');
-            const shortHash = crypto.createHash('sha1').update(url).digest('hex').slice(0, 8);
-            const fileName = `${slug}-${formFactor}-${shortHash}.pdf`;
-
-            // Use outputDir directly if provided (do NOT append clientEmail again to avoid duplication)
-            // Otherwise, create a folder from clientEmail
+            // Use outputDir if provided, otherwise use clientEmail as folder
             let clientFolder;
             if (options.outputDir) {
-                clientFolder = path.resolve(options.outputDir);
+                clientFolder = path.resolve(options.outputDir, clientEmail);
             } else {
                 clientFolder = path.resolve(clientEmail);
             }

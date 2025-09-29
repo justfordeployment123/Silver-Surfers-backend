@@ -9,6 +9,98 @@ import customConfig from './custom-config.js';
 
 puppeteer.use(stealthPlugin());
 
+// Anti-bot strategies with more reasonable timeouts
+const ANTI_BOT_STRATEGIES = {
+    basic: {
+        name: 'Basic',
+        timeout: 300000, // 5 minutes (increased from 2 minutes)
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+        ],
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+        waitTime: 2000,
+        cookieTimeout: 2000 // Reduced from 3000ms per selector
+    },
+    stealth: {
+        name: 'Stealth',
+        timeout: 420000, // 7 minutes (increased from 2.5 minutes)
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-web-security',
+            '--disable-features=TranslateUI'
+        ],
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        waitTime: 5000,
+        cookieTimeout: 2000,
+        extraHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        }
+    },
+    aggressive: {
+        name: 'Aggressive',
+        timeout: 600000, // 10 minutes (increased from 6 minutes)
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--single-process',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-web-security',
+            '--disable-features=TranslateUI',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-ipc-flooding-protection',
+            '--disable-hang-monitor',
+            '--disable-prompt-on-repost'
+        ],
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        waitTime: 8000,
+        cookieTimeout: 3000,
+        extraHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Cache-Control': 'no-cache',
+            'Upgrade-Insecure-Requests': '1'
+        },
+        viewport: { width: 1920, height: 1080 }
+    }
+};
+
+/**
+ * Enhanced browser cleanup with multiple fallback methods
+ */
+async function cleanupBrowser(browser, strategy, attemptNumber) {
+    if (!browser) return;
+
+    try {
+        const pages = await browser.pages();
+        await Promise.all(pages.map(page => page.close().catch(() => {})));
+        await browser.close();
+        console.log(`[Attempt ${attemptNumber}] [${strategy}] Browser closed successfully`);
+    } catch (closeError) {
+        console.warn(`[Attempt ${attemptNumber}] [${strategy}] Warning during browser cleanup:`, closeError.message);
+        try {
+            await browser.process()?.kill('SIGKILL');
+        } catch (killError) {
+            console.warn(`[Attempt ${attemptNumber}] [${strategy}] Could not force kill browser process`);
+        }
+    }
+}
+
 // Function to calculate the weighted "Senior Friendliness" score
 function calculateSeniorFriendlinessScore(report) {
     console.log('🔍 [Score Calculation] Starting Silver Surfers score calculation...');
@@ -73,197 +165,234 @@ function calculateSeniorFriendlinessScore(report) {
     return { finalScore, totalWeightedScore, totalWeight };
 }
 
-async function performAudit(url, options) {
-  const { device, format, useAdvancedFeatures } = options;
-  const approach = useAdvancedFeatures ? 'Advanced' : 'Standard';
-  console.log(`🚀 [Attempting with ${approach} Approach] Starting ${device} audit for: ${url}`);
-
-  let browser = null;
-  try {
-      browser = await puppeteer.launch({
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-      ],
-    });
-
-
+// Optimized cookie banner handling with timeout per selector
+async function handleCookieBanner(page, strategyConfig, attemptNumber) {
+    console.log(`[Attempt ${attemptNumber}] 🕵️ Looking for a cookie banner to accept...`);
     
-    const page = await browser.newPage();
-
-    if (device === 'mobile') {
-      await page.emulate(KnownDevices['Pixel 5']);
-    } else {
-      const userAgent = useAdvancedFeatures 
-        ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' 
-        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36';
-      await page.setUserAgent(userAgent);
-      await page.setViewport({ width: useAdvancedFeatures ? 1920 : 1280, height: useAdvancedFeatures ? 1080 : 800 });
-    }
-
-    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    if (response.status() !== 200) {
-      throw new Error(`Failed to load page: Status code ${response.status()}`);
-    }
-    console.log('✅ Page loaded successfully.');
-
-    // --- Cookie Banner Handling ---
-    console.log('🕵️ Looking for a cookie banner to accept...');
-const cookieSelectors = [
-    // --- By ID (Most specific and reliable) ---
-    '#onetrust-accept-btn-handler',
-    '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll', // Cookiebot
-    '#hs-eu-confirmation-button', // HubSpot
-    '#cookie_action_close_header', // Cookie Notice plugin
-    '#cookie-accept',
-    '#accept-cookies',
-    '#accept_cookie',
-    '#cookie-notice-accept',
-    '#accept-all-cookies',
-    '#wt-cli-accept-all-btn', // CookieYes
-
-    // --- By Data Attributes (Very reliable) ---
-    '[data-testid="cookie-policy-manage-dialog-accept-button"]',
-    '[data-cy="cookie-accept"]',
-    '[data-qa="accept-cookies"]',
-    '[data-cookie-accept]',
-    '[data-action="accept"]',
-    '[data-action="accept-all"]',
-    '[data-accept-action]',
-    '[data-role="accept-cookies"]',
-
-    // --- By ARIA Labels (Good for accessibility-compliant sites) ---
-    'button[aria-label*="accept" i]',
-    'button[aria-label*="agree" i]',
-    'button[aria-label*="consent" i]',
-    'button[aria-label*="allow" i]',
+    // Reduced and prioritized cookie selectors (most common first)
+    const cookieSelectors = [
+        // Most common and reliable selectors first
+        '#onetrust-accept-btn-handler',
+        '[data-testid="cookie-policy-manage-dialog-accept-button"]',
+        '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+        '#accept-cookies',
+        '#cookie-accept',
+        'button[aria-label*="accept" i]',
+        '[class*="cookie-accept"]',
+        '[class*="accept-all"]',
+        '//button[contains(., "Accept all")]',
+        '//button[contains(., "Accept All")]',
+        '//button[contains(., "I accept")]',
+        '//button[contains(., "Accept")]'
+    ];
     
-    // --- By Class Name Substring (Handles dynamically generated classes) ---
-    '[class*="cookieNotification__agree-button"]',
-    '[class*="iubenda-cs-accept-btn"]', // Iubenda
-    '[class*="cmplz-accept"]', // Complianz
-    '[class*="cookie-btn-accept-all"]',
-    '[class*="cookie-accept"]',
-    '[class*="cookie_accept"]',
-    '[class*="cookie__accept"]',
-    '[class*="accept-all"]',
-    '[class*="acceptAll"]',
-    '[class*="acceptContainer"]',
-    '[class*="consent-accept"]',
-    '[class*="banner-accept"]',
-    '[class*="agree-button"]',
-    '[class*="accept-button"]',
-    '[class*="CallToAction"]', // Common in some frameworks
-
-    // --- By XPath Text Match (Broadest, checked last) ---
-    '//button[contains(., "Accept all")]',
-    '//button[contains(., "Accept All")]',
-    '//button[contains(., "ACCEPT ALL")]',
-    '//button[contains(., "ALLOW ALL")]',
-    '//button[contains(., "Allow all")]',
-    '//button[contains(., "Agree to all")]',
-    '//button[contains(., "I accept")]',
-    '//button[contains(., "I agree")]',
-    '//button[contains(., "Got it")]',
-    '//button[contains(., "Okay")]',
-    '//button[contains(., "OK")]',
-    '//button[contains(., "Understood")]',
-    '//a[contains(., "Accept")]', // Sometimes it's a link
-    '//button[contains(., "Accept")]', // Generic "Accept" is last
-];
     let bannerClicked = false;
+    const selectorTimeout = strategyConfig.cookieTimeout || 2000;
+    
     for (const selector of cookieSelectors) {
-      try {
-        const button = await page.waitForSelector(selector, { timeout: 3000, visible: true });
-        if (button) {
-          console.log(`✅ Found cookie button with selector: "${selector}". Clicking...`);
-          await page.evaluate(b => b.click(), button);
-          await page.waitForSelector(selector, { hidden: true, timeout: 3000 });
-          console.log('✅ Cookie banner dismissed.');
-          bannerClicked = true;
-          break;
+        try {
+            const button = await page.waitForSelector(selector, { 
+                timeout: selectorTimeout, 
+                visible: true 
+            });
+            if (button) {
+                console.log(`[Attempt ${attemptNumber}] ✅ Found cookie button with selector: "${selector}". Clicking...`);
+                await page.evaluate(b => b.click(), button);
+                
+                // Wait for banner to disappear (shorter timeout)
+                try {
+                    await page.waitForSelector(selector, { hidden: true, timeout: 3000 });
+                } catch {
+                    // Banner might not disappear, that's okay
+                }
+                
+                console.log(`[Attempt ${attemptNumber}] ✅ Cookie banner dismissed.`);
+                bannerClicked = true;
+                break;
+            }
+        } catch (error) { 
+            // Selector not found, continue to next one
         }
-      } catch (error) { /* Selector not found, continue */ }
     }
+    
     if (!bannerClicked) {
-      console.log('🤷 No cookie banner found or handled. Continuing audit.');
-    }
-
-    const lighthouseOptions = {
-      port: new URL(browser.wsEndpoint()).port,
-      output: format,
-      logLevel: 'info',
-      ...(device === 'desktop' && {
-        formFactor: 'desktop',
-        screenEmulation: {
-          mobile: false,
-          width: 1920,
-          height: 1080,
-          deviceScaleFactor: 1,
-          disabled: false,
-        },
-      }),
-      ...(device === 'mobile' && {
-        formFactor: 'mobile',
-        screenEmulation: { mobile: true },
-      })
-    };
-
-    const lighthouseResult = await lighthouse(url, lighthouseOptions, customConfig);
-    
-    // Calculate Silver Surfers score before generating report
-    console.log('🎯 [Score Validation] Calculating Silver Surfers score...');
-    const scoreData = calculateSeniorFriendlinessScore(lighthouseResult.lhr);
-    
-    // Check if score is 0 and prevent JSON file generation and PDF generation
-    if (scoreData.finalScore === 0) {
-      console.error('❌ [Score Validation] Silver Surfers score is 0 - blocking JSON file generation and PDF generation');
-      console.log('🔍 [Score Validation] Score calculation details:', {
-        totalWeightedScore: scoreData.totalWeightedScore,
-        totalWeight: scoreData.totalWeight,
-        error: scoreData.error || 'No specific error'
-      });
-      
-      return { 
-        success: false, 
-        error: 'Silver Surfers score is 0 - audit may have failed or configuration issue detected',
-        scoreData: scoreData,
-        reportGenerated: false
-      };
+        console.log(`[Attempt ${attemptNumber}] 🤷 No cookie banner found or handled. Continuing audit.`);
     }
     
-    console.log(`✅ [Score Validation] Silver Surfers score: ${scoreData.finalScore.toFixed(2)} - proceeding with report generation`);
-    
-    const report = format === 'json' ? JSON.stringify(lighthouseResult.lhr, null, 2) : lighthouseResult.report;
+    return bannerClicked;
+}
 
-    // --- Generate a unique filename ---
-    const urlObject = new URL(url);
-    const hostname = urlObject.hostname.replace(/\./g, '-');
-    const timestamp = Date.now();
-    const reportPath = `report-${hostname}-${timestamp}.${format}`;
-    
-    fs.writeFileSync(reportPath, report);
-    console.log(`✅ Lighthouse report saved to ${reportPath}`);
-    
-    return { 
-      success: true, 
-      reportPath: reportPath,
-      scoreData: scoreData,
-      reportGenerated: true
-    };
-  } finally {
-    if (browser) {
-      await browser.close();
-      console.log('Browser closed successfully.');
+async function performAuditWithStrategy(url, options, strategy, attemptNumber = 1) {
+    const { device, format } = options;
+    const strategyConfig = ANTI_BOT_STRATEGIES[strategy];
+
+    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name} Strategy] Starting ${device} audit for: ${url}`);
+
+    let browser = null;
+    let auditTimeoutId = null;
+
+    try {
+        // Create a promise that rejects after timeout
+        const timeoutPromise = new Promise((_, reject) => {
+            auditTimeoutId = setTimeout(() => {
+                reject(new Error(`${strategyConfig.name} strategy timeout after ${strategyConfig.timeout/1000} seconds`));
+            }, strategyConfig.timeout);
+        });
+
+        // Create the main audit promise
+        const auditPromise = (async () => {
+            const launchOptions = {
+                headless: 'new',
+                args: strategyConfig.args,
+                timeout: 30000,
+                protocolTimeout: 60000
+            };
+
+            browser = await puppeteer.launch(launchOptions);
+            console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Browser launched successfully`);
+
+            const page = await browser.newPage();
+
+            // Apply strategy-specific settings
+            if (strategyConfig.extraHeaders) {
+                await page.setExtraHTTPHeaders(strategyConfig.extraHeaders);
+            }
+
+            if (device === 'mobile') {
+                await page.emulate(KnownDevices['Pixel 5']);
+            } else if (device === 'tablet') {
+                await page.emulate(KnownDevices['iPad Pro 11']);
+            } else {
+                await page.setUserAgent(strategyConfig.userAgent);
+                const viewport = strategyConfig.viewport || { width: 1280, height: 800 };
+                await page.setViewport(viewport);
+            }
+
+            // Navigate with strategy-specific timeout
+            console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Navigating to ${url}...`);
+            const response = await page.goto(url, {
+                waitUntil: 'domcontentloaded',
+                timeout: 60000
+            });
+
+            if (!response) {
+                throw new Error('No response received from page navigation');
+            }
+
+            if (response.status() !== 200) {
+                throw new Error(`HTTP ${response.status()}: Failed to load page`);
+            }
+
+            console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page loaded successfully`);
+
+            // Strategy-specific wait time
+            await new Promise(resolve => setTimeout(resolve, strategyConfig.waitTime));
+
+            // Optimized cookie banner handling
+            await handleCookieBanner(page, strategyConfig, attemptNumber);
+
+            const lighthouseOptions = {
+                port: new URL(browser.wsEndpoint()).port,
+                output: format,
+                logLevel: 'info',
+                maxWaitForFcp: 15000,
+                maxWaitForLoad: 45000,
+                ...(device === 'desktop' && {
+                    formFactor: 'desktop',
+                    screenEmulation: {
+                        mobile: false,
+                        width: 1920,
+                        height: 1080,
+                        deviceScaleFactor: 1,
+                        disabled: false,
+                    },
+                }),
+                ...(device === 'mobile' && {
+                    formFactor: 'mobile',
+                    screenEmulation: { mobile: true },
+                }),
+                ...(device === 'tablet' && {
+                    formFactor: 'mobile',
+                    screenEmulation: {
+                        mobile: true,
+                        width: 834,
+                        height: 1194,
+                        deviceScaleFactor: 2,
+                        disabled: false,
+                    },
+                    userAgent: 'Mozilla/5.0 (iPad; CPU OS 13_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1'
+                })
+            };
+
+            console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Starting Lighthouse audit...`);
+
+            const lighthouseResult = await lighthouse(url, lighthouseOptions, customConfig);
+
+            if (!lighthouseResult || !lighthouseResult.lhr) {
+                throw new Error('Lighthouse failed to generate a report');
+            }
+
+            console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Lighthouse completed successfully`);
+
+            // Calculate Silver Surfers score before generating report
+            console.log('🎯 [Score Validation] Calculating Silver Surfers score...');
+            const scoreData = calculateSeniorFriendlinessScore(lighthouseResult.lhr);
+            
+            // Check if score is 0 and prevent JSON file generation and PDF generation
+            if (scoreData.finalScore === 0) {
+                console.error('❌ [Score Validation] Silver Surfers score is 0 - blocking JSON file generation and PDF generation');
+                console.log('🔍 [Score Validation] Score calculation details:', {
+                    totalWeightedScore: scoreData.totalWeightedScore,
+                    totalWeight: scoreData.totalWeight,
+                    error: scoreData.error || 'No specific error'
+                });
+                
+                throw new Error('Silver Surfers score is 0 - audit may have failed or configuration issue detected');
+            }
+            
+            console.log(`✅ [Score Validation] Silver Surfers score: ${scoreData.finalScore.toFixed(2)} - proceeding with report generation`);
+            
+            const report = format === 'json' ? JSON.stringify(lighthouseResult.lhr, null, 2) : lighthouseResult.report;
+
+            // Generate filename
+            const urlObject = new URL(url);
+            const hostname = urlObject.hostname.replace(/\./g, '-');
+            const timestamp = Date.now();
+            const reportPath = `report-${hostname}-${timestamp}.${format}`;
+
+            fs.writeFileSync(reportPath, report);
+            console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Lighthouse report saved to ${reportPath}`);
+
+            return {
+                success: true,
+                reportPath: reportPath,
+                scoreData: scoreData,
+                reportGenerated: true,
+                url: url,
+                device: device,
+                strategy: strategyConfig.name,
+                attemptNumber: attemptNumber,
+                message: `Audit completed successfully using ${strategyConfig.name} strategy on attempt ${attemptNumber}`
+            };
+        })();
+
+        // Race between timeout and audit completion
+        const result = await Promise.race([auditPromise, timeoutPromise]);
+        return result;
+
+    } catch (error) {
+        console.error(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Error during audit:`, error.message);
+        throw error;
+    } finally {
+        // Clean up timeout
+        if (auditTimeoutId) {
+            clearTimeout(auditTimeoutId);
+        }
+        // Enhanced browser cleanup
+        if (browser) {
+            await cleanupBrowser(browser, strategyConfig.name, attemptNumber);
+        }
     }
-  }
 }
 
 /**
@@ -275,32 +404,85 @@ const cookieSelectors = [
  * @returns {Promise<object>} A result object e.g. { success: true, reportPath: '...' } or { success: false, error: '...' }.
  */
 export async function runLighthouseAudit(options) {
-  const { url, device = 'desktop', format = 'json' } = options;
+    const { url, device = 'desktop', format = 'json' } = options;
 
-  if (!url) {
-    return { success: false, error: 'URL is required.' };
-  }
-
-  const fullUrl = url.startsWith('http') ? url : `https://${url}`;
-
-  try {
-    // First attempt with standard features
-    return await performAudit(fullUrl, { device, format, useAdvancedFeatures: false });
-  } catch (error) {
-    console.error(`Standard attempt failed: ${error.message}`);
-    
-    // If the first attempt failed with a specific error, retry with advanced features
-    if (error.message.includes('Status code 403') || error.message.includes('timed out')) {
-      try {
-        console.log('Retrying with advanced features...');
-        return await performAudit(fullUrl, { device, format, useAdvancedFeatures: true });
-      } catch (finalError) {
-        console.error(`Advanced attempt also failed: ${finalError.message}`);
-        return { success: false, error: finalError.message };
-      }
-    } else {
-      // For any other error, fail immediately
-      return { success: false, error: error.message };
+    if (!url) {
+        return {
+            success: false,
+            error: 'URL is required',
+            errorCode: 'MISSING_URL',
+            message: 'No URL provided for audit'
+        };
     }
-  }
+
+    const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+    const strategies = ['basic', 'stealth', 'aggressive'];
+    const maxAttemptsPerStrategy = 3;
+    const allErrors = [];
+
+    console.log(`\n=== Starting audit for ${fullUrl} ===`);
+    console.log(`Strategies to try: ${strategies.join(' → ')}`);
+
+    // Try each strategy
+    for (const strategy of strategies) {
+        console.log(`\n--- Trying ${ANTI_BOT_STRATEGIES[strategy].name} Strategy ---`);
+        
+        const strategyErrors = [];
+        
+        // Try each strategy up to 3 times
+        for (let attempt = 1; attempt <= maxAttemptsPerStrategy; attempt++) {
+            try {
+                const result = await performAuditWithStrategy(fullUrl, {
+                    device,
+                    format
+                }, strategy, attempt);
+
+                console.log(`=== SUCCESS: Audit completed with ${strategy} strategy on attempt ${attempt} ===\n`);
+                return result;
+
+            } catch (error) {
+                const errorInfo = {
+                    strategy: strategy,
+                    attempt: attempt,
+                    error: error.message,
+                    timestamp: new Date().toISOString()
+                };
+                strategyErrors.push(errorInfo);
+                allErrors.push(errorInfo);
+
+                console.error(`[${strategy}] Attempt ${attempt} failed: ${error.message}`);
+
+                // If not the last attempt for this strategy, wait before retrying
+                if (attempt < maxAttemptsPerStrategy) {
+                    const waitTime = 2000 * attempt; // 2s, 4s, 6s
+                    console.log(`[${strategy}] Waiting ${waitTime}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+            }
+        }
+
+        console.log(`--- ${ANTI_BOT_STRATEGIES[strategy].name} Strategy failed after ${maxAttemptsPerStrategy} attempts ---`);
+    }
+
+    // All strategies failed
+    const finalError = {
+        success: false,
+        error: `All strategies failed after ${strategies.length * maxAttemptsPerStrategy} total attempts`,
+        errorCode: 'ALL_STRATEGIES_FAILED',
+        message: `Audit failed: website has strong anti-bot protections`,
+        url: fullUrl,
+        device: device,
+        strategiesTried: strategies,
+        totalAttempts: allErrors.length,
+        allErrors: allErrors,
+        timestamp: new Date().toISOString(),
+        retryable: false, // Don't retry if all strategies failed
+        recommendation: 'This website has very strong anti-bot protections. Manual testing may be required.'
+    };
+
+    console.error(`=== FINAL FAILURE: All strategies exhausted for ${fullUrl} ===`);
+    console.error('Strategies tried:', strategies.join(', '));
+    console.error('Total attempts:', allErrors.length);
+    
+    return finalError;
 }

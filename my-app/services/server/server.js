@@ -91,7 +91,7 @@ const runFullAuditProcess = async (job) => {
     console.log(`Found ${linksToAudit.length} links for full audit.`);
 
     for (const link of linksToAudit) {
-      for (const device of ['desktop', 'mobile']) {
+      for (const device of ['desktop', 'mobile','tablet']) {
         console.log(`--- Starting full ${device} audit for: ${link} ---`);
         let jsonReportPath = null;
         let imagePaths = {};
@@ -107,6 +107,7 @@ const runFullAuditProcess = async (job) => {
               clientEmail: email,
               imagePaths,
               outputDir: finalReportFolder,
+              formFactor: device // <-- Add this line to pass the device type
             });
           } else {
             console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);
@@ -499,9 +500,7 @@ app.post('/create-checkout-session', authRequired, async (req, res) => {
 
     // Map packageId to price amount (in cents)
     const packagePricing = {
-      1: 29900, // Senior-Friendly Assessment €299
-      2: 150000, // Full Accessibility Optimization from €1,500
-      3: 250000, // Premium Senior Experience from €2,500
+      1: 5000
     };
     const amount = packagePricing[packageId] || packagePricing[1];
 

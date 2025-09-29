@@ -20,7 +20,8 @@ const LITE_AUDIT_INFO = {
         category: 'Motor',
         impact: 'Larger buttons help seniors with tremors or arthritis.',
     },
-    'font-size': {
+    // CHANGE: Replace 'font-size' with 'text-font-audit' to match your custom audit
+    'text-font-audit': {
         title: 'Font Size',
         category: 'Vision',
         impact: 'Larger fonts are crucial for seniors with presbyopia.',
@@ -166,70 +167,71 @@ class LiteAccessibilityPDFGenerator {
 
     addTitle(text, fontSize = 28) {
         this.doc.fontSize(fontSize).font('BoldFont').fillColor('#2C3E50')
-               .text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+            .text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
         this.currentY += fontSize + 25;
     }
 
     addHeading(text, fontSize = 16, color = '#34495E') {
         this.doc.fontSize(fontSize).font('BoldFont').fillColor(color)
-               .text(text, this.margin, this.currentY, { width: this.pageWidth });
+            .text(text, this.margin, this.currentY, { width: this.pageWidth });
         this.currentY += fontSize + 12;
     }
 
     addBodyText(text, fontSize = 11, color = '#2C3E50') {
         this.doc.fontSize(fontSize).font('RegularFont').fillColor(color)
-               .text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'justify', lineGap: 3 });
+            .text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'justify', lineGap: 3 });
         this.currentY += this.doc.heightOfString(text, { width: this.pageWidth, lineGap: 3 }) + 12;
     }
 
     addScoreDisplay(scoreData) {
-        const score = scoreData.finalScore;
-        const centerX = this.doc.page.width / 2;
-        const radius = 50;
+    const score = scoreData.finalScore;
+    const roundedScore = Math.round(score); // Round the score first
+    const centerX = this.doc.page.width / 2;
+    const radius = 50;
 
-        let scoreColor = score >= 70 ? '#27AE60' : score >= 40 ? '#F39C12' : '#E74C3C';
+    // Use rounded score for color logic to match displayed value
+    let scoreColor = roundedScore >= 80 ? '#27AE60' : roundedScore >= 40 ? '#F39C12' : '#E74C3C';
 
-        this.doc.circle(centerX, this.currentY + radius, radius).fill(scoreColor);
-        this.doc.fontSize(40).font('BoldFont').fillColor('#FFFFFF')
-               .text(Math.round(score), centerX - (radius/2), this.currentY + (radius/2) + 5, 
-                     { width: radius, align: 'center' });
-        this.currentY += (radius * 2) + 15;
-        this.doc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
-               .text('Silver Surfers Score (Lite)', this.margin, this.currentY, 
-                     { width: this.pageWidth, align: 'center' });
-        this.currentY += 30;
-    }
+    this.doc.circle(centerX, this.currentY + radius, radius).fill(scoreColor);
+    this.doc.fontSize(40).font('BoldFont').fillColor('#FFFFFF')
+        .text(roundedScore, centerX - (radius / 2), this.currentY + (radius / 2) + 5,
+            { width: radius, align: 'center' });
+    this.currentY += (radius * 2) + 15;
+    this.doc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
+        .text('Silver Surfers Score (Lite)', this.margin, this.currentY,
+            { width: this.pageWidth, align: 'center' });
+    this.currentY += 30;
+}
 
     addLiteResults(reportData) {
         const audits = reportData.audits || {};
-        
+
         this.addBodyText('Key Areas Checked:', 12, '#2980B9');
         this.currentY += 5;
 
         Object.keys(LITE_AUDIT_INFO).forEach(auditId => {
             const auditResult = audits[auditId];
             const auditInfo = LITE_AUDIT_INFO[auditId];
-            
-            if (auditResult && auditInfo) {
+
+            // Skip audits that are N/A (score is null) or don't exist
+            if (auditResult && auditInfo && auditResult.score !== null) {
                 const score = auditResult.score;
-                let status = score === null ? 'N/A' : 
-                           score === 1 ? 'PASS' : 
-                           score > 0.5 ? 'NEEDS WORK' : 'FAIL';
-                
-                let statusColor = score === null ? '#95A5A6' :
-                                score === 1 ? '#27AE60' :
-                                score > 0.5 ? '#F39C12' : '#E74C3C';
+                let status = score === 1 ? 'PASS' :
+                    score > 0.5 ? 'NEEDS WORK' : 'FAIL';
+
+                let statusColor = score === 1 ? '#27AE60' :
+                    score > 0.5 ? '#F39C12' : '#E74C3C';
 
                 // Draw colored bullet
                 this.doc.circle(this.margin + 5, this.currentY + 6, 3).fill(statusColor);
-                
+
                 // Add text
                 this.doc.fontSize(10).font('BoldFont').fillColor('#2C3E50')
-                       .text(`${auditInfo.title}: ${status}`, this.margin + 15, this.currentY);
+                    .text(`${auditInfo.title}: ${status}`, this.margin + 15, this.currentY);
                 this.currentY += 15;
-                
+
                 this.doc.fontSize(9).font('RegularFont').fillColor('#666')
-                       .text(auditInfo.impact, this.margin + 15, this.currentY, { width: this.pageWidth - 15 });
+                    .text(auditInfo.impact, this.margin + 15, this.currentY, { width: this.pageWidth - 15 });
                 this.currentY += this.doc.heightOfString(auditInfo.impact, { width: this.pageWidth - 15 }) + 8;
             }
         });
@@ -237,14 +239,14 @@ class LiteAccessibilityPDFGenerator {
 
     addPremiumComparisonPage() {
         this.addPage();
-        
+
         // Header with gradient-like effect
         this.doc.rect(0, 0, this.doc.page.width, 100).fill('#2C3E50');
         this.doc.fontSize(24).font('BoldFont').fillColor('white')
-               .text('Upgrade to Premium Silver Surfers', this.margin, 25, { width: this.pageWidth, align: 'center' });
+            .text('Upgrade to Premium Silver Surfers', this.margin, 25, { width: this.pageWidth, align: 'center' });
         this.doc.fontSize(14).font('RegularFont').fillColor('#ECF0F1')
-               .text('Unlock the complete senior accessibility analysis', this.margin, 55, { width: this.pageWidth, align: 'center' });
-        
+            .text('Unlock the complete senior accessibility analysis', this.margin, 55, { width: this.pageWidth, align: 'center' });
+
         this.currentY = 120;
 
         // What you're missing section
@@ -254,12 +256,12 @@ class LiteAccessibilityPDFGenerator {
         // Additional Audits
         this.doc.rect(this.margin, this.currentY, this.pageWidth, 30).fill('#FFEBEE').stroke('#E74C3C');
         this.doc.fontSize(14).font('BoldFont').fillColor('#C62828')
-               .text('7 Additional Critical Audits', this.margin + 10, this.currentY + 8);
+            .text('7 Additional Critical Audits', this.margin + 10, this.currentY + 8);
         this.currentY += 40;
 
         PREMIUM_FEATURES.additionalAudits.forEach(audit => {
             this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                   .text(`• ${audit}`, this.margin + 10, this.currentY);
+                .text(`• ${audit}`, this.margin + 10, this.currentY);
             this.currentY += 15;
         });
 
@@ -268,12 +270,12 @@ class LiteAccessibilityPDFGenerator {
         // Visual Features
         this.doc.rect(this.margin, this.currentY, this.pageWidth, 30).fill('#E3F2FD').stroke('#1976D2');
         this.doc.fontSize(14).font('BoldFont').fillColor('#0D47A1')
-               .text('Visual Analysis & Screenshots', this.margin + 10, this.currentY + 8);
+            .text('Visual Analysis & Screenshots', this.margin + 10, this.currentY + 8);
         this.currentY += 40;
 
         PREMIUM_FEATURES.visualFeatures.forEach(feature => {
             this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                   .text(`• ${feature}`, this.margin + 10, this.currentY);
+                .text(`• ${feature}`, this.margin + 10, this.currentY);
             this.currentY += 15;
         });
 
@@ -282,31 +284,31 @@ class LiteAccessibilityPDFGenerator {
         // Detailed Analysis
         this.doc.rect(this.margin, this.currentY, this.pageWidth, 30).fill('#E8F5E8').stroke('#388E3C');
         this.doc.fontSize(14).font('BoldFont').fillColor('#1B5E20')
-               .text('Comprehensive Analysis & Recommendations', this.margin + 10, this.currentY + 8);
+            .text('Comprehensive Analysis & Recommendations', this.margin + 10, this.currentY + 8);
         this.currentY += 40;
 
         PREMIUM_FEATURES.detailedAnalysis.forEach(feature => {
             this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                   .text(`• ${feature}`, this.margin + 10, this.currentY);
+                .text(`• ${feature}`, this.margin + 10, this.currentY);
             this.currentY += 15;
         });
     }
 
     addPremiumFeaturesPage() {
         this.addPage();
-        
+
         this.addHeading('Premium Report Features:', 18, '#2980B9');
         this.currentY += 10;
 
         // Professional Reporting
         this.doc.rect(this.margin, this.currentY, this.pageWidth, 30).fill('#FFF3E0').stroke('#F57C00');
         this.doc.fontSize(14).font('BoldFont').fillColor('#E65100')
-               .text('📄 Professional Client-Ready Reports', this.margin + 10, this.currentY + 8);
+            .text('📄 Professional Client-Ready Reports', this.margin + 10, this.currentY + 8);
         this.currentY += 40;
 
         PREMIUM_FEATURES.reportingFeatures.forEach(feature => {
             this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                   .text(`• ${feature}`, this.margin + 10, this.currentY);
+                .text(`• ${feature}`, this.margin + 10, this.currentY);
             this.currentY += 15;
         });
 
@@ -318,10 +320,10 @@ class LiteAccessibilityPDFGenerator {
 
         Object.entries(PREMIUM_FEATURES.categories).forEach(([category, description]) => {
             this.doc.fontSize(12).font('BoldFont').fillColor('#2C3E50')
-                   .text(category, this.margin, this.currentY);
+                .text(category, this.margin, this.currentY);
             this.currentY += 15;
             this.doc.fontSize(10).font('RegularFont').fillColor('#666')
-                   .text(description, this.margin + 10, this.currentY);
+                .text(description, this.margin + 10, this.currentY);
             this.currentY += 20;
         });
 
@@ -329,9 +331,9 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += 20;
         this.doc.rect(this.margin, this.currentY, this.pageWidth, 60).fill('#27AE60').stroke('#1E8449');
         this.doc.fontSize(16).font('BoldFont').fillColor('white')
-               .text('Upgrade to Premium Today!', this.margin + 10, this.currentY + 10);
+            .text('Upgrade to Premium Today!', this.margin + 10, this.currentY + 10);
         this.doc.fontSize(12).font('RegularFont').fillColor('#D5F4E6')
-               .text('Get the complete senior accessibility analysis your website deserves.', this.margin + 10, this.currentY + 35);
+            .text('Get the complete senior accessibility analysis your website deserves.', this.margin + 10, this.currentY + 35);
         this.currentY += 80;
 
         // Comparison summary
@@ -343,17 +345,17 @@ class LiteAccessibilityPDFGenerator {
         try {
             const reportData = JSON.parse(fs.readFileSync(inputFile, 'utf8'));
             const scoreData = calculateLiteScore(reportData);
-            
-            const stream = fs.createWriteStream(outputFile); 
+
+            const stream = fs.createWriteStream(outputFile);
             this.doc.pipe(stream);
 
             // Header
             this.doc.rect(0, 0, this.doc.page.width, 80).fill('#34495E');
             this.doc.fontSize(24).font('BoldFont').fillColor('white')
-                   .text('Silver Surfers Report', this.margin, 25, { width: this.pageWidth, align: 'center' });
+                .text('Silver Surfers Report', this.margin, 25, { width: this.pageWidth, align: 'center' });
             this.doc.fontSize(14).font('RegularFont').fillColor('white')
-                   .text('Lite Version - Essential Checks', this.margin, 50, { width: this.pageWidth, align: 'center' });
-            
+                .text('Lite Version - Essential Checks', this.margin, 50, { width: this.pageWidth, align: 'center' });
+
             this.currentY = 110;
 
             // Website info
@@ -408,11 +410,11 @@ export async function generateLiteAccessibilityReport(inputFile, outputDirectory
     if (!reportData.finalUrl) {
         throw new Error('The report JSON must contain a finalUrl property.');
     }
-    
+
     // 2. Create the sanitized report name from the URL (e.g., "www-example-com.pdf")
     const urlObject = new URL(reportData.finalUrl);
     const reportName = `${urlObject.hostname.replace(/\./g, '-')}.pdf`;
-    
+
     // 3. Combine the provided directory and the new filename
     const outputPath = path.join(outputDirectory, reportName);
 
