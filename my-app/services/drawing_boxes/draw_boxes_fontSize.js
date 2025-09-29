@@ -7,7 +7,7 @@ async function isVisuallyDistinct(imagePathOrBuffer, rect) {
         
         // Add timeout to prevent hanging
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 5000)
+            setTimeout(() => reject(new Error('Timeout')), 2000)
         );
         
         const analysisPromise = sharp(imagePathOrBuffer)

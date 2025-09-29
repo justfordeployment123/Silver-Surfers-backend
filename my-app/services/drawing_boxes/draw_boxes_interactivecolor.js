@@ -7,7 +7,7 @@ async function isVisuallyDistinct(imagePathOrBuffer, rect) {
         
         // Add timeout to prevent hanging
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 5000)
+            setTimeout(() => reject(new Error('Timeout')), 2000)
         );
         
         const analysisPromise = sharp(imagePathOrBuffer)
@@ -111,10 +111,24 @@ export async function processInteractiveColorAudit(jsonReportPath, outputImagePa
 
     const finalBoxes = [];
     const visuallyEmptyBoxes = [];
-    for (const box of allBoxes) {
-        if (await isVisuallyDistinct(screenshotBuffer, box.rect)) {
-            finalBoxes.push(box);
-        } else {
+    
+    // Limit processing to prevent hanging on large datasets
+    const maxBoxesToProcess = 50;
+    const boxesToProcess = allBoxes.slice(0, maxBoxesToProcess);
+    
+    if (allBoxes.length > maxBoxesToProcess) {
+        console.log(`⚠️  Limiting processing to ${maxBoxesToProcess} boxes out of ${allBoxes.length} to prevent timeout`);
+    }
+    
+    for (const box of boxesToProcess) {
+        try {
+            if (await isVisuallyDistinct(screenshotBuffer, box.rect)) {
+                finalBoxes.push(box);
+            } else {
+                visuallyEmptyBoxes.push(box);
+            }
+        } catch (error) {
+            console.warn(`⚠️  Skipping box due to processing error: ${error.message}`);
             visuallyEmptyBoxes.push(box);
         }
     }

@@ -24,20 +24,45 @@ export async function createAllHighlightedImages(jsonFilePath, outputFolder) {
     const fontPath = path.join(outputFolder, `${reportName}-text-font.png`);
 
     // Add overall timeout for the entire image generation process
-    const overallTimeout = 300000; // 5 minutes
+    const overallTimeout = 120000; // 2 minutes
     const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Image generation timeout')), overallTimeout)
     );
 
     const processPromise = async () => {
         // 2. Call each of your modified functions, passing the unique output path to each
-        imagePaths['layout-brittle-audit'] = await processLayoutBrittleAudit(jsonFilePath, brittlePath);
-        imagePaths['interactive-color-audit'] = await processInteractiveColorAudit(jsonFilePath, interactivePath);
-        imagePaths['color-contrast'] = await processColorContrastAudit(jsonFilePath, contrastPath);
-        imagePaths['target-size'] = await processTargetSizeAudit(jsonFilePath, targetPath);
-        imagePaths['text-font-audit'] = await processTextFontAudit(jsonFilePath, fontPath);
+        // Wrap each in try-catch to prevent one failure from stopping the entire process
+        try {
+            imagePaths['layout-brittle-audit'] = await processLayoutBrittleAudit(jsonFilePath, brittlePath);
+        } catch (error) {
+            console.warn(`⚠️  Layout brittle audit failed: ${error.message}`);
+        }
         
-        console.log('✅ All highlighted images created successfully in job folder.');
+        try {
+            imagePaths['interactive-color-audit'] = await processInteractiveColorAudit(jsonFilePath, interactivePath);
+        } catch (error) {
+            console.warn(`⚠️  Interactive color audit failed: ${error.message}`);
+        }
+        
+        try {
+            imagePaths['color-contrast'] = await processColorContrastAudit(jsonFilePath, contrastPath);
+        } catch (error) {
+            console.warn(`⚠️  Color contrast audit failed: ${error.message}`);
+        }
+        
+        try {
+            imagePaths['target-size'] = await processTargetSizeAudit(jsonFilePath, targetPath);
+        } catch (error) {
+            console.warn(`⚠️  Target size audit failed: ${error.message}`);
+        }
+        
+        try {
+            imagePaths['text-font-audit'] = await processTextFontAudit(jsonFilePath, fontPath);
+        } catch (error) {
+            console.warn(`⚠️  Text font audit failed: ${error.message}`);
+        }
+        
+        console.log('✅ Image generation process completed (some may have failed gracefully).');
         return imagePaths;
     };
 
