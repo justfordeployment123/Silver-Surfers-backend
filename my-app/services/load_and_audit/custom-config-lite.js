@@ -4,6 +4,12 @@
  * Copyright 2025 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export default {
   // 1. Extend the default config to get access to all built-in audits
   extends: 'lighthouse:default',
@@ -16,11 +22,11 @@ export default {
   
   // 3. Add custom gatherer and audit for the font check
   artifacts: [
-    { id: 'PageText', gatherer: '../load_and_audit/custom_gatherers/text-gatherer.js' },
+    { id: 'PageText', gatherer: path.resolve(__dirname, 'custom_gatherers/text-gatherer.js') },
   ],
   
   audits: [
-    { path: '../load_and_audit/custom_audits/text-audit.js' },
+    { path: path.resolve(__dirname, 'custom_audits/text-audit.js') },
   ],
   
   // 4. Lite category with built-in audits plus custom font audit
