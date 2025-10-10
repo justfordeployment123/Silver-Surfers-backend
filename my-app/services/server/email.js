@@ -73,7 +73,6 @@ async function uploadToDrive(filePath, fileName, folderPath, email) {
   }
 
   try {
-    const fileContent = await fs.readFile(filePath);
     const timestamp = Date.now();
     const randomId = crypto.randomBytes(8).toString('hex');
     
@@ -84,9 +83,12 @@ async function uploadToDrive(filePath, fileName, folderPath, email) {
     const baseFileName = path.basename(fileName, fileExtension);
     const uniqueFileName = `${baseFileName}-${timestamp}-${randomId}-${emailHash}${fileExtension}`;
     
+    // Import fs for creating read stream
+    const fsSync = await import('fs');
+    
     const media = {
       mimeType: 'application/pdf',
-      body: fileContent
+      body: fsSync.createReadStream(filePath)  // Use stream instead of buffer
     };
 
     const fileMetadata = {

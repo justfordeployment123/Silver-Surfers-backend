@@ -1,5 +1,7 @@
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import { Readable } from 'stream';
 
 dotenv.config();
 
@@ -26,11 +28,13 @@ async function testDrive() {
     console.log('✅ Google Drive connection successful!');
     console.log('Files:', response.data.files);
     
-    // Test upload
-    const testContent = 'Hello from SilverSurfers!';
+    // Test upload with stream (proper way)
+    const testContent = 'Hello from SilverSurfers! This is a test file.';
+    const stream = Readable.from([testContent]);
+    
     const media = {
       mimeType: 'text/plain',
-      body: testContent
+      body: stream
     };
     
     const fileMetadata = {
