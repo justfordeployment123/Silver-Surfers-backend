@@ -4,6 +4,7 @@ import path from 'path';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
+import crypto from 'crypto';
 import authRoutes from './authRoutes.js';
 import adminRoutes from './adminRoutes.js';
 import { connectDB } from './db.js';
@@ -21,11 +22,14 @@ import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite
 import { generateSeniorAccessibilityReport } from '../report_generation/pdf_generator.js';
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
-import { sendAuditReportEmail, collectAttachmentsRecursive } from './email.js';
+import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendNewTeamMemberNotification } from './email.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
 import BlogPost from './models/BlogPost.js';
 import FAQ from './models/FAQ.js';
 import ContactMessage from './models/ContactMessage.js';
+import Subscription from './models/Subscription.js';
+import User from './models/User.js';
+import { SUBSCRIPTION_PLANS, getPlanById, getPlanByPriceId } from './subscriptionPlans.js';
 
 // --- Placeholder for signaling the backend (assumed to be the same) ---
 const signalBackend = async (payload) => {
@@ -189,6 +193,29 @@ const runFullAuditProcess = async (job) => {
       } else {
         record.status = 'completed';
       }
+      
+      // If audit completed successfully, increment usage counter
+      if (record.status === 'completed' && record.user) {
+        try {
+          await Subscription.findOneAndUpdate(
+            { user: record.user, status: { $in: ['active', 'trialing'] } },
+            { 
+              $inc: { 
+                'usage.scansThisMonth': 1,
+                'usage.totalScans': 1
+              }
+            }
+          );
+          
+          // Also update user's subscription usage
+          await User.findByIdAndUpdate(record.user, {
+            $inc: { 'subscription.usage.scansThisMonth': 1 }
+          });
+        } catch (usageError) {
+          console.error('Failed to update usage counter:', usageError);
+        }
+      }
+      
       await record.save().catch(()=>{});
     }
     await signalBackend({
@@ -207,7 +234,7 @@ const runFullAuditProcess = async (job) => {
 };
 
 const runQuickScanProcess = async (job) => {
-    const { email, url } = job;
+    const { email, url, userId } = job;
     console.log(`\n--- [STARTING QUICK SCAN] ---`);
     console.log(`Processing quick scan for ${email} on ${url}`);
     
@@ -250,6 +277,28 @@ const runQuickScanProcess = async (job) => {
           console.log('Quick scan folder cleaned up:', userSpecificOutputDir);
         } catch (cleanupErr) {
           console.error('Quick scan cleanup error:', cleanupErr?.message || cleanupErr);
+        }
+
+        // If quick scan completed successfully and we have a user, increment usage counter
+        if (userId) {
+          try {
+            await Subscription.findOneAndUpdate(
+              { user: userId, status: { $in: ['active', 'trialing'] } },
+              { 
+                $inc: { 
+                  'usage.scansThisMonth': 1,
+                  'usage.totalScans': 1
+                }
+              }
+            );
+            
+            // Also update user's subscription usage
+            await User.findByIdAndUpdate(userId, {
+              $inc: { 'subscription.usage.scansThisMonth': 1 }
+            });
+          } catch (usageError) {
+            console.error('Failed to update usage counter for quick scan:', usageError);
+          }
         }
 
         // Signal backend that quick scan is completed
@@ -359,6 +408,121 @@ app.use(express.json());
 app.use(cors({ origin: '*' }));
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
+
+// Stripe webhook endpoint for subscription events
+app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    switch (event.type) {
+      case 'customer.subscription.created':
+        await handleSubscriptionCreated(event.data.object);
+        break;
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdated(event.data.object);
+        break;
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(event.data.object);
+        break;
+      case 'invoice.payment_succeeded':
+        await handlePaymentSucceeded(event.data.object);
+        break;
+      case 'invoice.payment_failed':
+        await handlePaymentFailed(event.data.object);
+        break;
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Webhook handler error:', error);
+    res.status(500).json({ error: 'Webhook handler failed' });
+  }
+});
+
+// Webhook handlers
+async function handleSubscriptionCreated(subscription) {
+  console.log('Subscription created:', subscription.id);
+  // Subscription creation is handled in the success callback
+}
+
+async function handleSubscriptionUpdated(subscription) {
+  console.log('Subscription updated:', subscription.id);
+  
+  const localSubscription = await Subscription.findOne({ 
+    stripeSubscriptionId: subscription.id 
+  });
+  
+  if (localSubscription) {
+    const plan = getPlanByPriceId(subscription.items.data[0].price.id);
+    
+    await Subscription.findByIdAndUpdate(localSubscription._id, {
+      status: subscription.status,
+      currentPeriodStart: new Date(subscription.current_period_start * 1000),
+      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      ...(plan && { planId: plan.id, limits: plan.limits })
+    });
+
+    // Update user subscription status
+    await User.findOneAndUpdate(
+      { stripeCustomerId: subscription.customer },
+      {
+        'subscription.status': subscription.status,
+        'subscription.currentPeriodStart': new Date(subscription.current_period_start * 1000),
+        'subscription.currentPeriodEnd': new Date(subscription.current_period_end * 1000),
+        'subscription.cancelAtPeriodEnd': subscription.cancel_at_period_end
+      }
+    );
+  }
+}
+
+async function handleSubscriptionDeleted(subscription) {
+  console.log('Subscription deleted:', subscription.id);
+  
+  await Subscription.findOneAndUpdate(
+    { stripeSubscriptionId: subscription.id },
+    {
+      status: 'canceled',
+      canceledAt: new Date()
+    }
+  );
+
+  // Update user subscription status
+  await User.findOneAndUpdate(
+    { stripeCustomerId: subscription.customer },
+    {
+      'subscription.status': 'canceled'
+    }
+  );
+}
+
+async function handlePaymentSucceeded(invoice) {
+  console.log('Payment succeeded for invoice:', invoice.id);
+  
+  if (invoice.subscription) {
+    const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+    await handleSubscriptionUpdated(subscription);
+  }
+}
+
+async function handlePaymentFailed(invoice) {
+  console.log('Payment failed for invoice:', invoice.id);
+  
+  if (invoice.subscription) {
+    const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+    await handleSubscriptionUpdated(subscription);
+  }
+}
 const PORT = process.env.PORT || 5000;
 
 // --- Create two independent queues that will share the global lock ---
@@ -438,11 +602,23 @@ app.post('/precheck-url', async (req, res) => {
   return res.status(400).json({ success: false, input, error: 'URL not reachable. Please check the domain and try again.' });
 });
 
-app.post('/start-audit', async (req, res) => {
-  const { email, url, userId } = req.body || {};
+app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) => {
+  const { email, url } = req.body || {};
   if (!email || !url) {
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
+
+  // Check subscription usage limits
+  const subscription = req.subscription;
+  const currentUsage = subscription.usage?.scansThisMonth || 0;
+  const monthlyLimit = subscription.limits?.scansPerMonth;
+  
+  if (monthlyLimit !== -1 && currentUsage >= monthlyLimit) {
+    return res.status(403).json({ 
+      error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
+    });
+  }
+
   // Precheck and normalize URL
   const { candidateUrls } = buildCandidateUrls(url);
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
@@ -456,7 +632,7 @@ app.post('/start-audit', async (req, res) => {
   // Pre-create a queued record so clients can see it immediately
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   AnalysisRecord.create({
-    user: userId || undefined,
+    user: subscription.user, // Always use subscription owner
     email,
     url: normalizedUrl,
     taskId,
@@ -464,15 +640,27 @@ app.post('/start-audit', async (req, res) => {
     emailStatus: 'pending',
   }).catch(() => {});
 
-  fullAuditQueue.addBgJob({ email, url: normalizedUrl, userId, taskId });
+  fullAuditQueue.addBgJob({ email, url: normalizedUrl, userId: subscription.user, taskId });
   res.status(202).json({ message: 'Full audit request has been queued.' });
 });
 
-app.post('/quick-audit', async (req, res) => {
+app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) => {
   const { email, url } = req.body || {};
   if (!email || !url) {
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
+
+  // Check subscription usage limits
+  const subscription = req.subscription;
+  const currentUsage = subscription.usage?.scansThisMonth || 0;
+  const monthlyLimit = subscription.limits?.scansPerMonth;
+  
+  if (monthlyLimit !== -1 && currentUsage >= monthlyLimit) {
+    return res.status(403).json({ 
+      error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
+    });
+  }
+
   // Precheck and normalize URL
   const { candidateUrls } = buildCandidateUrls(url);
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
@@ -483,51 +671,692 @@ app.post('/quick-audit', async (req, res) => {
   }
   if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
 
-  quickScanQueue.addBgJob({ email, url: normalizedUrl });
+  quickScanQueue.addBgJob({ email, url: normalizedUrl, userId: subscription.user });
   res.status(202).json({ message: 'Quick audit request has been queued.' });
 });
 
-// Create Stripe Checkout Session
+// Create Stripe Subscription Checkout Session
 app.post('/create-checkout-session', authRequired, async (req, res) => {
   try {
-    const { email, url, packageId } = req.body || {};
-    if (!email || !url) {
-      return res.status(400).json({ error: 'Email and URL are required.' });
+    const { planId, billingCycle = 'monthly' } = req.body || {};
+    const userId = req.user.id;
+
+    if (!planId) {
+      return res.status(400).json({ error: 'Plan ID is required.' });
     }
 
-    // Map packageId to price amount (in cents)
-    const packagePricing = {
-      1: 5000
-    };
-    const amount = packagePricing[packageId] || packagePricing[1];
+    const plan = getPlanById(planId);
+    if (!plan) {
+      return res.status(400).json({ error: 'Invalid plan ID.' });
+    }
+
+    // Handle custom plan (contact sales)
+    if (plan.contactSales) {
+      return res.status(400).json({ error: 'Please contact sales for custom pricing.' });
+    }
+
+    const priceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
+    if (!priceId) {
+      return res.status(400).json({ error: 'Price ID not configured for this plan.' });
+    }
+
+    // Get or create Stripe customer
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    let customerId = user.stripeCustomerId;
+    if (!customerId) {
+      // Check if customer already exists in Stripe by email
+      const existingCustomers = await stripe.customers.list({
+        email: user.email,
+        limit: 1
+      });
+      
+      if (existingCustomers.data.length > 0) {
+        // Reuse existing customer
+        customerId = existingCustomers.data[0].id;
+        console.log(`🔄 Reusing existing Stripe customer: ${customerId} for email: ${user.email}`);
+      } else {
+        // Create new customer
+        const customer = await stripe.customers.create({
+          email: user.email,
+          metadata: { userId: userId }
+        });
+        customerId = customer.id;
+        console.log(`🆕 Created new Stripe customer: ${customerId} for email: ${user.email}`);
+      }
+      
+      // Update user with customer ID
+      await User.findByIdAndUpdate(userId, { stripeCustomerId: customerId });
+    } else {
+      console.log(`♻️ Using existing customer ID: ${customerId} for email: ${user.email}`);
+    }
 
     const successUrlBase = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
+      mode: 'subscription',
       payment_method_types: ['card'],
-      customer_email: email,
+      customer: customerId,
       line_items: [
         {
-          price_data: {
-            currency: 'eur',
-            product_data: { name: 'SilverSurfers Assessment' },
-            unit_amount: amount,
-          },
+          price: priceId,
           quantity: 1,
         },
       ],
-      metadata: { email, url, packageId: String(packageId || 1) },
-      success_url: `${successUrlBase}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${successUrlBase}/checkout?canceled=1`,
+      subscription_data: {
+        metadata: { 
+          userId: userId,
+          planId: planId,
+          billingCycle: billingCycle
+        },
+      },
+      metadata: { userId: userId, planId: planId, billingCycle: billingCycle },
+      success_url: `${successUrlBase}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${successUrlBase}/subscription?canceled=1`,
+      allow_promotion_codes: true,
+      billing_address_collection: 'required',
     });
 
     return res.json({ url: session.url });
   } catch (err) {
-    console.error('Stripe session error:', err);
-    return res.status(500).json({ error: 'Failed to create checkout session.' });
+    console.error('Stripe subscription session error:', err);
+    return res.status(500).json({ error: 'Failed to create subscription checkout session.' });
   }
 });
+
+// Get user's current subscription
+app.get('/subscription', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const user = await User.findById(userId).populate('subscription');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing', 'past_due'] } 
+    }).sort({ createdAt: -1 });
+
+    const plan = user.subscription?.planId ? getPlanById(user.subscription.planId) : null;
+
+    return res.json({
+      user: {
+        id: user._id,
+        email: user.email,
+        stripeCustomerId: user.stripeCustomerId
+      },
+      subscription: subscription ? {
+        id: subscription._id,
+        status: subscription.status,
+        planId: subscription.planId,
+        plan: plan,
+        currentPeriodStart: subscription.currentPeriodStart,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        usage: subscription.usage,
+        limits: subscription.limits
+      } : null
+    });
+  } catch (err) {
+    console.error('Get subscription error:', err);
+    return res.status(500).json({ error: 'Failed to get subscription.' });
+  }
+});
+
+// Update subscription (upgrade/downgrade)
+app.post('/subscription/update', authRequired, async (req, res) => {
+  try {
+    const { planId, billingCycle = 'monthly' } = req.body;
+    const userId = req.user.id;
+
+    if (!planId) {
+      return res.status(400).json({ error: 'Plan ID is required.' });
+    }
+
+    const plan = getPlanById(planId);
+    if (!plan) {
+      return res.status(400).json({ error: 'Invalid plan ID.' });
+    }
+
+    // Get current subscription
+    const currentSubscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (!currentSubscription) {
+      return res.status(404).json({ error: 'No active subscription found.' });
+    }
+
+    const newPriceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
+    if (!newPriceId) {
+      return res.status(400).json({ error: 'Price ID not configured for this plan.' });
+    }
+
+    // Update subscription in Stripe
+    const updatedSubscription = await stripe.subscriptions.update(
+      currentSubscription.stripeSubscriptionId,
+      {
+        items: [{
+          id: currentSubscription.stripeSubscriptionId,
+          price: newPriceId,
+        }],
+        proration_behavior: 'create_prorations',
+        metadata: {
+          planId: planId,
+          billingCycle: billingCycle
+        }
+      }
+    );
+
+    // Update local subscription record
+    await Subscription.findByIdAndUpdate(currentSubscription._id, {
+      planId: planId,
+      priceId: newPriceId,
+      limits: plan.limits,
+      status: updatedSubscription.status
+    });
+
+    return res.json({ 
+      message: 'Subscription updated successfully.',
+      subscription: updatedSubscription
+    });
+  } catch (err) {
+    console.error('Update subscription error:', err);
+    return res.status(500).json({ error: 'Failed to update subscription.' });
+  }
+});
+
+// Cancel subscription
+app.post('/subscription/cancel', authRequired, async (req, res) => {
+  try {
+    const { cancelAtPeriodEnd = true } = req.body;
+    const userId = req.user.id;
+
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'No active subscription found.' });
+    }
+
+    if (cancelAtPeriodEnd) {
+      // Cancel at period end
+      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        cancel_at_period_end: true
+      });
+      
+      await Subscription.findByIdAndUpdate(subscription._id, {
+        cancelAtPeriodEnd: true
+      });
+
+      return res.json({ message: 'Subscription will be canceled at the end of the current period.' });
+    } else {
+      // Cancel immediately
+      await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+      
+      await Subscription.findByIdAndUpdate(subscription._id, {
+        status: 'canceled',
+        canceledAt: new Date()
+      });
+
+      return res.json({ message: 'Subscription canceled immediately.' });
+    }
+  } catch (err) {
+    console.error('Cancel subscription error:', err);
+    return res.status(500).json({ error: 'Failed to cancel subscription.' });
+  }
+});
+
+// Get available subscription plans
+app.get('/subscription/plans', async (req, res) => {
+  try {
+    const plans = Object.values(SUBSCRIPTION_PLANS).map(plan => ({
+      id: plan.id,
+      name: plan.name,
+      description: plan.description,
+      monthlyPrice: plan.monthlyPrice,
+      yearlyPrice: plan.yearlyPrice,
+      currency: plan.currency,
+      limits: plan.limits,
+      icon: plan.icon,
+      gradient: plan.gradient,
+      popular: plan.popular,
+      contactSales: plan.contactSales
+    }));
+
+    return res.json({ plans });
+  } catch (err) {
+    console.error('Get plans error:', err);
+    return res.status(500).json({ error: 'Failed to get plans.' });
+  }
+});
+
+// Confirm subscription payment and activate
+app.get('/subscription-success', async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    if (!session_id) return res.status(400).json({ error: 'session_id is required' });
+
+    const session = await stripe.checkout.sessions.retrieve(String(session_id));
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Payment not completed yet.' });
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(session.subscription);
+    const userId = session.metadata?.userId;
+    const planId = session.metadata?.planId;
+
+    if (!userId || !planId) {
+      return res.status(400).json({ error: 'Missing metadata.' });
+    }
+
+    const plan = getPlanById(planId);
+    if (!plan) {
+      return res.status(400).json({ error: 'Invalid plan.' });
+    }
+
+    // Create or update subscription record
+    await Subscription.findOneAndUpdate(
+      { stripeSubscriptionId: subscription.id },
+      {
+        user: userId,
+        stripeSubscriptionId: subscription.id,
+        stripeCustomerId: subscription.customer,
+        status: subscription.status,
+        planId: planId,
+        priceId: subscription.items.data[0].price.id,
+        currentPeriodStart: new Date(subscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
+        trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+        limits: plan.limits,
+        usage: {
+          scansThisMonth: 0,
+          lastResetDate: new Date(),
+          totalScans: 0
+        }
+      },
+      { upsert: true, new: true }
+    );
+
+    // Update user subscription status
+    await User.findByIdAndUpdate(userId, {
+      'subscription.status': subscription.status,
+      'subscription.planId': planId,
+      'subscription.priceId': subscription.items.data[0].price.id,
+      'subscription.currentPeriodStart': new Date(subscription.current_period_start * 1000),
+      'subscription.currentPeriodEnd': new Date(subscription.current_period_end * 1000)
+    });
+
+    return res.json({ message: 'Subscription activated successfully.' });
+  } catch (err) {
+    console.error('Subscription success error:', err);
+    return res.status(500).json({ error: 'Failed to activate subscription.' });
+  }
+});
+
+// =================================================================
+// TEAM MANAGEMENT ENDPOINTS
+// =================================================================
+
+// Add team member
+app.post('/subscription/team/add', authRequired, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const userId = req.user.id;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required.' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format.' });
+    }
+
+    // Get user's active subscription
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'No active subscription found.' });
+    }
+
+    // Check if plan supports multiple users
+    const plan = getPlanById(subscription.planId);
+    if (!plan || plan.limits.maxUsers <= 1) {
+      return res.status(400).json({ error: 'Your current plan does not support team members.' });
+    }
+
+    // Check current team size
+    const currentTeamSize = subscription.teamMembers.length;
+    if (currentTeamSize >= plan.limits.maxUsers) {
+      return res.status(400).json({ error: `Team limit reached (${plan.limits.maxUsers} members).` });
+    }
+
+    // Check if email is already in team
+    const existingMember = subscription.teamMembers.find(member => 
+      member.email.toLowerCase() === email.toLowerCase()
+    );
+    if (existingMember) {
+      return res.status(400).json({ error: 'This email is already in your team.' });
+    }
+
+    // Check if email is the owner
+    const owner = await User.findById(userId);
+    if (owner.email.toLowerCase() === email.toLowerCase()) {
+      return res.status(400).json({ error: 'You cannot add yourself to your own team.' });
+    }
+
+    // Generate invitation token
+    const invitationToken = crypto.randomBytes(32).toString('hex');
+
+    // Add team member to subscription
+    subscription.teamMembers.push({
+      email: email.toLowerCase(),
+      status: 'pending',
+      addedAt: new Date()
+    });
+
+    await subscription.save();
+
+    // Add team member to user's team list
+    await User.findByIdAndUpdate(userId, {
+      $push: {
+        'subscription.teamMembers': {
+          email: email.toLowerCase(),
+          status: 'pending',
+          invitedAt: new Date()
+        }
+      }
+    });
+
+    // Send invitation email
+    try {
+      await sendTeamInvitationEmail(
+        email,
+        owner.email,
+        owner.email, // Using email as name for now
+        plan.name,
+        invitationToken
+      );
+    } catch (emailError) {
+      console.error('Failed to send invitation email:', emailError);
+      // Don't fail the request if email fails
+    }
+
+    return res.json({ 
+      message: 'Team member invited successfully.',
+      invitationToken // Include token for testing (remove in production)
+    });
+
+  } catch (err) {
+    console.error('Add team member error:', err);
+    return res.status(500).json({ error: 'Failed to add team member.' });
+  }
+});
+
+// Remove team member
+app.post('/subscription/team/remove', authRequired, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const userId = req.user.id;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required.' });
+    }
+
+    // Get user's active subscription
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'No active subscription found.' });
+    }
+
+    // Find team member
+    const memberIndex = subscription.teamMembers.findIndex(member => 
+      member.email.toLowerCase() === email.toLowerCase()
+    );
+
+    if (memberIndex === -1) {
+      return res.status(404).json({ error: 'Team member not found.' });
+    }
+
+    const member = subscription.teamMembers[memberIndex];
+
+    // Remove from subscription
+    subscription.teamMembers.splice(memberIndex, 1);
+    await subscription.save();
+
+    // Remove from user's team list
+    await User.findByIdAndUpdate(userId, {
+      $pull: {
+        'subscription.teamMembers': { email: email.toLowerCase() }
+      }
+    });
+
+    // If member was active, update their user record
+    if (member.status === 'active') {
+      const memberUser = await User.findOne({ email: email.toLowerCase() });
+      if (memberUser) {
+        await User.findByIdAndUpdate(memberUser._id, {
+          'subscription.isTeamMember': false,
+          'subscription.teamOwner': null
+        });
+      }
+
+      // Send removal notification email
+      try {
+        const owner = await User.findById(userId);
+        const plan = getPlanById(subscription.planId);
+        await sendTeamMemberRemovedEmail(
+          email,
+          owner.email,
+          owner.email,
+          plan.name
+        );
+      } catch (emailError) {
+        console.error('Failed to send removal email:', emailError);
+      }
+    }
+
+    return res.json({ message: 'Team member removed successfully.' });
+
+  } catch (err) {
+    console.error('Remove team member error:', err);
+    return res.status(500).json({ error: 'Failed to remove team member.' });
+  }
+});
+
+// List team members
+app.get('/subscription/team', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get user's active subscription
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'No active subscription found.' });
+    }
+
+    const plan = getPlanById(subscription.planId);
+    const availableSlots = plan ? plan.limits.maxUsers - subscription.teamMembers.length : 0;
+
+    return res.json({
+      teamMembers: subscription.teamMembers,
+      planName: plan?.name || subscription.planId,
+      maxUsers: plan?.limits.maxUsers || 1,
+      availableSlots: Math.max(0, availableSlots)
+    });
+
+  } catch (err) {
+    console.error('Get team members error:', err);
+    return res.status(500).json({ error: 'Failed to get team members.' });
+  }
+});
+
+// Accept team invitation
+app.post('/subscription/team/accept', authRequired, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const userId = req.user.id;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Invitation token is required.' });
+    }
+
+    // For now, we'll use a simple approach - in production you'd want to store tokens in DB
+    // and validate expiration. For this implementation, we'll find pending invitations
+    // by checking if user email exists in any team's pending members
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Find subscription with this user as pending team member
+    const subscription = await Subscription.findOne({
+      'teamMembers.email': user.email.toLowerCase(),
+      'teamMembers.status': 'pending'
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'No pending invitation found.' });
+    }
+
+    // Update team member status to active
+    const memberIndex = subscription.teamMembers.findIndex(member => 
+      member.email.toLowerCase() === user.email.toLowerCase()
+    );
+
+    if (memberIndex === -1) {
+      return res.status(404).json({ error: 'Team member not found.' });
+    }
+
+    subscription.teamMembers[memberIndex].status = 'active';
+    subscription.teamMembers[memberIndex].user = userId;
+    await subscription.save();
+
+    // Update user's team status
+    await User.findByIdAndUpdate(userId, {
+      'subscription.isTeamMember': true,
+      'subscription.teamOwner': subscription.user
+    });
+
+    // Update owner's team list
+    await User.findByIdAndUpdate(subscription.user, {
+      $set: {
+        'subscription.teamMembers.$[elem].status': 'active',
+        'subscription.teamMembers.$[elem].joinedAt': new Date()
+      }
+    }, {
+      arrayFilters: [{ 'elem.email': user.email.toLowerCase() }]
+    });
+
+    // Send notification to owner
+    try {
+      const owner = await User.findById(subscription.user);
+      const plan = getPlanById(subscription.planId);
+      await sendNewTeamMemberNotification(
+        owner.email,
+        user.email,
+        user.email,
+        plan.name
+      );
+    } catch (emailError) {
+      console.error('Failed to send notification email:', emailError);
+    }
+
+    return res.json({ 
+      message: 'Team invitation accepted successfully.',
+      teamOwner: subscription.user,
+      planId: subscription.planId
+    });
+
+  } catch (err) {
+    console.error('Accept team invitation error:', err);
+    return res.status(500).json({ error: 'Failed to accept team invitation.' });
+  }
+});
+
+// =================================================================
+// END TEAM MANAGEMENT ENDPOINTS
+// =================================================================
+
+// Middleware to check subscription access (owner or team member)
+async function hasSubscriptionAccess(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Check if user is subscription owner
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (subscription) {
+      // User is the subscription owner
+      req.subscription = subscription;
+      return next();
+    }
+
+    // Check if user is a team member
+    if (user.subscription.isTeamMember && user.subscription.teamOwner) {
+      const ownerSubscription = await Subscription.findOne({ 
+        user: user.subscription.teamOwner, 
+        status: { $in: ['active', 'trialing'] } 
+      });
+
+      if (ownerSubscription) {
+        // Verify user is still an active team member
+        const isActiveMember = ownerSubscription.teamMembers.some(member => 
+          member.user && member.user.toString() === userId && member.status === 'active'
+        );
+
+        if (isActiveMember) {
+          req.subscription = ownerSubscription;
+          req.isTeamMember = true;
+          return next();
+        }
+      }
+
+      // Clean up invalid team membership
+      await User.findByIdAndUpdate(userId, {
+        'subscription.isTeamMember': false,
+        'subscription.teamOwner': null
+      });
+    }
+
+    return res.status(403).json({ error: 'No active subscription access found.' });
+
+  } catch (err) {
+    console.error('Subscription access check error:', err);
+    return res.status(500).json({ error: 'Failed to verify subscription access.' });
+  }
+}
 
 // Confirm payment and start audit after successful checkout
 app.get('/confirm-payment', async (req, res) => {

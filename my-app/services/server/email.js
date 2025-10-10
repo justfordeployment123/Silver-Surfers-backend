@@ -448,10 +448,126 @@ export async function sendPasswordResetEmail(to, token) {
             <a href="${resetLink}" style="background:${brandDanger};color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:bold">Reset Password</a>
           </p>
           <p style="margin:16px 0;color:#6b7280;font-size:14px;">Or use this token: <strong>${token}</strong></p>
-          <p style="margin:0;font-size:12px;color:#9ca3af;">If you didn’t request this, you can safely ignore this email.</p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">If you didn't request this, you can safely ignore this email.</p>
         </div>
         <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
       </div>
     </div>`;
   return sendMailWithFallback({ to, subject: 'Password Reset', html });
+}
+
+export async function sendTeamInvitationEmail(to, ownerEmail, ownerName, planName, invitationToken) {
+  const frontend = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const acceptLink = `${frontend}/team/accept?token=${encodeURIComponent(invitationToken)}`;
+  const brandPrimary = '#2563eb';
+  const brandAccent = '#059669';
+  
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg, ${brandPrimary} 0%, ${brandAccent} 100%);color:#fff;">
+          <h1 style="margin:0;font-size:20px;">You're Invited to Join SilverSurfers</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">Team Invitation</h2>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            <strong>${ownerName || ownerEmail}</strong> has invited you to join their SilverSurfers team 
+            with a <strong>${planName}</strong> subscription plan.
+          </p>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            As a team member, you'll have access to:
+          </p>
+          <ul style="margin:0 0 20px 0;padding-left:20px;color:#374151;">
+            <li>Website accessibility audits</li>
+            <li>Detailed accessibility reports</li>
+            <li>Priority support</li>
+            <li>Shared team usage limits</li>
+          </ul>
+          <p style="margin:20px 0;">
+            <a href="${acceptLink}" style="background:${brandPrimary};color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:bold">Accept Invitation</a>
+          </p>
+          <p style="margin:16px 0;color:#6b7280;font-size:14px;">
+            Or copy this link: <strong>${acceptLink}</strong>
+          </p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            This invitation will expire in 7 days. If you don't have an account, you'll be prompted to create one.
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to, 
+    subject: `${ownerName || ownerEmail} invited you to join their SilverSurfers team`, 
+    html 
+  });
+}
+
+export async function sendTeamMemberRemovedEmail(to, ownerEmail, ownerName, planName) {
+  const brandPrimary = '#2563eb';
+  const brandAccent = '#059669';
+  
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:#111827;color:#fff;">
+          <h1 style="margin:0;font-size:20px;">Team Access Removed</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">Team Membership Ended</h2>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            Your access to the SilverSurfers team managed by <strong>${ownerName || ownerEmail}</strong> 
+            has been removed from their <strong>${planName}</strong> subscription.
+          </p>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            You can still create your own account and subscription if you'd like to continue using SilverSurfers services.
+          </p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            If you have any questions, please contact the team owner or our support team.
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to, 
+    subject: 'Team Access Removed - SilverSurfers', 
+    html 
+  });
+}
+
+export async function sendNewTeamMemberNotification(ownerEmail, memberEmail, memberName, planName) {
+  const brandPrimary = '#2563eb';
+  const brandAccent = '#059669';
+  
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg, ${brandPrimary} 0%, ${brandAccent} 100%);color:#fff;">
+          <h1 style="margin:0;font-size:20px;">New Team Member Joined</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">Welcome Your New Team Member</h2>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            <strong>${memberName || memberEmail}</strong> has joined your SilverSurfers team 
+            for the <strong>${planName}</strong> subscription plan.
+          </p>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            They now have access to all team features and will share your subscription limits.
+          </p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            You can manage your team members from your subscription dashboard.
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to: ownerEmail, 
+    subject: 'New Team Member Joined Your SilverSurfers Team', 
+    html 
+  });
 }
