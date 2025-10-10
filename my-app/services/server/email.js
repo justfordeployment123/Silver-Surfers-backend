@@ -268,7 +268,7 @@ export async function sendAuditReportEmail({ to, subject, text, folderPath }) {
     
     return {
       success: true,
-      attachmentCount: attachments.length || 0,
+      attachmentCount: uploadedFiles.length || 0, // Use uploaded files count instead of attachments
       uploadedCount: uploadedFiles.length || 0,
       totalFiles: files.length || 0,
       totalSizeMB: (totalSize / (1024 * 1024)).toFixed(2),
@@ -396,7 +396,7 @@ export async function sendMailWithFallback({ from, to, subject, html, text, atta
     console.log('Email sent:', info.response);
     return { 
       success: true,
-      attachmentCount: processedAttachments.length,
+      attachmentCount: uploadedFiles.length || processedAttachments.length, // Use uploaded files count, fallback to attachments
       uploadedCount: uploadedFiles.length
     };
   } catch (error) {

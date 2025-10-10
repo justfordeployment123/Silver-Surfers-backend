@@ -134,21 +134,10 @@ const runFullAuditProcess = async (job) => {
       await record.save().catch(()=>{});
     }
 
-    // If no attachments were produced, treat as a failed job instead of "completed"
+    // Check if files were generated (but don't fail yet - files will be uploaded to Google Drive)
     if (!attachmentsPreview || attachmentsPreview.length === 0) {
-      const defaultReason = 'No reports generated (0 attachments). Possible browser/runtime issue (e.g., missing Chromium).';
-      console.error(`❌ No attachments found for ${email}. Marking record as failed.`);
-      if (record) {
-        record.status = 'failed';
-        record.failureReason = record.failureReason || defaultReason;
-        // Use a valid enum value for emailStatus to avoid validation errors
-        record.emailStatus = 'failed';
-        record.emailError = 'Email skipped because no attachments were generated.';
-        record.attachmentCount = 0;
-        await record.save().catch(()=>{});
-      }
-      await signalBackend({ status: 'failed', clientEmail: email, error: 'no-attachments' });
-      return; // Exit early to avoid sending email and marking as completed
+      console.warn(`⚠️ No local attachments found for ${email}. Will attempt to send email with any available files.`);
+      // Don't fail here - let the email function handle it and check for uploaded files
     }
     // Send a single email with all files in the report folder
     if (record) { record.emailStatus = 'sending'; await record.save().catch(()=>{}); }
@@ -181,14 +170,22 @@ const runFullAuditProcess = async (job) => {
       console.error('Cleanup error:', cleanupErr);
     }
 
-    // Normalize final status: mark failed if email failed or attachments are zero; otherwise completed
+    // Normalize final status: mark failed if email failed or no files were processed; otherwise completed
     if (record) {
       if (record.emailStatus === 'failed') {
         record.status = 'failed';
         record.failureReason = record.failureReason || `Email send failed: ${record.emailError || 'Unknown error'}`;
       } else if (!record.attachmentCount || record.attachmentCount === 0) {
-        record.status = 'failed';
-        record.failureReason = record.failureReason || 'No reports generated (0 attachments).';
+        // Check if files were actually uploaded to Google Drive via sendResult
+        const actualUploadedCount = sendResult?.uploadedCount || 0;
+        if (actualUploadedCount === 0) {
+          record.status = 'failed';
+          record.failureReason = record.failureReason || 'No reports generated (0 files uploaded).';
+        } else {
+          // Files were uploaded successfully, update the count and mark as completed
+          record.attachmentCount = actualUploadedCount;
+          record.status = 'completed';
+        }
       } else {
         record.status = 'completed';
       }
