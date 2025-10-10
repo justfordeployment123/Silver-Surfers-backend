@@ -232,7 +232,9 @@ export async function sendAuditReportEmail({ to, subject, text, folderPath }) {
     emailBody += 'Your audit reports have been uploaded to secure cloud storage:\n\n';
     
     uploadedFiles.forEach(file => {
-      emailBody += `• ${file.filename} (${file.sizeMB}MB)\n`;
+      // Extract just the filename without folder path
+      const displayName = path.basename(file.filename);
+      emailBody += `• ${displayName} (${file.sizeMB}MB)\n`;
       emailBody += `  Download: ${file.downloadUrl}\n\n`;
     });
     
@@ -358,7 +360,10 @@ export async function sendMailWithFallback({ from, to, subject, html, text, atta
     if (uploadedFiles.length > 0) {
       const downloadSection = '\n\n📁 DOWNLOAD LINKS FOR YOUR FILES:\n' +
         'Your files have been uploaded to secure cloud storage:\n\n' +
-        uploadedFiles.map(file => `• ${file.filename}\n  Download: ${file.downloadUrl}\n`).join('\n') +
+        uploadedFiles.map(file => {
+          const displayName = path.basename(file.filename);
+          return `• ${displayName}\n  Download: ${file.downloadUrl}\n`;
+        }).join('\n') +
         '\n⚠️ Note: Download links expire in 7 days for security.\n';
       
       emailBody += downloadSection;
@@ -367,9 +372,10 @@ export async function sendMailWithFallback({ from, to, subject, html, text, atta
       if (html) {
         html += '<br><br><h3>📁 Download Links for Your Files</h3>' +
           '<p>Your files have been uploaded to secure cloud storage:</p>' +
-          '<ul>' + uploadedFiles.map(file => 
-            `<li><strong>${file.filename}</strong><br><a href="${file.downloadUrl}">Download File</a></li>`
-          ).join('') + '</ul>' +
+          '<ul>' + uploadedFiles.map(file => {
+            const displayName = path.basename(file.filename);
+            return `<li><strong>${displayName}</strong><br><a href="${file.downloadUrl}">Download File</a></li>`;
+          }).join('') + '</ul>' +
           '<p><strong>⚠️ Note:</strong> Download links expire in 7 days for security.</p>';
       }
     }
