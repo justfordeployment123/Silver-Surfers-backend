@@ -30,6 +30,8 @@ import ContactMessage from './models/ContactMessage.js';
 import Subscription from './models/Subscription.js';
 import User from './models/User.js';
 import AuditJob from './models/AuditJob.js';
+import LegalDocument from './models/LegalDocument.js';
+import LegalAcceptance from './models/LegalAcceptance.js';
 import { SUBSCRIPTION_PLANS, getPlanById, getPlanByPriceId } from './subscriptionPlans.js';
 import { PersistentQueue } from './queue/PersistentQueue.js';
 
@@ -1752,6 +1754,293 @@ app.post('/contact', async (req, res) => {
   } catch (err) {
     console.error('Contact submit error:', err?.message || err);
     res.status(500).json({ error: 'Failed to submit message' });
+  }
+});
+
+// Debug endpoint to check legal documents
+app.get('/debug/legal', async (req, res) => {
+  try {
+    const allDocs = await LegalDocument.find({});
+    const termsDoc = await LegalDocument.getCurrent('terms-of-use', 'en', 'US');
+    
+    res.json({
+      totalDocuments: allDocs.length,
+      allDocuments: allDocs.map(doc => ({
+        id: doc._id,
+        type: doc.type,
+        title: doc.title,
+        status: doc.status,
+        language: doc.language,
+        region: doc.region
+      })),
+      termsDocument: termsDoc ? {
+        id: termsDoc._id,
+        type: termsDoc.type,
+        title: termsDoc.title,
+        status: termsDoc.status
+      } : null
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Legal Document endpoints
+app.get('/legal/:type', async (req, res) => {
+  try {
+    const { type } = req.params;
+    const { language = 'en', region = 'US' } = req.query;
+    
+    console.log(`🔍 Looking for document: type=${type}, language=${language}, region=${region}`);
+    
+    const document = await LegalDocument.getCurrent(type, language, region);
+    console.log(`📄 Document found:`, document ? 'Yes' : 'No');
+    
+    if (!document) {
+      // Let's see what documents we have
+      const allDocs = await LegalDocument.find({});
+      console.log(`📊 Total documents in database: ${allDocs.length}`);
+      allDocs.forEach(doc => {
+        console.log(`- ${doc.type} (${doc.status}) - lang:${doc.language} region:${doc.region}`);
+      });
+      
+      return res.status(404).json({ error: 'Legal document not found' });
+    }
+    
+    res.json({
+      id: document._id,
+      type: document.type,
+      title: document.title,
+      content: document.content,
+      version: document.version,
+      effectiveDate: document.effectiveDate,
+      summary: document.summary,
+      acceptanceRequired: document.acceptanceRequired,
+      acceptanceDeadline: document.acceptanceDeadline
+    });
+  } catch (err) {
+    console.error('Legal document fetch error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch legal document' });
+  }
+});
+
+app.get('/legal', async (req, res) => {
+  try {
+    const { language = 'en', region = 'US' } = req.query;
+    
+    const documents = await Promise.all([
+      LegalDocument.getCurrent('terms-of-use', language, region),
+      LegalDocument.getCurrent('privacy-policy', language, region)
+    ]);
+    
+    const result = {};
+    documents.forEach(doc => {
+      if (doc) {
+        result[doc.type] = {
+          id: doc._id,
+          title: doc.title,
+          version: doc.version,
+          effectiveDate: doc.effectiveDate,
+          summary: doc.summary,
+          acceptanceRequired: doc.acceptanceRequired
+        };
+      }
+    });
+    
+    res.json(result);
+  } catch (err) {
+    console.error('Legal documents fetch error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch legal documents' });
+  }
+});
+
+// Accept legal document
+app.post('/legal/:type/accept', authRequired, async (req, res) => {
+  try {
+    const { type } = req.params;
+    const userId = req.user.id;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('User-Agent');
+    
+    // Get current document
+    const document = await LegalDocument.getCurrent(type);
+    if (!document) {
+      return res.status(404).json({ error: 'Legal document not found' });
+    }
+    
+    // Check if already accepted
+    const existingAcceptance = await LegalAcceptance.hasAccepted(userId, document._id);
+    if (existingAcceptance) {
+      return res.json({ 
+        message: 'Already accepted',
+        acceptedAt: existingAcceptance.acceptedAt,
+        version: existingAcceptance.acceptedVersion
+      });
+    }
+    
+    // Create acceptance record
+    const acceptance = new LegalAcceptance({
+      user: userId,
+      document: document._id,
+      acceptedVersion: document.version,
+      ipAddress,
+      userAgent,
+      acceptanceMethod: 'manual'
+    });
+    
+    await acceptance.save();
+    
+    res.json({
+      message: 'Legal document accepted successfully',
+      acceptedAt: acceptance.acceptedAt,
+      version: acceptance.acceptedVersion,
+      documentType: document.type
+    });
+  } catch (err) {
+    console.error('Legal acceptance error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to accept legal document' });
+  }
+});
+
+// Get user's legal acceptances
+app.get('/legal/acceptances', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const acceptances = await LegalAcceptance.getUserAcceptances(userId);
+    
+    res.json({ acceptances });
+  } catch (err) {
+    console.error('User acceptances fetch error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch user acceptances' });
+  }
+});
+
+// Admin endpoints for legal document management
+app.post('/admin/legal', authRequired, async (req, res) => {
+  try {
+    // Check admin role
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    const {
+      type,
+      title,
+      content,
+      summary,
+      version,
+      language = 'en',
+      region = 'US',
+      acceptanceRequired = true,
+      acceptanceDeadline,
+      metaTitle,
+      metaDescription
+    } = req.body;
+    
+    const document = new LegalDocument({
+      type,
+      title,
+      content,
+      summary,
+      version,
+      language,
+      region,
+      acceptanceRequired,
+      acceptanceDeadline: acceptanceDeadline ? new Date(acceptanceDeadline) : undefined,
+      metaTitle,
+      metaDescription,
+      createdBy: req.user.id,
+      lastModifiedBy: req.user.id,
+      status: 'draft'
+    });
+    
+    await document.save();
+    
+    res.status(201).json({
+      message: 'Legal document created successfully',
+      document: {
+        id: document._id,
+        type: document.type,
+        title: document.title,
+        version: document.version,
+        status: document.status
+      }
+    });
+  } catch (err) {
+    console.error('Legal document creation error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to create legal document' });
+  }
+});
+
+app.put('/admin/legal/:id', authRequired, async (req, res) => {
+  try {
+    // Check admin role
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    const { id } = req.params;
+    const updateData = { ...req.body };
+    updateData.lastModifiedBy = req.user.id;
+    updateData.lastModified = new Date();
+    
+    const document = await LegalDocument.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+    
+    if (!document) {
+      return res.status(404).json({ error: 'Legal document not found' });
+    }
+    
+    res.json({
+      message: 'Legal document updated successfully',
+      document: {
+        id: document._id,
+        type: document.type,
+        title: document.title,
+        version: document.version,
+        status: document.status,
+        lastModified: document.lastModified
+      }
+    });
+  } catch (err) {
+    console.error('Legal document update error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to update legal document' });
+  }
+});
+
+app.post('/admin/legal/:id/publish', authRequired, async (req, res) => {
+  try {
+    // Check admin role
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    const { id } = req.params;
+    const document = await LegalDocument.findById(id);
+    
+    if (!document) {
+      return res.status(404).json({ error: 'Legal document not found' });
+    }
+    
+    await document.publish(req.user.id);
+    
+    res.json({
+      message: 'Legal document published successfully',
+      document: {
+        id: document._id,
+        type: document.type,
+        title: document.title,
+        version: document.version,
+        status: document.status,
+        effectiveDate: document.effectiveDate
+      }
+    });
+  } catch (err) {
+    console.error('Legal document publish error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to publish legal document' });
   }
 });
 
