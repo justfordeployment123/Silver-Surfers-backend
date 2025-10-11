@@ -5,9 +5,15 @@ async function isVisuallyDistinct(imagePathOrBuffer, rect) {
     try {
         if (rect.width < 2 || rect.height < 2) return false;
         
-        // Add timeout to prevent hanging
+        // Validate rect bounds to prevent Sharp errors
+        if (rect.left < 0 || rect.top < 0 || rect.width <= 0 || rect.height <= 0) {
+            console.warn(`⚠️  Invalid rect bounds: ${JSON.stringify(rect)}`);
+            return false;
+        }
+        
+        // Increase timeout for complex image processing
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 2000)
+            setTimeout(() => reject(new Error('Image analysis timeout')), 10000) // Increased from 2000 to 10000ms
         );
         
         const analysisPromise = sharp(imagePathOrBuffer)
@@ -20,11 +26,27 @@ async function isVisuallyDistinct(imagePathOrBuffer, rect) {
             .stats();
             
         const region = await Promise.race([analysisPromise, timeoutPromise]);
+        
+        // Validate region data
+        if (!region || !region.channels || region.channels.length === 0) {
+            console.warn(`⚠️  Invalid region data for rect at (${rect.left}, ${rect.top})`);
+            return false;
+        }
+        
         const VISIBILITY_THRESHOLD = 5;
         return region.channels.some(c => c.stdev > VISIBILITY_THRESHOLD);
     } catch (error) {
-        console.warn(`⚠️  Could not analyze region for box at (${rect.left}, ${rect.top}): ${error.message}`);
-        return false;
+        // More specific error handling
+        if (error.message.includes('timeout')) {
+            console.warn(`⚠️  Image analysis timeout for region at (${rect.left}, ${rect.top}) - treating as visually distinct`);
+            return true; // Assume visually distinct on timeout to avoid false negatives
+        } else if (error.message.includes('extract')) {
+            console.warn(`⚠️  Sharp extract error for region at (${rect.left}, ${rect.top}): ${error.message}`);
+            return false;
+        } else {
+            console.warn(`⚠️  Could not analyze region for box at (${rect.left}, ${rect.top}): ${error.message}`);
+            return false;
+        }
     }
 }
 
@@ -113,24 +135,39 @@ export async function processInteractiveColorAudit(jsonReportPath, outputImagePa
     const visuallyEmptyBoxes = [];
     
     // Limit processing to prevent hanging on large datasets
-    const maxBoxesToProcess = 50;
+    const maxBoxesToProcess = 30; // Reduced from 50 to 30 for better performance
     const boxesToProcess = allBoxes.slice(0, maxBoxesToProcess);
     
     if (allBoxes.length > maxBoxesToProcess) {
         console.log(`⚠️  Limiting processing to ${maxBoxesToProcess} boxes out of ${allBoxes.length} to prevent timeout`);
     }
     
-    for (const box of boxesToProcess) {
-        try {
-            if (await isVisuallyDistinct(screenshotBuffer, box.rect)) {
-                finalBoxes.push(box);
-            } else {
+    // Add overall timeout for the entire box processing
+    const processingTimeoutMs = 60000; // 1 minute for all boxes
+    const processingTimeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Box processing timeout')), processingTimeoutMs)
+    );
+    
+    const processBoxes = async () => {
+        for (const box of boxesToProcess) {
+            try {
+                if (await isVisuallyDistinct(screenshotBuffer, box.rect)) {
+                    finalBoxes.push(box);
+                } else {
+                    visuallyEmptyBoxes.push(box);
+                }
+            } catch (error) {
+                console.warn(`⚠️  Skipping box due to processing error: ${error.message}`);
                 visuallyEmptyBoxes.push(box);
             }
-        } catch (error) {
-            console.warn(`⚠️  Skipping box due to processing error: ${error.message}`);
-            visuallyEmptyBoxes.push(box);
         }
+    };
+    
+    try {
+        await Promise.race([processBoxes(), processingTimeoutPromise]);
+    } catch (error) {
+        console.warn(`⚠️  Box processing timed out, using processed results so far: ${error.message}`);
+        // Continue with whatever boxes were processed before timeout
     }
 
     if (visuallyEmptyBoxes.length > 0) {

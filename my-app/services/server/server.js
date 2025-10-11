@@ -29,7 +29,9 @@ import FAQ from './models/FAQ.js';
 import ContactMessage from './models/ContactMessage.js';
 import Subscription from './models/Subscription.js';
 import User from './models/User.js';
+import AuditJob from './models/AuditJob.js';
 import { SUBSCRIPTION_PLANS, getPlanById, getPlanByPriceId } from './subscriptionPlans.js';
+import { PersistentQueue } from './queue/PersistentQueue.js';
 
 // --- Placeholder for signaling the backend (assumed to be the same) ---
 const signalBackend = async (payload) => {
@@ -43,10 +45,16 @@ const signalBackend = async (payload) => {
 // ## PASTE THIS CODE INTO YOUR SERVER FILE ##
 // =================================================================
 
-const runFullAuditProcess = async (job) => {
+export const runFullAuditProcess = async (job) => {
   const { email, url, userId, taskId } = job;
   console.log(`\n\n--- [STARTING FULL JOB] ---`);
   console.log(`Processing job for ${email} to audit ${url}`);
+
+  // Acquire browser lock for full audits
+  if (isBrowserInUse) {
+    throw new Error('Browser is already in use by another full audit');
+  }
+  isBrowserInUse = true;
 
   // Final destination for generated PDFs
   const finalReportFolder = path.resolve(process.cwd(), 'reports-full', email);
@@ -243,6 +251,14 @@ const runFullAuditProcess = async (job) => {
       clientEmail: email,
       folderPath: finalReportFolder,
     });
+
+    // Return result for persistent queue
+    return {
+      emailStatus: record?.emailStatus || 'sent',
+      attachmentCount: record?.attachmentCount || 0,
+      reportDirectory: finalReportFolder,
+      scansUsed: 1
+    };
   } catch (jobError) {
     console.error(`A critical error occurred during the full job for ${email}:`, jobError.message);
     if (record) { 
@@ -270,13 +286,16 @@ const runFullAuditProcess = async (job) => {
       }
     }
     await signalBackend({ status: 'failed', clientEmail: email, error: jobError.message });
+    throw jobError; // Re-throw for persistent queue error handling
   } finally {
-    // Always cleanup temp working folder
+    // Always cleanup temp working folder and release browser lock
     await fs.rm(jobFolder, { recursive: true, force: true }).catch(() => {});
+    isBrowserInUse = false; // Release browser lock
+    console.log(`[FullAudit] Finished job for ${email}. Browser lock released.`);
   }
 };
 
-const runQuickScanProcess = async (job) => {
+export const runQuickScanProcess = async (job) => {
     const { email, url, userId } = job;
     console.log(`\n--- [STARTING QUICK SCAN] ---`);
     console.log(`Processing quick scan for ${email} on ${url}`);
@@ -351,7 +370,13 @@ const runQuickScanProcess = async (job) => {
           folderPath: userSpecificOutputDir,
         });
 
-        return pdfResult;
+        // Return result for persistent queue
+        return {
+          emailStatus: 'sent',
+          attachmentCount: 1, // Quick scan generates 1 PDF
+          reportDirectory: userSpecificOutputDir,
+          scansUsed: 1
+        };
 
     } catch (error) {
         console.error(`A critical error occurred during the quick scan for ${email}:`, error.message);
@@ -386,81 +411,9 @@ const runQuickScanProcess = async (job) => {
 };
 
 // =================================================================
-// ## 1. SHARED STATE (The Global Lock) ##
+// ## Browser Lock Management (Handled by PersistentQueue) ##
 // =================================================================
-let isBrowserInUse = false; // This is the single, shared lock for both queues.
-// Track active/queued jobs to avoid duplicates (same email+url)
-const activeJobs = new Set();
-const jobKey = (job) => `${job.email || ''}::${job.url || ''}`;
-
-// =================================================================
-// ## 2. The JobQueue Class (Updated to use the shared lock) ##
-// =================================================================
-
-class JobQueue {
-    constructor(processFunction, queueName = 'Unnamed') {
-        this.processFunction = processFunction;
-        this.queue = [];
-        this.queueName = queueName; // For better logging
-    }
-
-  addBgJob(job) {
-    const key = jobKey(job);
-    activeJobs.add(key);
-    this.queue.push({ job, key, isBg: true });
-    this.processQueue();
-  }
-
-  addRequestJob(job) {
-    return new Promise((resolve, reject) => {
-      const key = jobKey(job);
-      if (activeJobs.has(key) || this.queue.some(t => jobKey(t.job) === key)) {
-        console.log(`[${this.queueName}] Duplicate request job skipped for ${job.email} (${job.url}).`);
-        return resolve({ skipped: true, reason: 'duplicate' });
-      }
-      activeJobs.add(key);
-      this.queue.push({ job, key, resolve, reject, isBg: false });
-      this.processQueue();
-    });
-  }
-
-    async processQueue() {
-        // CRITICAL CHANGE: Check the GLOBAL lock, not an internal one.
-        if (isBrowserInUse || this.queue.length === 0) {
-            return;
-        }
-
-        // CRITICAL CHANGE: Set the GLOBAL lock to true.
-        isBrowserInUse = true;
-        
-  const task = this.queue.shift();
-        console.log(`[${this.queueName}] picked up job for ${task.job.email}. Browser is now locked.`);
-        
-        try {
-            const result = await this.processFunction(task.job);
-            if (!task.isBg) {
-                task.resolve(result);
-            }
-        } catch (error) {
-            console.error(`Job runner error in [${this.queueName}] for ${task.job.email}:`, error.message);
-            if (!task.isBg) {
-                task.reject(error);
-            }
-        } finally {
-            // CRITICAL CHANGE: Release the GLOBAL lock so the next job can run.
-      console.log(`[${this.queueName}] finished job for ${task.job.email}. Releasing browser lock.`);
-            isBrowserInUse = false;
-      if (task && task.key) {
-        activeJobs.delete(task.key);
-      }
-            
-            // IMPORTANT: After releasing the lock, we must trigger BOTH queues
-            // to check if they can start a new job.
-            fullAuditQueue.processQueue();
-            quickScanQueue.processQueue();
-        }
-    }
-}
+let isBrowserInUse = false; // Global browser lock for full audits only
 
 
 // =================================================================
@@ -589,18 +542,43 @@ async function handlePaymentFailed(invoice) {
 }
 const PORT = process.env.PORT || 5000;
 
-// --- Create two independent queues that will share the global lock ---
-const fullAuditQueue = new JobQueue(runFullAuditProcess, 'FullAuditQueue');
-const quickScanQueue = new JobQueue(runQuickScanProcess, 'QuickScanQueue');
+// --- Initialize persistent queues ---
+// Create queue instances after functions are defined to avoid circular dependency
+let fullAuditQueue, quickScanQueue;
 
 // --- Endpoints (No changes needed here) ---
 
-// Initialize Database
+// Initialize Database and Persistent Queues
 await (async () => {
   try {
     const mongoUri = process.env.MONGODB_URI;
     await connectDB(mongoUri);
+    console.log('✅ Database connected successfully');
+    
+    // Create queue instances now that functions are defined
+    fullAuditQueue = new PersistentQueue('FullAudit', runFullAuditProcess, {
+      concurrency: 1, // Only one full audit at a time due to browser lock
+      maxRetries: 3,
+      retryDelay: 10000
+    });
+
+    quickScanQueue = new PersistentQueue('QuickScan', runQuickScanProcess, {
+      concurrency: 3, // Can run multiple quick scans
+      maxRetries: 3,
+      retryDelay: 5000
+    });
+    
+    // Start persistent queues
+    await fullAuditQueue.start();
+    await quickScanQueue.start();
+    
+    // Recover any orphaned jobs from previous server instances
+    await fullAuditQueue.recoverJobs();
+    await quickScanQueue.recoverJobs();
+    
+    console.log('✅ Persistent queues started and recovered');
   } catch (err) {
+    console.error('❌ Database connection error:', err);
     console.warn('Continuing without DB due to connection error. Some features may be limited.');
   }
 })();
@@ -708,19 +686,49 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   }
   if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
 
-  // Pre-create a queued record so clients can see it immediately
+  // Create persistent audit job
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-  AnalysisRecord.create({
-    user: subscription.user, // Always use subscription owner
+  
+  try {
+    // Add job to persistent queue
+    const job = await fullAuditQueue.addJob({
+      email,
+      url: normalizedUrl,
+      userId: subscription.user,
+      taskId,
+      jobType: 'full-audit',
+      subscriptionId: subscription._id,
+      priority: 1 // Normal priority
+    });
+
+    // Create AnalysisRecord for backward compatibility
+    await AnalysisRecord.create({
+      user: subscription.user,
     email,
     url: normalizedUrl,
     taskId,
     status: 'queued',
     emailStatus: 'pending',
-  }).catch(() => {});
+    });
 
-  fullAuditQueue.addBgJob({ email, url: normalizedUrl, userId: subscription.user, taskId });
-  res.status(202).json({ message: 'Full audit request has been queued.' });
+    res.status(202).json({ 
+      message: 'Full audit request has been queued.',
+      taskId: job.taskId,
+      jobId: job._id
+    });
+  } catch (error) {
+    console.error('Failed to queue full audit:', error);
+    
+    // Rollback usage increment on failure
+    await Subscription.findByIdAndUpdate(subscription._id, {
+      $inc: { 'usage.scansThisMonth': -1 }
+    });
+    await User.findByIdAndUpdate(subscription.user, {
+      $inc: { 'subscription.usage.scansThisMonth': -1 }
+    });
+    
+    res.status(500).json({ error: 'Failed to queue audit request' });
+  }
 });
 
 app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) => {
@@ -765,8 +773,49 @@ app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   }
   if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
 
-  quickScanQueue.addBgJob({ email, url: normalizedUrl, userId: subscription.user });
-  res.status(202).json({ message: 'Quick audit request has been queued.' });
+  // Create persistent audit job
+  const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  
+  try {
+    // Add job to persistent queue
+    const job = await quickScanQueue.addJob({
+      email,
+      url: normalizedUrl,
+      userId: subscription.user,
+      taskId,
+      jobType: 'quick-scan',
+      subscriptionId: subscription._id,
+      priority: 2 // Higher priority for quick scans
+    });
+
+    // Create AnalysisRecord for backward compatibility
+    await AnalysisRecord.create({
+      user: subscription.user,
+      email,
+      url: normalizedUrl,
+      taskId,
+      status: 'queued',
+      emailStatus: 'pending',
+    });
+
+    res.status(202).json({ 
+      message: 'Quick audit request has been queued.',
+      taskId: job.taskId,
+      jobId: job._id
+    });
+  } catch (error) {
+    console.error('Failed to queue quick audit:', error);
+    
+    // Rollback usage increment on failure
+    await Subscription.findByIdAndUpdate(subscription._id, {
+      $inc: { 'usage.scansThisMonth': -1 }
+    });
+    await User.findByIdAndUpdate(subscription.user, {
+      $inc: { 'subscription.usage.scansThisMonth': -1 }
+    });
+    
+    res.status(500).json({ error: 'Failed to queue audit request' });
+  }
 });
 
 // Create Stripe Subscription Checkout Session
@@ -1792,4 +1841,29 @@ if (START_WATCHDOG) {
       console.error('Watchdog error:', e?.message || e);
     }
   }, INTERVAL_MS).unref();
+}
+
+// Graceful shutdown handling
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Received SIGINT, shutting down gracefully...');
+  await gracefulShutdown();
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Received SIGTERM, shutting down gracefully...');
+  await gracefulShutdown();
+});
+
+async function gracefulShutdown() {
+  try {
+    console.log('🔄 Stopping persistent queues...');
+    await fullAuditQueue.stop();
+    await quickScanQueue.stop();
+    
+    console.log('✅ Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error during graceful shutdown:', error);
+    process.exit(1);
+  }
 }
