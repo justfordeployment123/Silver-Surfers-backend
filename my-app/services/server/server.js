@@ -1392,6 +1392,58 @@ app.get('/subscription/team', authRequired, async (req, res) => {
   }
 });
 
+// Get team scan history
+app.get('/subscription/team/scans', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get user's active subscription
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'No active subscription found.' });
+    }
+
+    // Get all team member emails (including owner)
+    const teamEmails = [
+      req.user.email, // Owner's email
+      ...subscription.teamMembers.map(member => member.email)
+    ];
+
+    // Fetch all scans performed by team members
+    const teamScans = await AnalysisRecord.find({
+      email: { $in: teamEmails },
+      createdAt: { $gte: subscription.currentPeriodStart }
+    })
+    .sort({ createdAt: -1 })
+    .limit(50) // Limit to last 50 scans
+    .populate('user', 'email')
+    .lean();
+
+    // Format the response
+    const formattedScans = teamScans.map(scan => ({
+      id: scan._id,
+      url: scan.url,
+      email: scan.email,
+      status: scan.status,
+      emailStatus: scan.emailStatus,
+      createdAt: scan.createdAt,
+      updatedAt: scan.updatedAt,
+      failureReason: scan.failureReason,
+      attachmentCount: scan.attachmentCount,
+      isOwner: scan.email === req.user.email
+    }));
+
+    res.json({ scans: formattedScans });
+  } catch (error) {
+    console.error('Get team scans error:', error);
+    res.status(500).json({ error: 'Failed to get team scans.' });
+  }
+});
+
 // Accept team invitation
 app.post('/subscription/team/accept', authRequired, async (req, res) => {
   try {
