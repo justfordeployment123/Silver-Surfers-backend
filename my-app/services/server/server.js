@@ -183,15 +183,36 @@ const runFullAuditProcess = async (job) => {
         // Check if files were actually uploaded to Google Drive via sendResult
         const actualUploadedCount = sendResult?.uploadedCount || 0;
         if (actualUploadedCount === 0) {
-          record.status = 'failed';
+        record.status = 'failed';
           record.failureReason = record.failureReason || 'No reports generated (0 files uploaded).';
-        } else {
+      } else {
           // Files were uploaded successfully, update the count and mark as completed
           record.attachmentCount = actualUploadedCount;
-          record.status = 'completed';
-        }
+        record.status = 'completed';
+      }
       } else {
         record.status = 'completed';
+      }
+      
+      // If audit failed, decrement usage counter since we already incremented it when request was made
+      if (record.status === 'failed' && record.user) {
+        try {
+          await Subscription.findOneAndUpdate(
+            { user: record.user, status: { $in: ['active', 'trialing'] } },
+            { 
+              $inc: { 
+                'usage.scansThisMonth': -1
+              }
+            }
+          );
+          
+          // Also decrement user's subscription usage
+          await User.findByIdAndUpdate(record.user, {
+            $inc: { 'subscription.usage.scansThisMonth': -1 }
+          });
+        } catch (usageError) {
+          console.error('Failed to decrement usage counter for failed scan:', usageError);
+        }
       }
       
       // If audit completed successfully, increment usage counter
@@ -201,15 +222,14 @@ const runFullAuditProcess = async (job) => {
             { user: record.user, status: { $in: ['active', 'trialing'] } },
             { 
               $inc: { 
-                'usage.scansThisMonth': 1,
                 'usage.totalScans': 1
               }
             }
           );
           
-          // Also update user's subscription usage
+          // Also update user's total scans (monthly count was already incremented when request was made)
           await User.findByIdAndUpdate(record.user, {
-            $inc: { 'subscription.usage.scansThisMonth': 1 }
+            $inc: { 'subscription.usage.totalScans': 1 }
           });
         } catch (usageError) {
           console.error('Failed to update usage counter:', usageError);
@@ -225,7 +245,30 @@ const runFullAuditProcess = async (job) => {
     });
   } catch (jobError) {
     console.error(`A critical error occurred during the full job for ${email}:`, jobError.message);
-    if (record) { record.status = 'failed'; record.failureReason = jobError.message; await record.save().catch(()=>{}); }
+    if (record) { 
+      record.status = 'failed'; 
+      record.failureReason = jobError.message; 
+      await record.save().catch(()=>{});
+      
+      // Decrement usage counter since scan failed
+      try {
+        await Subscription.findOneAndUpdate(
+          { user: record.user, status: { $in: ['active', 'trialing'] } },
+          { 
+            $inc: { 
+              'usage.scansThisMonth': -1
+            }
+          }
+        );
+        
+        // Also decrement user's subscription usage
+        await User.findByIdAndUpdate(record.user, {
+          $inc: { 'subscription.usage.scansThisMonth': -1 }
+        });
+      } catch (usageError) {
+        console.error('Failed to decrement usage counter for failed scan:', usageError);
+      }
+    }
     await signalBackend({ status: 'failed', clientEmail: email, error: jobError.message });
   } finally {
     // Always cleanup temp working folder
@@ -286,15 +329,14 @@ const runQuickScanProcess = async (job) => {
               { user: userId, status: { $in: ['active', 'trialing'] } },
               { 
                 $inc: { 
-                  'usage.scansThisMonth': 1,
                   'usage.totalScans': 1
                 }
               }
             );
             
-            // Also update user's subscription usage
+            // Also update user's total scans (monthly count was already incremented when request was made)
             await User.findByIdAndUpdate(userId, {
-              $inc: { 'subscription.usage.scansThisMonth': 1 }
+              $inc: { 'subscription.usage.totalScans': 1 }
             });
           } catch (usageError) {
             console.error('Failed to update usage counter for quick scan:', usageError);
@@ -313,6 +355,28 @@ const runQuickScanProcess = async (job) => {
 
     } catch (error) {
         console.error(`A critical error occurred during the quick scan for ${email}:`, error.message);
+        
+        // Decrement usage counter since quick scan failed
+        if (userId) {
+          try {
+            await Subscription.findOneAndUpdate(
+              { user: userId, status: { $in: ['active', 'trialing'] } },
+              { 
+                $inc: { 
+                  'usage.scansThisMonth': -1
+                }
+              }
+            );
+            
+            // Also decrement user's subscription usage
+            await User.findByIdAndUpdate(userId, {
+              $inc: { 'subscription.usage.scansThisMonth': -1 }
+            });
+          } catch (usageError) {
+            console.error('Failed to decrement usage counter for failed quick scan:', usageError);
+          }
+        }
+        
         throw error;
     } finally {
         if (jsonReportPath) {
@@ -608,7 +672,7 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
 
-  // Check subscription usage limits
+  // Check subscription usage limits and increment immediately to prevent race conditions
   const subscription = req.subscription;
   const currentUsage = subscription.usage?.scansThisMonth || 0;
   const monthlyLimit = subscription.limits?.scansPerMonth;
@@ -617,6 +681,21 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     return res.status(403).json({ 
       error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
     });
+  }
+
+  // Increment usage counter immediately to prevent race conditions
+  try {
+    await Subscription.findByIdAndUpdate(subscription._id, {
+      $inc: { 'usage.scansThisMonth': 1 }
+    });
+    
+    // Also update user's subscription usage
+    await User.findByIdAndUpdate(subscription.user, {
+      $inc: { 'subscription.usage.scansThisMonth': 1 }
+    });
+  } catch (usageError) {
+    console.error('Failed to increment usage counter:', usageError);
+    return res.status(500).json({ error: 'Failed to process usage limit' });
   }
 
   // Precheck and normalize URL
@@ -650,7 +729,7 @@ app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
 
-  // Check subscription usage limits
+  // Check subscription usage limits and increment immediately to prevent race conditions
   const subscription = req.subscription;
   const currentUsage = subscription.usage?.scansThisMonth || 0;
   const monthlyLimit = subscription.limits?.scansPerMonth;
@@ -659,6 +738,21 @@ app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     return res.status(403).json({ 
       error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
     });
+  }
+
+  // Increment usage counter immediately to prevent race conditions
+  try {
+    await Subscription.findByIdAndUpdate(subscription._id, {
+      $inc: { 'usage.scansThisMonth': 1 }
+    });
+    
+    // Also update user's subscription usage
+    await User.findByIdAndUpdate(subscription.user, {
+      $inc: { 'subscription.usage.scansThisMonth': 1 }
+    });
+  } catch (usageError) {
+    console.error('Failed to increment usage counter:', usageError);
+    return res.status(500).json({ error: 'Failed to process usage limit' });
   }
 
   // Precheck and normalize URL
@@ -1138,6 +1232,61 @@ app.post('/subscription/team/add', authRequired, async (req, res) => {
 });
 
 // Remove team member
+// Team member leaves team (self-removal)
+app.post('/subscription/team/leave', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userEmail = req.user.email;
+
+    // Check if user is a team member
+    const subscription = await Subscription.findOne({ 
+      'teamMembers.email': userEmail.toLowerCase(),
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'No team membership found.' });
+    }
+
+    // Find and remove the user from team members
+    const memberIndex = subscription.teamMembers.findIndex(member => 
+      member.email.toLowerCase() === userEmail.toLowerCase()
+    );
+
+    if (memberIndex === -1) {
+      return res.status(404).json({ error: 'Team membership not found.' });
+    }
+
+    const member = subscription.teamMembers[memberIndex];
+    subscription.teamMembers.splice(memberIndex, 1);
+
+    // Update user's team membership status
+    await User.findByIdAndUpdate(userId, {
+      $unset: { 
+        isTeamMember: '',
+        teamOwner: ''
+      }
+    });
+
+    await subscription.save();
+
+    // Send notification to subscription owner
+    try {
+      const owner = await User.findById(subscription.user);
+      if (owner && owner.email) {
+        await sendTeamMemberRemovedEmail(owner.email, userEmail, subscription.plan?.name || 'Unknown Plan');
+      }
+    } catch (emailError) {
+      console.error('Failed to send team member removal notification:', emailError);
+    }
+
+    res.json({ message: 'Successfully left the team.' });
+  } catch (error) {
+    console.error('Team leave error:', error);
+    res.status(500).json({ error: 'Failed to leave team.' });
+  }
+});
+
 app.post('/subscription/team/remove', authRequired, async (req, res) => {
   try {
     const { email } = req.body;
