@@ -777,12 +777,41 @@ app.get('/subscription', authRequired, async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
 
-    const subscription = await Subscription.findOne({ 
+    // First check if user owns a subscription
+    let subscription = await Subscription.findOne({ 
       user: userId, 
       status: { $in: ['active', 'trialing', 'past_due'] } 
     }).sort({ createdAt: -1 });
 
-    const plan = user.subscription?.planId ? getPlanById(user.subscription.planId) : null;
+    let isTeamMember = false;
+
+    // If no owned subscription, check if user is a team member
+    if (!subscription && user.subscription?.isTeamMember && user.subscription?.teamOwner) {
+      subscription = await Subscription.findOne({ 
+        user: user.subscription.teamOwner, 
+        status: { $in: ['active', 'trialing'] } 
+      });
+
+      if (subscription) {
+        // Verify user is still an active team member
+        const isActiveMember = subscription.teamMembers.some(member => 
+          member.user && member.user.toString() === userId && member.status === 'active'
+        );
+
+        if (isActiveMember) {
+          isTeamMember = true;
+        } else {
+          // Clean up invalid team membership
+          await User.findByIdAndUpdate(userId, {
+            'subscription.isTeamMember': false,
+            'subscription.teamOwner': null
+          });
+          subscription = null;
+        }
+      }
+    }
+
+    const plan = subscription?.planId ? getPlanById(subscription.planId) : null;
 
     return res.json({
       user: {
@@ -799,7 +828,8 @@ app.get('/subscription', authRequired, async (req, res) => {
         currentPeriodEnd: subscription.currentPeriodEnd,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         usage: subscription.usage,
-        limits: subscription.limits
+        limits: subscription.limits,
+        isTeamMember: isTeamMember // Flag to indicate if user is a team member
       } : null
     });
   } catch (err) {
