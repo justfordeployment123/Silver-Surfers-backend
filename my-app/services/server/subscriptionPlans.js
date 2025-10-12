@@ -12,17 +12,16 @@ export const SUBSCRIPTION_PLANS = {
     currency: 'usd',
     // Limits and features
     limits: {
-      scansPerMonth: 10,
+      scansPerMonth: 5,
       maxUsers: 1,
       features: [
         'SilverSurfers Score',
-        'Basic accessibility reports',
-        'Email support',
-        'PDF downloads'
+        'Limited scans',
+        'Detailed reports',
+        'Single User'
       ]
     },
-    // UI display
-    icon: '🚀',
+
     gradient: 'from-blue-500 to-green-500',
     popular: false
   },
@@ -38,20 +37,16 @@ export const SUBSCRIPTION_PLANS = {
     currency: 'usd',
     // Limits and features
     limits: {
-      scansPerMonth: 50,
-      maxUsers: 5,
+      scansPerMonth: 12,
+      maxUsers: 3,
       features: [
         'SilverSurfers Score',
-        'Detailed accessibility reports',
-        'SilverSurfers Seal of Approval',
-        'Priority email support',
-        'PDF downloads',
-        'Multi-user access',
-        'Advanced analytics'
+        'Increased scans',
+        'Detailed reports',
+        'Multi-users',
+        'SilverSurfers Seal of Approval'
       ]
     },
-    // UI display
-    icon: '⭐',
     gradient: 'from-green-500 to-teal-500',
     popular: true
   },
@@ -78,8 +73,6 @@ export const SUBSCRIPTION_PLANS = {
         'Custom integrations'
       ]
     },
-    // UI display
-    icon: '🏆',
     gradient: 'from-purple-500 to-blue-500',
     popular: false,
     contactSales: true
