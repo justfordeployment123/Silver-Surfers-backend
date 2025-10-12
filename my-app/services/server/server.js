@@ -215,11 +215,6 @@ export const runFullAuditProcess = async (job) => {
               }
             }
           );
-          
-          // Also decrement user's subscription usage
-          await User.findByIdAndUpdate(record.user, {
-            $inc: { 'subscription.usage.scansThisMonth': -1 }
-          });
         } catch (usageError) {
           console.error('Failed to decrement usage counter for failed scan:', usageError);
         }
@@ -236,11 +231,6 @@ export const runFullAuditProcess = async (job) => {
               }
             }
           );
-          
-          // Also update user's total scans (monthly count was already incremented when request was made)
-          await User.findByIdAndUpdate(record.user, {
-            $inc: { 'subscription.usage.totalScans': 1 }
-          });
         } catch (usageError) {
           console.error('Failed to update usage counter:', usageError);
         }
@@ -278,11 +268,6 @@ export const runFullAuditProcess = async (job) => {
             }
           }
         );
-        
-        // Also decrement user's subscription usage
-        await User.findByIdAndUpdate(record.user, {
-          $inc: { 'subscription.usage.scansThisMonth': -1 }
-        });
       } catch (usageError) {
         console.error('Failed to decrement usage counter for failed scan:', usageError);
       }
@@ -394,11 +379,6 @@ export const runQuickScanProcess = async (job) => {
                 }
               }
             );
-            
-            // Also decrement user's subscription usage
-            await User.findByIdAndUpdate(userId, {
-              $inc: { 'subscription.usage.scansThisMonth': -1 }
-            });
           } catch (usageError) {
             console.error('Failed to decrement usage counter for failed quick scan:', usageError);
           }
@@ -668,11 +648,6 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     await Subscription.findByIdAndUpdate(subscription._id, {
       $inc: { 'usage.scansThisMonth': 1 }
     });
-    
-    // Also update user's subscription usage
-    await User.findByIdAndUpdate(subscription.user, {
-      $inc: { 'subscription.usage.scansThisMonth': 1 }
-    });
   } catch (usageError) {
     console.error('Failed to increment usage counter:', usageError);
     return res.status(500).json({ error: 'Failed to process usage limit' });
@@ -725,9 +700,6 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     await Subscription.findByIdAndUpdate(subscription._id, {
       $inc: { 'usage.scansThisMonth': -1 }
     });
-    await User.findByIdAndUpdate(subscription.user, {
-      $inc: { 'subscription.usage.scansThisMonth': -1 }
-    });
     
     res.status(500).json({ error: 'Failed to queue audit request' });
   }
@@ -754,11 +726,6 @@ app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   try {
     await Subscription.findByIdAndUpdate(subscription._id, {
       $inc: { 'usage.scansThisMonth': 1 }
-    });
-    
-    // Also update user's subscription usage
-    await User.findByIdAndUpdate(subscription.user, {
-      $inc: { 'subscription.usage.scansThisMonth': 1 }
     });
   } catch (usageError) {
     console.error('Failed to increment usage counter:', usageError);
@@ -811,9 +778,6 @@ app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     // Rollback usage increment on failure
     await Subscription.findByIdAndUpdate(subscription._id, {
       $inc: { 'usage.scansThisMonth': -1 }
-    });
-    await User.findByIdAndUpdate(subscription.user, {
-      $inc: { 'subscription.usage.scansThisMonth': -1 }
     });
     
     res.status(500).json({ error: 'Failed to queue audit request' });
@@ -1806,7 +1770,7 @@ app.get('/legal/:type', async (req, res) => {
       
       return res.status(404).json({ error: 'Legal document not found' });
     }
-    
+
     res.json({
       id: document._id,
       type: document.type,
