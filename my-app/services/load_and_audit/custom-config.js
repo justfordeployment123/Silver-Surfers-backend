@@ -44,12 +44,14 @@ export default {
     { id: 'PageText', gatherer: path.resolve(__dirname, 'custom_gatherers/text-gatherer.js') },
     { id: 'PageLinkColors', gatherer: path.resolve(__dirname, 'custom_gatherers/color-gatherer.js') },
     { id: 'BrittleLayoutElements', gatherer: path.resolve(__dirname, 'custom_gatherers/layout-gatherer.js') },
+    { id: 'PageContentGatherer', gatherer: path.resolve(__dirname, 'custom_gatherers/page-content-gatherer.js') },
   ],
 
   audits: [
     { path: path.resolve(__dirname, 'custom_audits/text-audit.js') },
     { path: path.resolve(__dirname, 'custom_audits/color-audit.js') },
     { path: path.resolve(__dirname, 'custom_audits/layout-audit.js') },
+    { path: path.resolve(__dirname, 'custom_audits/flesch-kincaid-audit.js') },
   ],
 
 
@@ -77,9 +79,9 @@ export default {
 
         { id: 'cumulative-layout-shift', weight: 10 },
 
-        { id: 'text-font-audit', weight: 10 },         // Your custom audit
-
-        { id: 'layout-brittle-audit', weight: 10 },    // Your custom audit
+        { id: 'text-font-audit', weight: 15 },
+        { id: 'layout-brittle-audit', weight: 2 },
+        { id: 'flesch-kincaid-audit', weight: 15 },
 
 
 
@@ -95,7 +97,7 @@ export default {
 
         { id: 'label', weight: 5 },
 
-        { id: 'interactive-color-audit', weight: 5 }, // Your custom audit
+        { id: 'interactive-color-audit', weight: 5 },
 
 
 

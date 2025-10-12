@@ -1,6 +1,7 @@
 import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
@@ -10,12 +11,16 @@ import adminRoutes from './adminRoutes.js';
 import { connectDB } from './db.js';
 import { authRequired } from './auth.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // Load env from project root (three levels up)
 dotenv.config({ path: path.resolve(process.cwd(), '../../../.env') });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2024-06-20' });
 
 
 // --- Your Project Modules (CORRECTED IMPORT) ---
+import { checkScoreThreshold } from './pass_or_fail.js';
 import { InternalLinksExtractor } from '../internal_links/internal_links.js';
 import { runLighthouseAudit } from '../load_and_audit/audit.js'; // Changed to your modified audit module
 import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite.js'; // Keep lite for quick scans
@@ -58,11 +63,11 @@ export const runFullAuditProcess = async (job) => {
   }
   isBrowserInUse = true;
 
-  // Final destination for generated PDFs
-  const finalReportFolder = path.resolve(process.cwd(), 'reports-full', email);
+  // Final destination for generated PDFs - sanitize email first
+  const sanitizedEmail = email.replace(/[^a-zA-Z0-9@.-]/g, '_');
+  const finalReportFolder = path.resolve(process.cwd(), 'reports-full', sanitizedEmail);
 
   // Temporary working folder for images and intermediates
-  const sanitizedEmail = email.replace(/[^a-z0-9]/gi, '_');
   const jobFolder = path.resolve(process.cwd(), 'reports', `${sanitizedEmail}-${Date.now()}`);
 
   // Ensure folders exist
@@ -119,9 +124,12 @@ export const runFullAuditProcess = async (job) => {
             await generateSeniorAccessibilityReport({
               inputFile: jsonReportPath,
               clientEmail: email,
+              url: link,
+              email_address: email,
+              device: device,
               imagePaths,
               outputDir: finalReportFolder,
-              formFactor: device // <-- Add this line to pass the device type
+              formFactor: device
             });
           } else {
             console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);
@@ -238,10 +246,43 @@ export const runFullAuditProcess = async (job) => {
       
       await record.save().catch(()=>{});
     }
+
+    // After all links are processed, check the score threshold and send result to backend
+    function sanitize(str) {
+      return str.replace(/[^a-zA-Z0-9@.-]/g, '_').replace(/https?:\/\//, '').replace(/\./g, '-');
+    }
+    
+    // Use the base URL from the original job
+    const baseUrl = (() => {
+      try {
+        const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+        return `${u.protocol}//${u.hostname.replace(/^www\./, '')}`;
+      } catch (e) {
+        return url.replace(/^www\./, '');
+      }
+    })();
+    
+    const dirName = `${sanitize(email)}_${sanitize(baseUrl)}`;
+    const uniqueDir = path.resolve(__dirname, '../report_generation/Seal_Reasoning_email_baseurl', dirName);
+    const resultsFile = path.join(uniqueDir, 'results.json');
+
+    let urlScores = [];
+    try {
+      const fileContent = await fs.readFile(resultsFile, 'utf8');
+      urlScores = JSON.parse(fileContent);
+    } catch (e) {
+      console.error('Could not read results.json for score threshold check:', e.message);
+    }
+
+    const myThreshold = 70;
+    const result = checkScoreThreshold(urlScores, myThreshold, { verbose: true });
+
     await signalBackend({
       status: 'completed',
       clientEmail: email,
       folderPath: finalReportFolder,
+      url: url,
+      passFail: result.pass
     });
 
     // Return result for persistent queue

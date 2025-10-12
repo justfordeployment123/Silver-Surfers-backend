@@ -13,7 +13,7 @@ const AUDIT_INFO = {
     'text-font-audit': {
         title: 'Text Size and Readability Analysis',
         category: 'Vision Accessibility',
-        importance: 'Font size is critical for elderly users who often experience presbyopia. Text smaller than 16px can be extremely difficult to read, causing eye strain.',
+        importance: 'Font size is critical for older adults who often experience presbyopia. Text smaller than 16px can be extremely difficult to read, causing eye strain.',
         why: 'Age-related vision changes make small text nearly impossible to read. Older adults need larger fonts to browse websites comfortably.',
         recommendation: 'Ensure all body text is at least 16 pixels. Use relative units like "rem" to allow users to easily scale the font size in their browser settings.',
     },
@@ -73,6 +73,13 @@ const AUDIT_INFO = {
         why: 'Proper labels help older adults complete forms successfully, reducing frustration and abandonment of important tasks.',
         recommendation: 'Every form input should have a clearly visible and programmatically associated <label> tag. Place labels above the input field for clarity.',
     },
+    'flesch-kincaid-audit': {
+        title: 'Semantic Complexity Analysis',
+        category: 'Cognitive Accessibility',
+        importance: 'Complex language and difficult sentence structures create cognitive barriers for older adults. Age-related cognitive changes make it harder to process complex or academic writing.',
+        why: 'Older adults benefit from clear, simple language that requires less mental effort to understand. High reading difficulty levels can prevent them from accessing important information and completing critical tasks.',
+        recommendation: 'Aim for a Flesch-Kincaid Reading Ease score of 60 or higher (plain English level). Use shorter sentences, simpler words, and clear structure. Break complex ideas into digestible chunks. Avoid jargon and technical terms unless absolutely necessary.',
+    },
     'largest-contentful-paint': {
         title: 'Page Loading Speed',
         category: 'Performance for Older Adults',
@@ -126,7 +133,7 @@ const AUDIT_INFO = {
         title: 'Technical Stability',
         category: 'Technical Accessibility',
         importance: 'JavaScript errors can break website functionality in unexpected ways, particularly affecting assistive technologies that older adults may rely on.',
-        why: 'Elderly users often depend on assistive technologies, and technical errors can make websites completely unusable for them.',
+        why: 'Older adults often depend on assistive technologies, and technical errors can make websites completely unusable for them.',
         recommendation: 'Regularly check the browser\'s developer console for errors and fix them promptly to ensure a stable and reliable experience for all users.',
     },
     'font-size': {
@@ -263,13 +270,13 @@ addOverallScoreDisplay(scoreData) {
     const centerX = this.doc.page.width / 2;
     const radius = 60;
 
-    // Determine pass/fail status based on 80% threshold
-    const isPassing = roundedScore >= 80;
+    // Determine pass/fail status based on 70% threshold
+    const isPassing = roundedScore >= 70;
     const resultText = isPassing ? 'PASS' : 'FAIL';
     const resultColor = isPassing ? '#27AE60' : '#E74C3C';
 
     let scoreColor = '#E74C3C'; // Red (Poor/Fail)
-    if (score >= 80) {
+    if (score >= 70) {
         scoreColor = '#27AE60'; // Green (Pass)
     }
 
@@ -310,7 +317,7 @@ addOverallScoreDisplay(scoreData) {
     // Add explanatory text about pass/fail threshold
     if (!isPassing) {
         this.doc.fontSize(12).font('RegularFont').fillColor('#E74C3C')
-            .text('This website did not meet the Silver Surfers accessibility standards (80% minimum required)',
+            .text('This website did not meet the Silver Surfers accessibility standards (70% minimum required)',
                 this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
         this.currentY += 20;
     } else {
@@ -336,7 +343,7 @@ addOverallScoreDisplay(scoreData) {
         this.addBodyText(`Report Generated: ${timestamp}`, 12, '#7F8C8D');
         this.currentY += 10;
         this.addHeading('Our Mission: Digital Inclusion for Older Adults', 18, '#2980B9');
-        this.addBodyText('This comprehensive Silver Surfers audit evaluates website accessibility specifically from the perspective of elderly users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.');
+        this.addBodyText('This comprehensive Silver Surfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.');
     }
 
     // New method to show score calculation breakdown
@@ -458,24 +465,46 @@ addOverallScoreDisplay(scoreData) {
     }
     
     addTablePages(auditId, auditData) {
-        if (!auditData.details?.items || auditData.details.items.length === 0) return;
-        this.addPage();
-        const info = AUDIT_INFO[auditId];
-        if (info) {
-            this.drawColorBar(info.category);
-            this.addHeading(`Detailed Findings: ${info.title}`, 16);
-        }
-        const tableConfig = this.getTableConfig(auditId);
-        const items = auditData.details.items;
-        const itemsPerPage = 12;
-        for (let i = 0; i < items.length; i += itemsPerPage) {
-            if (i > 0) {
-                this.addPage();
-                this.addHeading(`${info.title} (continued)`, 16);
-            }
-            this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
+    if (!auditData.details?.items || auditData.details.items.length === 0) return;
+    
+    const info = AUDIT_INFO[auditId];
+    const tableConfig = this.getTableConfig(auditId);
+    const items = auditData.details.items;
+    
+    // PRE-CHECK: Determine if table would be skipped due to all N/A locations
+    const locationIndex = tableConfig.headers.findIndex(h => 
+        h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
+    );
+    
+    if (locationIndex !== -1) {
+        const itemsWithValidLocation = items.filter(item => {
+            const locationValue = tableConfig.extractors[locationIndex](item);
+            return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
+        });
+        
+        // If all rows would be filtered out, skip the entire page
+        if (itemsWithValidLocation.length === 0) {
+            console.log(`Skipping 'Detailed Findings' page for ${auditId} - all locations are N/A`);
+            return; // Exit without adding any page
         }
     }
+    
+    // If we get here, we have valid data to display
+    this.addPage();
+    if (info) {
+        this.drawColorBar(info.category);
+        this.addHeading(`Detailed Findings: ${info.title}`, 16);
+    }
+    
+    const itemsPerPage = 12;
+    for (let i = 0; i < items.length; i += itemsPerPage) {
+        if (i > 0) {
+            this.addPage();
+            this.addHeading(`${info.title} (continued)`, 16);
+        }
+        this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
+    }
+}
     
     getTableConfig(auditId) {
         switch (auditId) {
@@ -496,7 +525,7 @@ addOverallScoreDisplay(scoreData) {
                     extractors: [
                         item => item.text || 'Interactive Element',
                         item => this.extractSelector(item.node) || 'N/A',
-                        item => item.explanation || 'Insufficient visual distinction for elderly users'
+                        item => item.explanation || 'Insufficient visual distinction for older adult users'
                     ]
                 };
             case 'layout-brittle-audit':
@@ -507,6 +536,15 @@ addOverallScoreDisplay(scoreData) {
                         item => this.extractNodeLabel(item.node) || 'Layout Element',
                         item => this.extractSelector(item.node) || 'N/A',
                         item => 'Layout may break when older adults adjust text size for better readability'
+                    ]
+                };
+            case 'flesch-kincaid-audit':
+                return {
+                    headers: ['Metric', 'Value'],
+                    widths: [257, 258],
+                    extractors: [
+                        item => item.metric || 'N/A',
+                        item => item.value || 'N/A'
                     ]
                 };
             default:
@@ -533,59 +571,98 @@ addOverallScoreDisplay(scoreData) {
     }
     
     drawEnhancedTable(items, config, category) {
-        const startY = this.currentY;
-        const headerHeight = 35;
-        const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS['Technical Accessibility'];
-        let tableY = startY;
-        const auditInfo = AUDIT_INFO[config.auditId];
-        this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill(colors.bg).stroke(colors.border);
-        this.doc.font('BoldFont').fontSize(11).fillColor(colors.text);
-        let currentX = this.margin;
-        config.headers.forEach((header, index) => {
-            if (index > 0) {
-                this.doc.moveTo(currentX, tableY).lineTo(currentX, tableY + headerHeight).strokeColor(colors.border).stroke();
-            }
-            this.doc.text(header, currentX + 8, tableY + 12, { width: config.widths[index] - 16, height: headerHeight - 10, align: 'center' });
-            currentX += config.widths[index];
+    if (!items || items.length === 0) return;
+    
+    // Find the Location column index
+    const locationIndex = config.headers.findIndex(h => 
+        h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
+    );
+    
+    // Filter out rows where "Location" column has N/A
+    let itemsToShow = items;
+    if (locationIndex !== -1) {
+        itemsToShow = items.filter(item => {
+            const locationValue = config.extractors[locationIndex](item);
+            return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
         });
-        tableY += headerHeight;
-        this.doc.font('RegularFont').fontSize(9);
-        items.forEach((item, rowIndex) => {
-            const rowData = config.extractors.map(extractor => String(extractor(item) || 'N/A'));
-            let maxRowHeight = 0;
-            rowData.forEach((cellValue, colIndex) => {
-                const cellWidth = config.widths[colIndex] - 16;
-                const cellHeight = this.doc.heightOfString(cellValue, { width: cellWidth });
-                if (cellHeight > maxRowHeight) {
-                    maxRowHeight = cellHeight;
-                }
-            });
-            const rowHeight = Math.max(maxRowHeight + 16, 30);
-            if (tableY + rowHeight > this.doc.page.height - this.doc.page.margins.bottom) {
-                this.addPage();
-                this.addHeading(`${auditInfo?.title || 'Detailed Findings'} (continued)`, 16);
-                tableY = this.currentY;
-                this.doc.font('RegularFont').fontSize(9);
-            }
-            const isEvenRow = rowIndex % 2 === 0;
-            if (isEvenRow) {
-                this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FAFAFA');
-            }
-            currentX = this.margin;
-            rowData.forEach((cellValue, colIndex) => {
-                if (colIndex > 0) {
-                    this.doc.moveTo(currentX, tableY).lineTo(currentX, tableY + rowHeight).strokeColor('#E0E0E0').stroke();
-                }
-                this.doc.fillColor('#2C3E50').text(cellValue, currentX + 8, tableY + 8, {
-                    width: config.widths[colIndex] - 16
-                });
-                currentX += config.widths[colIndex];
-            });
-            this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).strokeColor('#E0E0E0').stroke();
-            tableY += rowHeight;
-        });
-        this.currentY = tableY + 20;
+        
+        // If ALL rows have N/A in Location, don't render the table at all
+        if (itemsToShow.length === 0) {
+            console.log('Skipping table - all rows have N/A in Location column');
+            return; // Exit without rendering anything
+        }
     }
+    
+    const startY = this.currentY;
+    const headerHeight = 35;
+    const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS['Technical Accessibility'];
+    let tableY = startY;
+    const auditInfo = AUDIT_INFO[config.auditId];
+    
+    // Draw header
+    this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill(colors.bg).stroke(colors.border);
+    this.doc.font('BoldFont').fontSize(11).fillColor(colors.text);
+    let currentX = this.margin;
+    
+    config.headers.forEach((header, index) => {
+        if (index > 0) {
+            this.doc.moveTo(currentX, tableY).lineTo(currentX, tableY + headerHeight).strokeColor(colors.border).stroke();
+        }
+        this.doc.text(header, currentX + 8, tableY + 12, { 
+            width: config.widths[index] - 16, 
+            height: headerHeight - 10, 
+            align: 'center' 
+        });
+        currentX += config.widths[index];
+    });
+    
+    tableY += headerHeight;
+    this.doc.font('RegularFont').fontSize(9);
+    
+    // Draw rows
+    itemsToShow.forEach((item, rowIndex) => {
+        const rowData = config.extractors.map(extractor => String(extractor(item) || 'N/A'));
+        let maxRowHeight = 0;
+        
+        rowData.forEach((cellValue, colIndex) => {
+            const cellWidth = config.widths[colIndex] - 16;
+            const cellHeight = this.doc.heightOfString(cellValue, { width: cellWidth });
+            if (cellHeight > maxRowHeight) {
+                maxRowHeight = cellHeight;
+            }
+        });
+        
+        const rowHeight = Math.max(maxRowHeight + 16, 30);
+        
+        if (tableY + rowHeight > this.doc.page.height - this.doc.page.margins.bottom) {
+            this.addPage();
+            this.addHeading(`${auditInfo?.title || 'Detailed Findings'} (continued)`, 16);
+            tableY = this.currentY;
+            this.doc.font('RegularFont').fontSize(9);
+        }
+        
+        const isEvenRow = rowIndex % 2 === 0;
+        if (isEvenRow) {
+            this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FAFAFA');
+        }
+        
+        currentX = this.margin;
+        rowData.forEach((cellValue, colIndex) => {
+            if (colIndex > 0) {
+                this.doc.moveTo(currentX, tableY).lineTo(currentX, tableY + rowHeight).strokeColor('#E0E0E0').stroke();
+            }
+            this.doc.fillColor('#2C3E50').text(cellValue, currentX + 8, tableY + 8, {
+                width: config.widths[colIndex] - 16
+            });
+            currentX += config.widths[colIndex];
+        });
+        
+        this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).strokeColor('#E0E0E0').stroke();
+        tableY += rowHeight;
+    });
+    
+    this.currentY = tableY + 20;
+}
 
     async generateReport(inputFile, outputFile, options = {}) {
         try {
@@ -593,22 +670,35 @@ addOverallScoreDisplay(scoreData) {
             const clientEmail = options.clientEmail || 'unknown-client';
             const formFactor = options.formFactor || reportData.configSettings?.formFactor || 'desktop';
             const url = reportData.finalUrl || 'unknown-url';
-            
-            // Create sanitized filename from URL
-            const sanitizedUrl = url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '-').replace(/-+/g, '-');
-            const fileName = `${sanitizedUrl}-${formFactor}.pdf`;
+
+            // Create a safe, short, unique filename from URL and device
+            function safeFilename(url, device) {
+                try {
+                    const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+                    let hostname = u.hostname.replace(/^www\./, '');
+                    let pathname = u.pathname.replace(/[^a-zA-Z0-9]/g, '_');
+                    if (pathname.length > 40) pathname = pathname.slice(0, 40) + '_';
+                    // Optionally, add a hash for uniqueness
+                    const hash = Buffer.from(url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+                    return `${hostname}${pathname ? '_' + pathname : ''}_${hash}-${device}.pdf`;
+                } catch (e) {
+                    // fallback for invalid URLs
+                    return `report_${device}.pdf`;
+                }
+            }
+            const fileName = safeFilename(url, formFactor);
 
             // Use outputDir if provided, otherwise use clientEmail as folder
             let clientFolder;
             if (options.outputDir) {
-                clientFolder = path.resolve(options.outputDir, clientEmail);
+                clientFolder = path.resolve(options.outputDir);
             } else {
                 clientFolder = path.resolve(clientEmail);
             }
             if (!fs.existsSync(clientFolder)) {
                 fs.mkdirSync(clientFolder, { recursive: true });
             }
-            
+
             // Set final output path
             const finalOutputPath = path.join(clientFolder, fileName);
 
@@ -680,12 +770,54 @@ export async function generateSeniorAccessibilityReport(options = {}) {
         inputFile = 'report.json',
         outputFile = 'silver-surfers-report.pdf',
         imagePaths = {},
-        clientEmail = 'unknown-client',
+        url,
+        email_address,
         outputDir // <-- new option
     } = options;
 
-    const generator = new ElderlyAccessibilityPDFGenerator({ imagePaths });
+    if (!url || !email_address) {
+        throw new Error('url and email_address are required');
+    }
 
-    // Pass outputDir to generateReport via options
-    return await generator.generateReport(inputFile, outputFile, { ...options, outputDir });
+    // Extract base URL from the provided url, normalize www/non-www
+    function getBaseUrl(inputUrl) {
+        try {
+            const u = new URL(inputUrl.startsWith('http') ? inputUrl : `https://${inputUrl}`);
+            let hostname = u.hostname.replace(/^www\./, '');
+            return `${u.protocol}//${hostname}`;
+        } catch (e) {
+            return inputUrl.replace(/^www\./, '');
+        }
+    }
+    const baseUrl = getBaseUrl(url);
+
+    const generator = new ElderlyAccessibilityPDFGenerator({ imagePaths });
+    const result = await generator.generateReport(inputFile, outputFile, { ...options, outputDir, clientEmail: email_address, baseUrl });
+
+    // Directory logic remains the same
+    function sanitize(str) {
+        return str.replace(/[^a-zA-Z0-9@.-]/g, '_').replace(/https?:\/\//, '').replace(/\./g, '-');
+    }
+    const dirName = `${sanitize(email_address)}_${sanitize(baseUrl)}`;
+    const uniqueDir = path.resolve(__dirname, 'Seal_Reasoning_email_baseurl', dirName);
+    if (!fs.existsSync(uniqueDir)) {
+        fs.mkdirSync(uniqueDir, { recursive: true });
+    }
+    const resultsFile = path.join(uniqueDir, 'results.json');
+    let resultsData = [];
+    if (fs.existsSync(resultsFile)) {
+        try {
+            resultsData = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+        } catch (e) {
+            resultsData = [];
+        }
+    }
+    resultsData.push({
+        Url: result.url,
+        score: result.score,
+        device: options.device || options.formFactor || null,
+        timestamp: new Date().toISOString()
+    });
+    fs.writeFileSync(resultsFile, JSON.stringify(resultsData, null, 2));
+    return result;
 }
