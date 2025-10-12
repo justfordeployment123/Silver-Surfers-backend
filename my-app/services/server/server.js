@@ -122,11 +122,12 @@ export const runFullAuditProcess = async (job) => {
 
             await generateSeniorAccessibilityReport({
               inputFile: jsonReportPath,
-              clientEmail: email,
+              url: link,
+              email_address: email,
               device: device,
               imagePaths,
               outputDir: finalReportFolder,
-              formFactor: device // <-- Add this line to pass the device type
+              formFactor: device
             });
           } else {
             console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);
