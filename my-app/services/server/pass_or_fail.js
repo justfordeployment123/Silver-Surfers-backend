@@ -245,11 +245,9 @@ if (typeof require !== 'undefined' && require.main === module) {
 }
 
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        checkScoreThreshold,
-        calculateWeightedScore,
-        parseUrl
-    };
-}
+// Export for use in other modules (ES Module syntax)
+export {
+    checkScoreThreshold,
+    calculateWeightedScore,
+    parseUrl
+};
