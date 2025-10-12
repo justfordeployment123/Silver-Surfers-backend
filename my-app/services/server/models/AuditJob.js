@@ -151,14 +151,21 @@ auditJobSchema.methods.resetForRetry = function() {
 };
 
 // Static methods
-auditJobSchema.statics.getNextJob = async function() {
-  return this.findOne({
+auditJobSchema.statics.getNextJob = async function(jobType = null) {
+  const query = {
     status: 'queued',
     $or: [
       { retryAfter: { $exists: false } },
       { retryAfter: { $lte: new Date() } }
     ]
-  }).sort({ priority: -1, queuedAt: 1 });
+  };
+  
+  // Filter by job type if specified
+  if (jobType) {
+    query.jobType = jobType;
+  }
+  
+  return this.findOne(query).sort({ priority: -1, queuedAt: 1 });
 };
 
 auditJobSchema.statics.getPendingJobs = function() {

@@ -12,6 +12,9 @@ class PersistentQueue {
       ...options
     };
     
+    // Map queue name to job type
+    this.jobType = queueName === 'FullAudit' ? 'full-audit' : 'quick-scan';
+    
     this.isProcessing = false;
     this.processingJobs = new Set();
     this.cleanupInterval = null;
@@ -104,8 +107,8 @@ class PersistentQueue {
         return;
       }
 
-      // Get next job
-      const job = await AuditJob.getNextJob();
+      // Get next job for this specific queue type
+      const job = await AuditJob.getNextJob(this.jobType);
       
       if (!job) {
         // No jobs available, check again in a bit
