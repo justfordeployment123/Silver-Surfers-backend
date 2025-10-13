@@ -438,6 +438,8 @@ let isBrowserInUse = false; // Global browser lock for full audits only
 // =================================================================
 
 const app = express();
+// Ensure Stripe webhook receives the raw body for signature verification
+app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(cors({ origin: '*' }));
 app.use('/auth', authRoutes);
