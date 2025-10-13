@@ -1024,12 +1024,19 @@ app.post('/subscription/update', authRequired, async (req, res) => {
       return res.status(400).json({ error: 'Price ID not configured for this plan.' });
     }
 
-    // Update subscription in Stripe
+    // Retrieve Stripe subscription to get the subscription item id
+    const stripeSub = await stripe.subscriptions.retrieve(currentSubscription.stripeSubscriptionId);
+    const subscriptionItemId = stripeSub?.items?.data?.[0]?.id;
+    if (!subscriptionItemId) {
+      return res.status(500).json({ error: 'Could not determine subscription item to update.' });
+    }
+
+    // Update subscription in Stripe (use subscription item id, not subscription id)
     const updatedSubscription = await stripe.subscriptions.update(
       currentSubscription.stripeSubscriptionId,
       {
         items: [{
-          id: currentSubscription.stripeSubscriptionId,
+          id: subscriptionItemId,
           price: newPriceId,
         }],
         proration_behavior: 'create_prorations',
