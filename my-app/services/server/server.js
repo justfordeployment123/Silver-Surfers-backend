@@ -499,25 +499,35 @@ async function handleSubscriptionUpdated(subscription) {
   });
   
   if (localSubscription) {
-    const plan = getPlanByPriceId(subscription.items.data[0].price.id);
-    
-    await Subscription.findByIdAndUpdate(localSubscription._id, {
+    const priceId = subscription?.items?.data?.[0]?.price?.id;
+    const plan = priceId ? getPlanByPriceId(priceId) : null;
+
+    const startUnix = Number(subscription?.current_period_start);
+    const endUnix = Number(subscription?.current_period_end);
+    const periodStart = Number.isFinite(startUnix) ? new Date(startUnix * 1000) : undefined;
+    const periodEnd = Number.isFinite(endUnix) ? new Date(endUnix * 1000) : undefined;
+
+    const subUpdate = {
       status: subscription.status,
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       ...(plan && { planId: plan.id, limits: plan.limits })
-    });
+    };
+    if (periodStart) subUpdate.currentPeriodStart = periodStart;
+    if (periodEnd) subUpdate.currentPeriodEnd = periodEnd;
+
+    await Subscription.findByIdAndUpdate(localSubscription._id, subUpdate);
 
     // Update user subscription status
+    const userUpdate = {
+      'subscription.status': subscription.status,
+      'subscription.cancelAtPeriodEnd': subscription.cancel_at_period_end
+    };
+    if (periodStart) userUpdate['subscription.currentPeriodStart'] = periodStart;
+    if (periodEnd) userUpdate['subscription.currentPeriodEnd'] = periodEnd;
+
     await User.findOneAndUpdate(
       { stripeCustomerId: subscription.customer },
-      {
-        'subscription.status': subscription.status,
-        'subscription.currentPeriodStart': new Date(subscription.current_period_start * 1000),
-        'subscription.currentPeriodEnd': new Date(subscription.current_period_end * 1000),
-        'subscription.cancelAtPeriodEnd': subscription.cancel_at_period_end
-      }
+      userUpdate
     );
   }
 }
