@@ -310,26 +310,26 @@ addOverallScoreDisplay(scoreData) {
     
     // Add the score label
     this.doc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
-        .text('Overall Silver Surfers Score', this.margin, this.currentY,
+        .text('Overall SilverSurfers Score', this.margin, this.currentY,
             { width: this.pageWidth, align: 'center' });
     this.currentY += 40;
 
     // Add explanatory text about pass/fail threshold
     if (!isPassing) {
         this.doc.fontSize(12).font('RegularFont').fillColor('#E74C3C')
-            .text('This website did not meet the Silver Surfers accessibility standards (70% minimum required)',
+            .text('This website did not meet the SilverSurfers accessibility standards (70% minimum required)',
                 this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
         this.currentY += 20;
     } else {
         this.doc.fontSize(12).font('RegularFont').fillColor('#27AE60')
-            .text('This website meets Silver Surfers accessibility standards for senior-friendly design',
+            .text('This website meets SilverSurfers accessibility standards for senior-friendly design',
                 this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
         this.currentY += 20;
     }
 }
     addIntroPage(reportData, scoreData) {
         this.doc.rect(0, 0, this.doc.page.width, 120).fill('#34495E');
-        this.doc.fontSize(32).font('BoldFont').fillColor('white').text('Silver Surfers', this.margin, 30, { width: this.pageWidth, align: 'center' });
+        this.doc.fontSize(32).font('BoldFont').fillColor('white').text('SilverSurfers', this.margin, 30, { width: this.pageWidth, align: 'center' });
         this.doc.fontSize(24).font('RegularFont').fillColor('white').text('Accessibility Audit Report', this.margin, 70, { width: this.pageWidth, align: 'center' });
         this.currentY = 150;
         if (reportData.finalUrl) {
@@ -343,7 +343,7 @@ addOverallScoreDisplay(scoreData) {
         this.addBodyText(`Report Generated: ${timestamp}`, 12, '#7F8C8D');
         this.currentY += 10;
         this.addHeading('Our Mission: Digital Inclusion for Older Adults', 18, '#2980B9');
-        this.addBodyText('This comprehensive Silver Surfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.');
+        this.addBodyText('This comprehensive SilverSurfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.');
     }
 
     // New method to show score calculation breakdown
@@ -425,18 +425,18 @@ addOverallScoreDisplay(scoreData) {
         if (!info) return;
         this.drawColorBar(info.category);
         this.addTitle(info.title, 22);
-        this.addScoreBar(auditData.score, 'Silver Surfer Score');
+        this.addScoreBar(auditData.score, 'SilverSurfer Score');
         if (auditData.description) {
             this.doc.rect(this.margin, this.currentY, this.pageWidth, 60).fill('#F8F9FA').stroke('#E9ECEF');
             this.doc.fontSize(12).font('RegularFont').fillColor('#495057').text(auditData.description.replace(/\[(.*?)\]\(.*?\)/g, '$1'), this.margin + 10, this.currentY + 10, { width: this.pageWidth - 20, height: 40 });
             this.currentY += 75;
         }
-        this.addHeading('Why This Matters for Silver Surfers', 14, '#E67E22');
+        this.addHeading('Why This Matters for SilverSurfers', 14, '#E67E22');
         this.addBodyText(info.importance);
-        this.addHeading('Impact on Silver Surfers', 14, '#8E44AD');
+        this.addHeading('Impact on SilverSurfers', 14, '#8E44AD');
         this.addBodyText(info.why);
         if (info.recommendation) {
-            this.addHeading('How to Improve for Silver Surfers', 14, '#27AE60');
+            this.addHeading('How to Improve for SilverSurfers', 14, '#27AE60');
             this.addBodyText(info.recommendation);
         }
         if (auditData.displayValue) {

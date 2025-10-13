@@ -26,7 +26,7 @@ import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite
 import { generateSeniorAccessibilityReport } from '../report_generation/pdf_generator.js';
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
-import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendNewTeamMemberNotification } from './email.js';
+import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendNewTeamMemberNotification, sendMailWithFallback } from './email.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
 import BlogPost from './models/BlogPost.js';
 import FAQ from './models/FAQ.js';
@@ -263,6 +263,61 @@ export const runFullAuditProcess = async (job) => {
 
     const myThreshold = 70;
     const result = checkScoreThreshold(urlScores, myThreshold, { verbose: true });
+
+    // If Pro plan and passed threshold, email the SilverSurfers Seal of Approval
+    try {
+      // Determine user's subscription to check plan
+      let userForSeal = null;
+      if (record && record.user) {
+        userForSeal = await User.findById(record.user);
+      } else if (email) {
+        userForSeal = await User.findOne({ email: email.toLowerCase() });
+      }
+      if (userForSeal && result.pass) {
+        const activeSub = await Subscription.findOne({
+          $or: [ { user: userForSeal._id }, { stripeCustomerId: userForSeal.stripeCustomerId } ],
+          status: { $in: ['active', 'trialing'] }
+        }).sort({ createdAt: -1 });
+
+        const isPro = !!activeSub && (activeSub.planId === 'pro');
+        if (isPro) {
+          try {
+            const sealPath = path.resolve(process.cwd(), 'assets', 'silversurfers-seal.png');
+            const sealExists = await fs.access(sealPath).then(() => true).catch(() => false);
+            if (sealExists) {
+              await sendMailWithFallback({
+                to: email,
+                subject: 'SilverSurfers Seal of Approval - Congratulations!',
+                html: `
+                  <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+                    <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+                      <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg,#059669 0%,#2563eb 100%);color:#fff;">
+                        <h1 style="margin:0;font-size:20px;">SilverSurfers Seal of Approval</h1>
+                      </div>
+                      <div style="padding:24px;color:#111827;">
+                        <p style="margin:0 0 12px 0;line-height:1.6;">Congrats! Your site passed our senior accessibility threshold.</p>
+                        <p style="margin:0 0 16px 0;line-height:1.6;">As a Pro subscriber, you’ve earned the SilverSurfers Seal. You can display this seal on your website.</p>
+                        <p style="margin:0 0 12px 0;line-height:1.6;">Guidelines: Place on pages that meet the accessibility bar; link to your latest report if you like.</p>
+                      </div>
+                    </div>
+                  </div>`,
+                attachments: [
+                  { filename: 'silversurfers-seal.png', path: sealPath, contentType: 'image/png' }
+                ]
+              });
+              console.log('🏅 Sent SilverSurfers Seal of Approval to', email);
+            } else {
+              console.warn('Seal image not found at', sealPath);
+            }
+          } catch (sealErr) {
+            console.error('Failed to send seal of approval:', sealErr?.message || sealErr);
+          }
+        }
+      }
+    } catch (sealWrapErr) {
+      console.error('Seal email check failed:', sealWrapErr?.message || sealWrapErr);
+    }
+
     await signalBackend({
       status: 'completed',
       clientEmail: email,

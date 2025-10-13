@@ -198,7 +198,7 @@ class LiteAccessibilityPDFGenerator {
             { width: radius, align: 'center' });
     this.currentY += (radius * 2) + 15;
     this.doc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
-        .text('Silver Surfers Score (Lite)', this.margin, this.currentY,
+        .text('SilverSurfers Score (Lite)', this.margin, this.currentY,
             { width: this.pageWidth, align: 'center' });
     this.currentY += 30;
 }
@@ -243,7 +243,7 @@ class LiteAccessibilityPDFGenerator {
         // Header with gradient-like effect
         this.doc.rect(0, 0, this.doc.page.width, 100).fill('#2C3E50');
         this.doc.fontSize(24).font('BoldFont').fillColor('white')
-            .text('Upgrade to Premium Silver Surfers', this.margin, 25, { width: this.pageWidth, align: 'center' });
+            .text('Upgrade to Premium SilverSurfers', this.margin, 25, { width: this.pageWidth, align: 'center' });
         this.doc.fontSize(14).font('RegularFont').fillColor('#ECF0F1')
             .text('Unlock the complete senior accessibility analysis', this.margin, 55, { width: this.pageWidth, align: 'center' });
 
@@ -352,7 +352,7 @@ class LiteAccessibilityPDFGenerator {
             // Header
             this.doc.rect(0, 0, this.doc.page.width, 80).fill('#34495E');
             this.doc.fontSize(24).font('BoldFont').fillColor('white')
-                .text('Silver Surfers Report', this.margin, 25, { width: this.pageWidth, align: 'center' });
+                .text('SilverSurfers Report', this.margin, 25, { width: this.pageWidth, align: 'center' });
             this.doc.fontSize(14).font('RegularFont').fillColor('white')
                 .text('Lite Version - Essential Checks', this.margin, 50, { width: this.pageWidth, align: 'center' });
 
