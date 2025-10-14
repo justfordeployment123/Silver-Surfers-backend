@@ -172,9 +172,13 @@ function calculateSeniorFriendlinessScore(report) {
     for (const auditRef of auditRefs) {
         const { id, weight } = auditRef;
         const result = auditResults[id];
-        const score = result ? (result.score ?? 0) : 0;
-        totalWeightedScore += score * weight;
-        totalWeight += weight;
+
+        // MODIFICATION: Check if the audit result exists and is not 'not applicable'
+        if (result && result.score !== null) {
+            const score = result.score ?? 0;
+            totalWeightedScore += score * weight;
+            totalWeight += weight;
+        }
     }
 
     if (totalWeight === 0) {
@@ -184,7 +188,6 @@ function calculateSeniorFriendlinessScore(report) {
     const finalScore = (totalWeightedScore / totalWeight) * 100;
     return { finalScore, totalWeightedScore, totalWeight };
 }
-
 class ElderlyAccessibilityPDFGenerator {
     constructor(options = {}) {
         this.imagePaths = options.imagePaths || {};
@@ -275,10 +278,8 @@ addOverallScoreDisplay(scoreData) {
     const resultText = isPassing ? 'PASS' : 'FAIL';
     const resultColor = isPassing ? '#27AE60' : '#E74C3C';
 
-    let scoreColor = '#E74C3C'; // Red (Poor/Fail)
-    if (score >= 70) {
-        scoreColor = '#27AE60'; // Green (Pass)
-    }
+    const scoreColor = isPassing ? '#27AE60' : '#E74C3C';
+
 
     // Add prominent PASS/FAIL indicator with background box
     const resultBoxHeight = 45;
@@ -346,7 +347,6 @@ addOverallScoreDisplay(scoreData) {
         this.addBodyText('This comprehensive SilverSurfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.');
     }
 
-    // New method to show score calculation breakdown
     addScoreCalculationPage(reportData, scoreData) {
         this.addPage();
         this.addTitle('How Your Score Was Calculated', 24);
@@ -356,17 +356,24 @@ addOverallScoreDisplay(scoreData) {
         const auditRefs = customConfig.categories['senior-friendly']?.auditRefs || [];
         const auditResults = reportData.audits;
 
-        const tableItems = auditRefs.map(ref => {
-            const result = auditResults[ref.id];
-            const score = result ? (result.score ?? 0) : 0;
-            const weightedScore = score * ref.weight;
-            return {
-                name: AUDIT_INFO[ref.id]?.title || ref.id,
-                score: (score * 100).toFixed(0),
-                weight: ref.weight,
-                contribution: weightedScore.toFixed(2),
-            };
-        });
+        // MODIFICATION: Filter out N/A audits before creating the table
+        const tableItems = auditRefs
+            .map(ref => {
+                const result = auditResults[ref.id];
+                // Return null if the audit is not applicable
+                if (!result || result.score === null) {
+                    return null;
+                }
+                const score = result.score ?? 0;
+                const weightedScore = score * ref.weight;
+                return {
+                    name: AUDIT_INFO[ref.id]?.title || ref.id,
+                    score: (score * 100).toFixed(0),
+                    weight: ref.weight,
+                    contribution: weightedScore.toFixed(2),
+                };
+            })
+            .filter(item => item !== null); // This removes the null (N/A) items
 
         const tableConfig = {
             headers: ['Audit Component', 'Score', 'Weight', 'Weighted Contribution'],
@@ -385,20 +392,25 @@ addOverallScoreDisplay(scoreData) {
         this.addHeading(`Final Calculation: ${scoreData.totalWeightedScore.toFixed(2)} (Total Points) / ${scoreData.totalWeight} (Total Weight) = ${scoreData.finalScore.toFixed(0)}`, 14, '#2980B9');
     }
 
-    addSummaryPage(reportData) {
+   addSummaryPage(reportData) {
         this.addPage();
         this.addTitle('Audit Summary by Category', 24);
         const audits = reportData.audits || {};
         const categories = {};
+
         Object.keys(audits).forEach(auditId => {
             const info = AUDIT_INFO[auditId];
-            if (info) {
+            const auditData = audits[auditId];
+
+            // MODIFICATION: Check for score !== null
+            if (info && auditData.score !== null) {
                 if (!categories[info.category]) {
                     categories[info.category] = [];
                 }
                 categories[info.category].push({ id: auditId, info, data: audits[auditId] });
             }
         });
+
         const ESTIMATED_SECTION_HEIGHT = 150;
         Object.keys(categories).forEach(categoryName => {
             if (this.currentY > (this.doc.page.height - this.doc.page.margins.bottom - ESTIMATED_SECTION_HEIGHT)) {
@@ -409,8 +421,7 @@ addOverallScoreDisplay(scoreData) {
             categoryAudits.forEach(audit => {
                 const score = audit.data.score;
                 let scoreText = 'Poor';
-                if (score === null) scoreText = 'N/A';
-                else if (score === 1) scoreText = 'Excellent';
+                if (score === 1) scoreText = 'Excellent';
                 else if (score > 0.8) scoreText = 'Good';
                 else if (score > 0.5) scoreText = 'Needs Work';
                 this.addBodyText(`• ${audit.info.title}: ${scoreText}`, 11);
@@ -420,6 +431,8 @@ addOverallScoreDisplay(scoreData) {
     }
 
     addAuditDetailPage(auditId, auditData) {
+        console.log(`[DEBUG] Processing audit: ${auditId}, Score: ${auditData.score}, Type: ${typeof auditData.score}`);
+
         this.addPage();
         const info = AUDIT_INFO[auditId];
         if (!info) return;
@@ -731,13 +744,19 @@ addOverallScoreDisplay(scoreData) {
                 console.log(`  Processing ${categoryName}...`);
                 for (const auditId of categories[categoryName]) {
                     const auditData = audits[auditId];
+
+                    // MODIFICATION: If the audit is not applicable, skip creating its detail pages
+                    if (auditData.score === null) {
+                        console.log(`    - Skipping N/A audit: ${auditId}`);
+                        continue; // Go to the next audit
+                    }
+
                     console.log(`    - ${auditId}...`);
                     this.addAuditDetailPage(auditId, auditData);
                     this.addImagePage(auditId);
                     this.addTablePages(auditId, auditData);
                 }
             }
-
             this.doc.end();
 
             return new Promise((resolve, reject) => {
