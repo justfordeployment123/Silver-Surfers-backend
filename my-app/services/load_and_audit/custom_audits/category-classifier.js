@@ -19,81 +19,85 @@ dotenv.config({ path: path.join(rootDir, '.env') });
  * @returns {Promise<{category: string, adjustment: number, threshold: {min: number, max: number}, confidence: string, rationale: string, jinaAccessible: boolean}>}
  */
 export async function classifyWebsiteCategory(textFragments) {
-  // 1. Check if the API key is loaded correctly.
-  if (!process.env.JINA_API_KEY) {
-    console.error('❌ Missing JINA_API_KEY. Make sure you have a .env file with the key defined.');
-    // Fallback immediately if the key isn't even present.
-    return getFallbackResponse('Missing API Key');
-  }
-
-  const sampleText = textFragments
-    .slice(0, 5)
-    .join(' ')
-    .substring(0, 500);
-
-  console.log('🔍 Sample text for classification:');
-  console.log(`   "${sampleText.substring(0, 200)}..."\n`);
-
-  const data = JSON.stringify({
-    model: "jina-embeddings-v3",
-    input: [sampleText],
-    labels: [
-      "Healthcare Medical", "Government Legal", "Financial Banking",
-      "E-commerce Retail", "News Media", "Educational",
-      "Entertainment Leisure", "Insurance", "Technology SaaS",
-      "Utilities Services", "Travel Hospitality", "Non-profit Community"
-    ]
-  });
-
-  const options = {
-    hostname: 'api.jina.ai',
-    path: '/v1/classify',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      // Correctly reference the environment variable
-      'Authorization': `Bearer ${process.env.JINA_API_KEY}`,
+    // 1. Check if the API key is loaded correctly.
+    if (!process.env.JINA_API_KEY) {
+        console.error('❌ Missing JINA_API_KEY. Make sure you have a .env file with the key defined.');
+        return getFallbackResponse('Missing API Key');
     }
-  };
 
-  try {
-    const response = await makeApiRequest(options, data);
-    console.log('📊 Jina AI Classification Response:');
-    console.log(JSON.stringify(response, null, 2));
-    console.log('🟢 Jina AI API is accessible and responded successfully.');
+    const sampleText = textFragments
+        .slice(0, 5)
+        .join(' ')
+        .substring(0, 500);
 
-    const predictions = response.data?.[0]?.predictions;
+    console.log('🔍 Sample text for classification:');
+    console.log(`   "${sampleText.substring(0, 200)}..."\n`);
 
-    if (predictions && predictions.length > 0) {
-      console.log('\n🎯 Top Predictions:');
-      predictions.slice(0, 3).forEach((pred, idx) => {
-        const confidence = (pred.score * 100).toFixed(1);
-        console.log(`   ${idx + 1}. ${pred.label} - ${confidence}%`);
-      });
+    const data = JSON.stringify({
+        model: "jina-embeddings-v3",
+        input: [sampleText],
+        labels: [
+            "Healthcare Medical", "Government Legal", "Financial Banking",
+            "E-commerce Retail", "News Media", "Educational",
+            "Entertainment Leisure", "Insurance", "Technology SaaS",
+            "Utilities Services", "Travel Hospitality", "Non-profit Community"
+        ]
+    });
 
-      const detectedCategory = predictions[0].label;
-      const confidenceScore = `${(predictions[0].score * 100).toFixed(1)}%`;
-      console.log(`\n✅ Selected Category: ${detectedCategory} (Confidence: ${confidenceScore})\n`);
+    const options = {
+        hostname: 'api.jina.ai',
+        path: '/v1/classify',
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.JINA_API_KEY}`,
+        }
+    };
 
-      const categoryData = getCategoryAdjustment(detectedCategory);
+    try {
+        const response = await makeApiRequest(options, data);
+        console.log('📊 Jina AI Classification Response:');
+        console.log(JSON.stringify(response, null, 2));
+        console.log('🟢 Jina AI API is accessible and responded successfully.');
 
-      return {
-        category: detectedCategory,
-        adjustment: categoryData.adjustment,
-        threshold: categoryData.threshold,
-        rationale: categoryData.rationale,
-        confidence: confidenceScore,
-        jinaAccessible: true
-      };
-    } else {
-      // The API responded, but there were no predictions.
-      console.warn('⚠️ Jina AI responded but returned no predictions.');
-      return getFallbackResponse('No predictions returned');
+        const predictions = response.data?.[0]?.predictions;
+
+        if (predictions && predictions.length > 0) {
+
+            // ========================= THE FIX IS HERE =========================
+            // Sort the array to ensure the prediction with the highest score is first.
+            predictions.sort((a, b) => b.score - a.score);
+            // =================================================================
+
+            console.log('\n🎯 Top Predictions:');
+            predictions.slice(0, 3).forEach((pred, idx) => {
+                const confidence = (pred.score * 100).toFixed(1);
+                console.log(`   ${idx + 1}. ${pred.label} - ${confidence}%`);
+            });
+
+            // Now, predictions[0] is guaranteed to be the highest-scoring prediction.
+            const detectedCategory = predictions[0].label;
+            const confidenceScore = `${(predictions[0].score * 100).toFixed(1)}%`;
+            console.log(`\n✅ Selected Category: ${detectedCategory} (Confidence: ${confidenceScore})\n`);
+
+            const categoryData = getCategoryAdjustment(detectedCategory);
+
+            return {
+                category: detectedCategory,
+                adjustment: categoryData.adjustment,
+                threshold: categoryData.threshold,
+                rationale: categoryData.rationale,
+                confidence: confidenceScore,
+                jinaAccessible: true
+            };
+        } else {
+            console.warn('⚠️ Jina AI responded but returned no predictions.');
+            return getFallbackResponse('No predictions returned');
+        }
+    } catch (error) {
+        console.error(`❌ Category classification failed: ${error.message}`);
+        return getFallbackResponse(error.message);
     }
-  } catch (error) {
-    console.error(`❌ Category classification failed: ${error.message}`);
-    return getFallbackResponse(error.message);
-  }
 }
 
 /**
@@ -174,3 +178,4 @@ function getCategoryAdjustment(category) {
     rationale: 'Standard readability expectations'
   };
 }
+
