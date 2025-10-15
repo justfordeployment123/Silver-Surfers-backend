@@ -6,6 +6,7 @@
   "main": "my-app/services/server/server.js",
   "scripts": {
     "start": "node my-app/services/server/server.js",
+    "dev": "nodemon my-app/services/server/server.js",
     "postinstall": "node -e \"console.log('Skipping Chromium download; using system Chromium in Docker')\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -25,6 +26,7 @@
     "lighthouse": "^12.8.2",
     "mongoose": "^8.18.1",
     "nodemailer": "^7.0.6",
+    "nodemon": "^3.1.10",
     "pdfkit": "^0.17.2",
     "puppeteer": "^24.20.0",
     "puppeteer-extra": "^3.3.6",

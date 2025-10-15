@@ -1830,6 +1830,141 @@ app.post('/contact', async (req, res) => {
   }
 });
 
+// Admin endpoint to get contact messages
+app.get('/admin/contact', authRequired, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const messages = await ContactMessage.find({}).sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      messages: messages
+    });
+  } catch (err) {
+    console.error('Get contact messages error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch contact messages' });
+  }
+});
+
+// Admin endpoint to get all users
+app.get('/admin/users', authRequired, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { search, role, subscriptionStatus } = req.query;
+    
+    // Build query
+    let query = {};
+    
+    if (search) {
+      query.$or = [
+        { email: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    if (role && role !== 'all') {
+      query.role = role;
+    }
+    
+    let users = await User.find(query).sort({ createdAt: -1 });
+    
+    // Filter by subscription status if needed
+    if (subscriptionStatus && subscriptionStatus !== 'all') {
+      users = users.filter(user => {
+        const sub = user.subscription;
+        if (!sub) return subscriptionStatus === 'none';
+        
+        if (subscriptionStatus === 'active') {
+          return sub.status === 'active' || sub.status === 'trialing';
+        }
+        
+        if (subscriptionStatus === 'inactive') {
+          return sub.status === 'canceled' || sub.status === 'past_due';
+        }
+        
+        if (subscriptionStatus === 'team_member') {
+          return sub.isTeamMember === true;
+        }
+        
+        return true;
+      });
+    }
+    
+    // Populate subscription details
+    const usersWithSubscriptions = users.map(user => {
+      const userObj = user.toObject();
+      if (user.subscription) {
+        userObj.subscription = {
+          ...user.subscription,
+          planName: user.subscription.planId,
+          billingCycle: user.subscription.billingCycle,
+          status: user.subscription.status,
+          scansPerMonth: user.subscription.scansPerMonth,
+          usage: user.subscription.usage?.scansThisMonth || 0,
+          limit: user.subscription.scansPerMonth || 0,
+          periodEnd: user.subscription.periodEnd,
+          isTeamMember: user.subscription.isTeamMember || false
+        };
+      }
+      return userObj;
+    });
+    
+    res.json({
+      success: true,
+      users: usersWithSubscriptions
+    });
+  } catch (err) {
+    console.error('Get users error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Admin endpoint to get specific user details
+app.get('/admin/users/:id', authRequired, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const userObj = user.toObject();
+    if (user.subscription) {
+      userObj.subscription = {
+        ...user.subscription,
+        planName: user.subscription.planId,
+        billingCycle: user.subscription.billingCycle,
+        status: user.subscription.status,
+        scansPerMonth: user.subscription.scansPerMonth,
+        usage: user.subscription.usage?.scansThisMonth || 0,
+        limit: user.subscription.scansPerMonth || 0,
+        periodEnd: user.subscription.periodEnd,
+        isTeamMember: user.subscription.isTeamMember || false
+      };
+    }
+    
+    res.json({
+      success: true,
+      user: userObj
+    });
+  } catch (err) {
+    console.error('Get user error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
 // Debug endpoint to check legal documents
 app.get('/debug/legal', async (req, res) => {
   try {
@@ -1985,6 +2120,26 @@ app.get('/legal/acceptances', authRequired, async (req, res) => {
   } catch (err) {
     console.error('User acceptances fetch error:', err?.message || err);
     res.status(500).json({ error: 'Failed to fetch user acceptances' });
+  }
+});
+
+// Get all legal documents for admin
+app.get('/admin/legal', authRequired, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const documents = await LegalDocument.find({}).sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      documents: documents
+    });
+  } catch (err) {
+    console.error('Get all legal documents error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch legal documents' });
   }
 });
 
