@@ -1026,15 +1026,104 @@ app.post('/create-portal-session', authRequired, async (req, res) => {
     }
 
     // Create Stripe Customer Portal session
-    const session = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
-      return_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription`,
-    });
+    try {
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripeCustomerId,
+        return_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription`,
+      });
 
-    return res.json({ url: session.url });
+      return res.json({ url: session.url });
+    } catch (portalError) {
+      console.error('Stripe Customer Portal error:', portalError.message);
+      
+      // If Customer Portal is not configured, provide helpful error message
+      if (portalError.type === 'StripeInvalidRequestError' && 
+          portalError.message.includes('No configuration provided')) {
+        return res.status(400).json({ 
+          error: 'Customer Portal not configured. Please contact support or use the direct upgrade option.',
+          details: 'Stripe Customer Portal needs to be configured in the Stripe dashboard.'
+        });
+      }
+      
+      throw portalError;
+    }
   } catch (err) {
     console.error('Create portal session error:', err);
     return res.status(500).json({ error: 'Failed to create portal session.' });
+  }
+});
+
+// Direct subscription upgrade endpoint (fallback when Customer Portal is not available)
+app.post('/subscription/upgrade', authRequired, async (req, res) => {
+  try {
+    const { planId, billingCycle = 'monthly' } = req.body;
+    const userId = req.user.id;
+
+    if (!planId) {
+      return res.status(400).json({ error: 'Plan ID is required.' });
+    }
+
+    const plan = getPlanById(planId);
+    if (!plan) {
+      return res.status(400).json({ error: 'Invalid plan ID.' });
+    }
+
+    // Get current subscription
+    const currentSubscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (!currentSubscription) {
+      return res.status(404).json({ error: 'No active subscription found.' });
+    }
+
+    const newPriceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
+    if (!newPriceId) {
+      return res.status(400).json({ error: 'Price ID not configured for this plan.' });
+    }
+
+    // Retrieve Stripe subscription to get the subscription item id
+    const stripeSub = await stripe.subscriptions.retrieve(currentSubscription.stripeSubscriptionId);
+    const subscriptionItemId = stripeSub?.items?.data?.[0]?.id;
+    if (!subscriptionItemId) {
+      return res.status(500).json({ error: 'Could not determine subscription item to update.' });
+    }
+
+    // Update subscription in Stripe (use subscription item id, not subscription id)
+    const updatedSubscription = await stripe.subscriptions.update(
+      currentSubscription.stripeSubscriptionId,
+      {
+        items: [{
+          id: subscriptionItemId,
+          price: newPriceId,
+        }],
+        proration_behavior: 'create_prorations',
+        metadata: {
+          planId: planId,
+          billingCycle: billingCycle,
+          directUpgrade: 'true'
+        }
+      }
+    );
+
+    // Update local subscription record
+    await Subscription.findByIdAndUpdate(currentSubscription._id, {
+      planId: planId,
+      priceId: newPriceId,
+      limits: plan.limits,
+      status: updatedSubscription.status
+    });
+
+    console.log(`User ${userId} upgraded subscription to plan ${planId}`);
+
+    return res.json({ 
+      message: 'Subscription upgraded successfully.',
+      subscription: updatedSubscription
+    });
+  } catch (err) {
+    console.error('Direct subscription upgrade error:', err);
+    return res.status(500).json({ error: 'Failed to upgrade subscription.' });
   }
 });
 
