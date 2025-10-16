@@ -418,26 +418,8 @@ export const runQuickScanProcess = async (job) => {
           console.error('Quick scan cleanup error:', cleanupErr?.message || cleanupErr);
         }
 
-        // If quick scan completed successfully and we have a user, increment usage counter
-        if (userId) {
-          try {
-            await Subscription.findOneAndUpdate(
-              { user: userId, status: { $in: ['active', 'trialing'] } },
-              { 
-                $inc: { 
-                  'usage.totalScans': 1
-                }
-              }
-            );
-            
-            // Also update user's total scans (monthly count was already incremented when request was made)
-            await User.findByIdAndUpdate(userId, {
-              $inc: { 'subscription.usage.totalScans': 1 }
-            });
-          } catch (usageError) {
-            console.error('Failed to update usage counter for quick scan:', usageError);
-          }
-        }
+        // Quick scan is FREE - no usage tracking needed
+        console.log(`🆓 FREE Quick scan completed for ${email} - no usage tracking`);
 
         // Signal backend that quick scan is completed
         await signalBackend({
@@ -458,21 +440,8 @@ export const runQuickScanProcess = async (job) => {
     } catch (error) {
         console.error(`A critical error occurred during the quick scan for ${email}:`, error.message);
         
-        // Decrement usage counter since quick scan failed
-        if (userId) {
-          try {
-            await Subscription.findOneAndUpdate(
-              { user: userId, status: { $in: ['active', 'trialing'] } },
-              { 
-                $inc: { 
-                  'usage.scansThisMonth': -1
-                }
-              }
-            );
-          } catch (usageError) {
-            console.error('Failed to decrement usage counter for failed quick scan:', usageError);
-          }
-        }
+        // Quick scan is FREE - no usage tracking needed even on failure
+        console.log(`🆓 FREE Quick scan failed for ${email} - no usage tracking`);
         
         throw error;
     } finally {
@@ -821,32 +790,14 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   }
 });
 
-app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) => {
+app.post('/quick-audit', async (req, res) => {
   const { email, url } = req.body || {};
   if (!email || !url) {
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
 
-  // Check subscription usage limits and increment immediately to prevent race conditions
-  const subscription = req.subscription;
-  const currentUsage = subscription.usage?.scansThisMonth || 0;
-  const monthlyLimit = subscription.limits?.scansPerMonth;
-  
-  if (monthlyLimit !== -1 && currentUsage >= monthlyLimit) {
-    return res.status(403).json({ 
-      error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
-    });
-  }
-
-  // Increment usage counter immediately to prevent race conditions
-  try {
-    await Subscription.findByIdAndUpdate(subscription._id, {
-      $inc: { 'usage.scansThisMonth': 1 }
-    });
-  } catch (usageError) {
-    console.error('Failed to increment usage counter:', usageError);
-    return res.status(500).json({ error: 'Failed to process usage limit' });
-  }
+  // Quick scan is now FREE - no authentication or subscription limits required
+  console.log(`🆓 FREE Quick scan requested for ${email} on ${url}`);
 
   // Precheck and normalize URL
   const { candidateUrls } = buildCandidateUrls(url);
@@ -862,20 +813,20 @@ app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   
   try {
-    // Add job to persistent queue
+    // Add job to persistent queue (FREE - no subscription required)
     const job = await quickScanQueue.addJob({
       email,
       url: normalizedUrl,
-      userId: subscription.user,
+      userId: null, // No user required for free scans
       taskId,
       jobType: 'quick-scan',
-      subscriptionId: subscription._id,
+      subscriptionId: null, // No subscription required
       priority: 2 // Higher priority for quick scans
     });
 
-    // Create AnalysisRecord for backward compatibility
+    // Create AnalysisRecord for tracking (no user association needed)
     await AnalysisRecord.create({
-      user: subscription.user,
+      user: null, // No user required for free scans
       email,
       url: normalizedUrl,
       taskId,
@@ -884,18 +835,14 @@ app.post('/quick-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     });
 
     res.status(202).json({ 
-      message: 'Quick audit request has been queued.',
+      message: '🆓 FREE Quick audit request has been queued. You will receive results via email shortly!',
       taskId: job.taskId,
       jobId: job._id
     });
   } catch (error) {
     console.error('Failed to queue quick audit:', error);
     
-    // Rollback usage increment on failure
-    await Subscription.findByIdAndUpdate(subscription._id, {
-      $inc: { 'usage.scansThisMonth': -1 }
-    });
-    
+    // No rollback needed for free scans
     res.status(500).json({ error: 'Failed to queue audit request' });
   }
 });
