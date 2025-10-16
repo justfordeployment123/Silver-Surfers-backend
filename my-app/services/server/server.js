@@ -562,6 +562,13 @@ async function handleSubscriptionUpdated(subscription) {
     const periodStart = Number.isFinite(startUnix) ? new Date(startUnix * 1000) : undefined;
     const periodEnd = Number.isFinite(endUnix) ? new Date(endUnix * 1000) : undefined;
 
+    // Check if this is a new billing period (usage should be reset)
+    let shouldResetUsage = false;
+    if (periodStart && localSubscription.currentPeriodStart) {
+      // If the new period start is different from the current one, it's a new billing period
+      shouldResetUsage = periodStart.getTime() !== localSubscription.currentPeriodStart.getTime();
+    }
+
     const subUpdate = {
       status: subscription.status,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -569,6 +576,12 @@ async function handleSubscriptionUpdated(subscription) {
     };
     if (periodStart) subUpdate.currentPeriodStart = periodStart;
     if (periodEnd) subUpdate.currentPeriodEnd = periodEnd;
+
+    // Reset monthly usage if it's a new billing period
+    if (shouldResetUsage) {
+      subUpdate['usage.scansThisMonth'] = 0;
+      console.log(`🔄 Resetting monthly usage for subscription ${subscription.id} - new billing period started`);
+    }
 
     await Subscription.findByIdAndUpdate(localSubscription._id, subUpdate);
 
@@ -579,6 +592,7 @@ async function handleSubscriptionUpdated(subscription) {
     };
     if (periodStart) userUpdate['subscription.currentPeriodStart'] = periodStart;
     if (periodEnd) userUpdate['subscription.currentPeriodEnd'] = periodEnd;
+    if (shouldResetUsage) userUpdate['subscription.usage.scansThisMonth'] = 0;
 
     await User.findOneAndUpdate(
       { stripeCustomerId: subscription.customer },
@@ -1049,14 +1063,46 @@ app.get('/subscription', authRequired, async (req, res) => {
   }
 });
 
-// Update subscription (upgrade/downgrade)
-app.post('/subscription/update', authRequired, async (req, res) => {
+// Create Stripe Customer Portal session for subscription management
+app.post('/create-portal-session', authRequired, async (req, res) => {
   try {
-    const { planId, billingCycle = 'monthly' } = req.body;
     const userId = req.user.id;
 
-    if (!planId) {
-      return res.status(400).json({ error: 'Plan ID is required.' });
+    // Get user and their Stripe customer ID
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    if (!user.stripeCustomerId) {
+      return res.status(400).json({ error: 'No Stripe customer found. Please create a subscription first.' });
+    }
+
+    // Create Stripe Customer Portal session
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription`,
+    });
+
+    return res.json({ url: session.url });
+  } catch (err) {
+    console.error('Create portal session error:', err);
+    return res.status(500).json({ error: 'Failed to create portal session.' });
+  }
+});
+
+// Admin-only endpoint to update subscription (for support cases)
+app.post('/admin/subscription/update', authRequired, async (req, res) => {
+  try {
+    // Only allow admin users
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required.' });
+    }
+
+    const { userId, planId, billingCycle = 'monthly' } = req.body;
+
+    if (!userId || !planId) {
+      return res.status(400).json({ error: 'User ID and Plan ID are required.' });
     }
 
     const plan = getPlanById(planId);
@@ -1071,7 +1117,7 @@ app.post('/subscription/update', authRequired, async (req, res) => {
     });
 
     if (!currentSubscription) {
-      return res.status(404).json({ error: 'No active subscription found.' });
+      return res.status(404).json({ error: 'No active subscription found for user.' });
     }
 
     const newPriceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
@@ -1097,7 +1143,8 @@ app.post('/subscription/update', authRequired, async (req, res) => {
         proration_behavior: 'create_prorations',
         metadata: {
           planId: planId,
-          billingCycle: billingCycle
+          billingCycle: billingCycle,
+          adminUpdated: 'true'
         }
       }
     );
@@ -1110,12 +1157,14 @@ app.post('/subscription/update', authRequired, async (req, res) => {
       status: updatedSubscription.status
     });
 
+    console.log(`Admin updated subscription for user ${userId} to plan ${planId}`);
+
     return res.json({ 
-      message: 'Subscription updated successfully.',
+      message: 'Subscription updated successfully by admin.',
       subscription: updatedSubscription
     });
   } catch (err) {
-    console.error('Update subscription error:', err);
+    console.error('Admin update subscription error:', err);
     return res.status(500).json({ error: 'Failed to update subscription.' });
   }
 });
@@ -1962,6 +2011,45 @@ app.get('/admin/users/:id', authRequired, async (req, res) => {
   } catch (err) {
     console.error('Get user error:', err?.message || err);
     res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// Admin endpoint to reset user's monthly usage (emergency/admin use)
+app.post('/admin/users/:id/reset-usage', authRequired, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const userId = req.params.id;
+    
+    // Reset usage in Subscription collection
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+    
+    if (subscription) {
+      await Subscription.findByIdAndUpdate(subscription._id, {
+        $set: { 'usage.scansThisMonth': 0 }
+      });
+    }
+
+    // Reset usage in User collection
+    await User.findByIdAndUpdate(userId, {
+      $set: { 'subscription.usage.scansThisMonth': 0 }
+    });
+
+    console.log(`Admin reset monthly usage for user ${userId}`);
+    
+    res.json({
+      success: true,
+      message: 'Monthly usage reset successfully'
+    });
+  } catch (err) {
+    console.error('Reset usage error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to reset usage' });
   }
 });
 
