@@ -538,6 +538,74 @@ export async function sendTeamMemberRemovedEmail(to, ownerEmail, ownerName, plan
   });
 }
 
+export async function sendTeamMemberLeftNotification(ownerEmail, memberEmail, memberName, planName) {
+  const brandPrimary = '#2563eb';
+  const brandAccent = '#059669';
+  
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:#111827;color:#fff;">
+          <h1 style="margin:0;font-size:20px;">Team Member Left</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">${memberName || memberEmail} left your team</h2>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            <strong>${memberName || memberEmail}</strong> has left your <strong>${planName}</strong> subscription team.
+          </p>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            They will no longer have access to team features and will need to create their own subscription if they want to continue using SilverSurfers services.
+          </p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            You can invite new team members anytime from your subscription dashboard.
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to: ownerEmail, 
+    subject: 'Team Member Left - SilverSurfers', 
+    html 
+  });
+}
+
+export async function sendTeamMemberLeftConfirmation(memberEmail, ownerEmail, ownerName, planName) {
+  const brandPrimary = '#2563eb';
+  const brandAccent = '#059669';
+  
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:#111827;color:#fff;">
+          <h1 style="margin:0;font-size:20px;">You Left the Team</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">Team Membership Ended</h2>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            You have successfully left the SilverSurfers team managed by <strong>${ownerName || ownerEmail}</strong> 
+            for their <strong>${planName}</strong> subscription.
+          </p>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            You no longer have access to team features. If you'd like to continue using SilverSurfers services, 
+            you can create your own account and subscription.
+          </p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            Thank you for using SilverSurfers!
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to: memberEmail, 
+    subject: 'You Left the Team - SilverSurfers', 
+    html 
+  });
+}
+
 export async function sendNewTeamMemberNotification(ownerEmail, memberEmail, memberName, planName) {
   const brandPrimary = '#2563eb';
   const brandAccent = '#059669';

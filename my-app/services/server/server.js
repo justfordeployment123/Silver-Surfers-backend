@@ -26,7 +26,7 @@ import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite
 import { generateSeniorAccessibilityReport } from '../report_generation/pdf_generator.js';
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
-import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendNewTeamMemberNotification, sendMailWithFallback } from './email.js';
+import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback } from './email.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
 import BlogPost from './models/BlogPost.js';
 import FAQ from './models/FAQ.js';
@@ -976,15 +976,8 @@ app.post('/quick-audit', async (req, res) => {
       priority: 2 // Higher priority for quick scans
     });
 
-    // Create AnalysisRecord for tracking (no user association needed)
-    await AnalysisRecord.create({
-      user: null, // No user required for free scans
-      email,
-      url: normalizedUrl,
-      taskId,
-      status: 'queued',
-      emailStatus: 'pending',
-    });
+    // Quick scans are now FREE and don't store results in database
+    // Only create AuditJob for queue processing, no AnalysisRecord
 
     res.status(202).json({ 
       message: '🆓 FREE Quick audit request has been queued. You will receive results via email shortly!',
@@ -1631,14 +1624,28 @@ app.post('/subscription/team/leave', authRequired, async (req, res) => {
 
     await subscription.save();
 
-    // Send notification to subscription owner
+    // Send notification to subscription owner and confirmation to member who left
     try {
       const owner = await User.findById(subscription.user);
       if (owner && owner.email) {
-        await sendTeamMemberRemovedEmail(owner.email, userEmail, subscription.plan?.name || 'Unknown Plan');
+        // Send notification to owner that member left
+        await sendTeamMemberLeftNotification(
+          owner.email, 
+          userEmail, 
+          member.name || userEmail, 
+          subscription.plan?.name || 'Unknown Plan'
+        );
       }
+      
+      // Send confirmation to member who left
+      await sendTeamMemberLeftConfirmation(
+        userEmail,
+        owner?.email || 'Unknown',
+        owner?.email || 'Unknown',
+        subscription.plan?.name || 'Unknown Plan'
+      );
     } catch (emailError) {
-      console.error('Failed to send team member removal notification:', emailError);
+      console.error('Failed to send team member leave notifications:', emailError);
     }
 
     res.json({ message: 'Successfully left the team.' });
