@@ -639,3 +639,99 @@ export async function sendNewTeamMemberNotification(ownerEmail, memberEmail, mem
     html 
   });
 }
+
+// Subscription cancellation notification email
+export async function sendSubscriptionCancellationEmail(to, planName, cancelAtPeriodEnd = true, currentPeriodEnd = null) {
+  const brandPrimary = '#2563eb';
+  const brandDanger = '#ef4444';
+  const brandAccent = '#059669';
+  
+  const formatDate = (date) => {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg, ${brandDanger} 0%, #dc2626 100%);color:#fff;">
+          <h1 style="margin:0;font-size:20px;">Subscription Cancelled</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">Your ${planName} subscription has been cancelled</h2>
+          ${cancelAtPeriodEnd ? `
+            <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+              Your subscription will remain active until <strong>${formatDate(currentPeriodEnd)}</strong>. 
+              You can continue using SilverSurfers services until then.
+            </p>
+            <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+              After this date, your subscription will end and you'll need to resubscribe to continue using our services.
+            </p>
+          ` : `
+            <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+              Your subscription has been cancelled immediately. You no longer have access to SilverSurfers premium services.
+            </p>
+          `}
+          <div style="margin:20px 0;padding:16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
+            <p style="margin:0;color:#dc2626;font-size:14px;">
+              <strong>Need help?</strong> If you have any questions or need assistance, please contact our support team.
+            </p>
+          </div>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            You can reactivate your subscription anytime from your account dashboard.
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to, 
+    subject: 'Subscription Cancelled - SilverSurfers', 
+    html 
+  });
+}
+
+// Subscription reinstatement notification email
+export async function sendSubscriptionReinstatementEmail(to, planName) {
+  const brandPrimary = '#2563eb';
+  const brandSuccess = '#059669';
+  const brandAccent = '#10b981';
+  
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg, ${brandSuccess} 0%, ${brandAccent} 100%);color:#fff;">
+          <h1 style="margin:0;font-size:20px;">Subscription Reactivated</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">Welcome back to SilverSurfers!</h2>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            Great news! Your <strong>${planName}</strong> subscription has been successfully reactivated.
+          </p>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            You now have full access to all SilverSurfers premium features and can continue creating accessibility reports for your websites.
+          </p>
+          <div style="margin:20px 0;padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+            <p style="margin:0;color:#059669;font-size:14px;">
+              <strong>Thank you for choosing SilverSurfers!</strong> We're glad to have you back.
+            </p>
+          </div>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            You can manage your subscription settings anytime from your account dashboard.
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to, 
+    subject: 'Subscription Reactivated - SilverSurfers', 
+    html 
+  });
+}

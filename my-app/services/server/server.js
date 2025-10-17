@@ -26,7 +26,7 @@ import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite
 import { generateSeniorAccessibilityReport } from '../report_generation/pdf_generator.js';
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
-import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback } from './email.js';
+import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback, sendSubscriptionCancellationEmail, sendSubscriptionReinstatementEmail } from './email.js';
 import { SUBSCRIPTION_PLANS, getPlanById, getPlanByPriceId } from './subscriptionPlans.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
 import BlogPost from './models/BlogPost.js';
@@ -463,10 +463,56 @@ let isBrowserInUse = false; // Global browser lock for full audits only
 // =================================================================
 
 const app = express();
+
+// CORS configuration - only allow requests from FRONTEND_URL and Stripe webhooks
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+const allowedOrigins = [
+  frontendUrl,
+  // Add any additional allowed origins if needed
+  ...(process.env.ADDITIONAL_ALLOWED_ORIGINS ? process.env.ADDITIONAL_ALLOWED_ORIGINS.split(',') : [])
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow Stripe webhooks (they don't send origin header)
+    if (origin === undefined) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    console.warn(`CORS: Blocked request from unauthorized origin: ${origin}`);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true, // Allow cookies and authorization headers
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
+
+// Security headers middleware
+app.use((req, res, next) => {
+  // Set security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Log security events
+  if (req.headers.origin && !allowedOrigins.includes(req.headers.origin)) {
+    console.warn(`Security: Unauthorized origin attempt: ${req.headers.origin} from IP: ${req.ip}`);
+  }
+  
+  next();
+});
+
 // Ensure Stripe webhook receives the raw body for signature verification
 app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
-app.use(cors({ origin: '*' }));
+app.use(cors(corsOptions));
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
 
@@ -475,10 +521,20 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
   const sig = req.headers['stripe-signature'];
   let event;
 
+  // Log webhook attempts for security monitoring
+  console.log(`Stripe webhook received from IP: ${req.ip}`);
+
   try {
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      console.error('STRIPE_WEBHOOK_SECRET not configured');
+      return res.status(500).send('Webhook secret not configured');
+    }
+    
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    console.log(`Webhook signature verified for event: ${event.type}`);
   } catch (err) {
     console.error('Webhook signature verification failed:', err.message);
+    console.error('Webhook IP:', req.ip);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -539,6 +595,9 @@ async function handleSubscriptionUpdated(subscription) {
       shouldResetUsage = periodStart.getTime() !== localSubscription.currentPeriodStart.getTime();
     }
 
+    // Check if subscription was reactivated (cancel_at_period_end changed from true to false)
+    const wasReactivated = localSubscription.cancelAtPeriodEnd === true && subscription.cancel_at_period_end === false;
+
     const subUpdate = {
       status: subscription.status,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -564,10 +623,23 @@ async function handleSubscriptionUpdated(subscription) {
     if (periodEnd) userUpdate['subscription.currentPeriodEnd'] = periodEnd;
     if (shouldResetUsage) userUpdate['subscription.usage.scansThisMonth'] = 0;
 
-    await User.findOneAndUpdate(
+    const updatedUser = await User.findOneAndUpdate(
       { stripeCustomerId: subscription.customer },
-      userUpdate
+      userUpdate,
+      { new: true }
     );
+
+    // Send reinstatement email if subscription was reactivated
+    if (wasReactivated && updatedUser) {
+      try {
+        const planName = plan?.name || 'Unknown Plan';
+        await sendSubscriptionReinstatementEmail(updatedUser.email, planName);
+        console.log(`📧 Subscription reinstatement email sent to ${updatedUser.email}`);
+      } catch (emailErr) {
+        console.error('Failed to send reinstatement email:', emailErr);
+        // Don't fail the webhook if email fails
+      }
+    }
   }
 }
 
@@ -1363,6 +1435,7 @@ app.post('/subscription/cancel', authRequired, async (req, res) => {
   try {
     const { cancelAtPeriodEnd = true } = req.body;
     const userId = req.user.id;
+    const userEmail = req.user.email;
 
     const subscription = await Subscription.findOne({ 
       user: userId, 
@@ -1372,6 +1445,10 @@ app.post('/subscription/cancel', authRequired, async (req, res) => {
     if (!subscription) {
       return res.status(404).json({ error: 'No active subscription found.' });
     }
+
+    // Get plan information for email
+    const plan = getPlanById(subscription.planId);
+    const planName = plan?.name || 'Unknown Plan';
 
     if (cancelAtPeriodEnd) {
       // Cancel at period end
@@ -1383,6 +1460,20 @@ app.post('/subscription/cancel', authRequired, async (req, res) => {
         cancelAtPeriodEnd: true
       });
 
+      // Send cancellation email
+      try {
+        await sendSubscriptionCancellationEmail(
+          userEmail, 
+          planName, 
+          true, 
+          subscription.currentPeriodEnd
+        );
+        console.log(`📧 Subscription cancellation email sent to ${userEmail}`);
+      } catch (emailErr) {
+        console.error('Failed to send cancellation email:', emailErr);
+        // Don't fail the request if email fails
+      }
+
       return res.json({ message: 'Subscription will be canceled at the end of the current period.' });
     } else {
       // Cancel immediately
@@ -1392,6 +1483,19 @@ app.post('/subscription/cancel', authRequired, async (req, res) => {
         status: 'canceled',
         canceledAt: new Date()
       });
+
+      // Send immediate cancellation email
+      try {
+        await sendSubscriptionCancellationEmail(
+          userEmail, 
+          planName, 
+          false
+        );
+        console.log(`📧 Immediate subscription cancellation email sent to ${userEmail}`);
+      } catch (emailErr) {
+        console.error('Failed to send immediate cancellation email:', emailErr);
+        // Don't fail the request if email fails
+      }
 
       return res.json({ message: 'Subscription canceled immediately.' });
     }
@@ -2497,6 +2601,51 @@ app.post('/admin/users/:id/reset-usage', authRequired, async (req, res) => {
   } catch (err) {
     console.error('Reset usage error:', err?.message || err);
     res.status(500).json({ error: 'Failed to reset usage' });
+  }
+});
+
+// Admin endpoint to update user role
+app.put('/admin/users/:id/role', authRequired, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const userId = req.params.id;
+    const { role } = req.body;
+
+    // Validate role
+    if (!['user', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be "user" or "admin"' });
+    }
+
+    // Prevent admin from demoting themselves
+    if (req.user.id === userId && role !== 'admin') {
+      return res.status(400).json({ error: 'You cannot demote yourself from admin role' });
+    }
+
+    // Update user role
+    const updatedUser = await User.findByIdAndUpdate(
+      userId, 
+      { role }, 
+      { new: true, select: '-password' }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    console.log(`Admin updated user ${userId} role to ${role}`);
+    
+    res.json({ 
+      success: true, 
+      message: `User role updated to ${role}`,
+      user: updatedUser 
+    });
+  } catch (error) {
+    console.error('Update role error:', error);
+    res.status(500).json({ error: 'Failed to update user role' });
   }
 });
 
