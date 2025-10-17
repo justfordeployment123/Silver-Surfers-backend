@@ -1893,25 +1893,56 @@ app.post('/subscription/team/accept', authRequired, async (req, res) => {
     }
 
     // Check if user is already a member of another team
+    console.log(`🔍 Checking team membership for user: ${user.email} (ID: ${userId})`);
+    
+    // Debug: Check ALL team memberships for this user
+    const allTeamMemberships = await Subscription.find({
+      'teamMembers.email': user.email.toLowerCase()
+    });
+    
+    console.log(`🔍 ALL team memberships for ${user.email}:`, allTeamMemberships.map(sub => ({
+      subscriptionId: sub._id,
+      ownerId: sub.user,
+      planId: sub.planId,
+      teamMembers: sub.teamMembers.map(m => ({ email: m.email, status: m.status }))
+    })));
+    
     const existingTeamMembership = await Subscription.findOne({
       'teamMembers.email': user.email.toLowerCase(),
       'teamMembers.status': 'active',
       user: { $ne: userId } // Not their own subscription
     });
 
+    console.log(`🔍 Existing ACTIVE team membership found:`, existingTeamMembership ? {
+      subscriptionId: existingTeamMembership._id,
+      ownerId: existingTeamMembership.user,
+      planId: existingTeamMembership.planId,
+      teamMembers: existingTeamMembership.teamMembers.map(m => ({ email: m.email, status: m.status }))
+    } : 'None');
+
     if (existingTeamMembership) {
       const existingTeamOwner = await User.findById(existingTeamMembership.user);
       const existingTeamPlan = getPlanById(existingTeamMembership.planId);
+      console.log(`❌ Blocking team acceptance - user is active member of ${existingTeamOwner?.email}'s ${existingTeamPlan?.name}`);
       return res.status(400).json({ 
         error: `You are already an active member of ${existingTeamOwner?.email || 'another team'}'s ${existingTeamPlan?.name || 'team'}. You cannot join multiple teams.` 
       });
     }
 
     // Find subscription with this user as pending team member
+    console.log(`🔍 Looking for pending invitation for: ${user.email}`);
+    
     const subscription = await Subscription.findOne({
       'teamMembers.email': user.email.toLowerCase(),
       'teamMembers.status': 'pending'
     });
+
+    console.log(`🔍 Pending invitation found:`, subscription ? {
+      subscriptionId: subscription._id,
+      ownerId: subscription.user,
+      planId: subscription.planId,
+      teamMembers: subscription.teamMembers.map(m => ({ email: m.email, status: m.status }))
+    } : 'None');
 
     if (!subscription) {
       return res.status(404).json({ error: 'No pending invitation found.' });
