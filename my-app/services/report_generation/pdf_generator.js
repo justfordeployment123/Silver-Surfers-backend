@@ -430,33 +430,70 @@ addOverallScoreDisplay(scoreData) {
         });
     }
 
-    addAuditDetailPage(auditId, auditData) {
-        console.log(`[DEBUG] Processing audit: ${auditId}, Score: ${auditData.score}, Type: ${typeof auditData.score}`);
+   addAuditDetailPage(auditId, auditData) {
+    console.log(`[DEBUG] Processing audit: ${auditId}, Score: ${auditData.score}, Type: ${typeof auditData.score}`);
 
-        this.addPage();
-        const info = AUDIT_INFO[auditId];
-        if (!info) return;
-        this.drawColorBar(info.category);
-        this.addTitle(info.title, 22);
-        this.addScoreBar(auditData.score, 'SilverSurfer Score');
-        if (auditData.description) {
-            this.doc.rect(this.margin, this.currentY, this.pageWidth, 60).fill('#F8F9FA').stroke('#E9ECEF');
-            this.doc.fontSize(12).font('RegularFont').fillColor('#495057').text(auditData.description.replace(/\[(.*?)\]\(.*?\)/g, '$1'), this.margin + 10, this.currentY + 10, { width: this.pageWidth - 20, height: 40 });
-            this.currentY += 75;
+    this.addPage();
+    const info = AUDIT_INFO[auditId];
+    if (!info) return;
+    this.drawColorBar(info.category);
+    this.addTitle(info.title, 22);
+    this.addScoreBar(auditData.score, 'SilverSurfer Score');
+    
+    if (auditData.description) {
+        const description = auditData.description;
+
+        // 1. Produce the "final text" by stripping ALL markdown links.
+        let cleanText = description.replace(/\[(.*?)\]\(.*?\)/g, '$1').trim();
+
+        // --- NEW LOGIC AS REQUESTED STARTS HERE ---
+        // Goal: Add a period if the text doesn't already end with one.
+        // This normalizes the text for the sentence removal logic below.
+        if (cleanText.length > 0 && !cleanText.endsWith('.')) {
+            cleanText += '.';
         }
-        this.addHeading('Why This Matters for SilverSurfers', 14, '#E67E22');
-        this.addBodyText(info.importance);
-        this.addHeading('Impact on SilverSurfers', 14, '#8E44AD');
-        this.addBodyText(info.why);
-        if (info.recommendation) {
-            this.addHeading('How to Improve for SilverSurfers', 14, '#27AE60');
-            this.addBodyText(info.recommendation);
+        // --- NEW LOGIC AS REQUESTED ENDS HERE ---
+
+        // 2. Apply the logic to find the last two periods and remove the final sentence.
+        const lastDotIndex = cleanText.lastIndexOf('.');
+
+        if (lastDotIndex > -1) {
+            const secondToLastDotIndex = cleanText.substring(0, lastDotIndex).lastIndexOf('.');
+
+            if (secondToLastDotIndex > -1) {
+                // Cut the string off after the second-to-last period.
+                cleanText = cleanText.substring(0, secondToLastDotIndex + 1);
+            }
         }
-        if (auditData.displayValue) {
-            this.addHeading('Detailed Results', 14, '#2980B9');
-            this.addBodyText(auditData.displayValue);
+
+        // The rest of the logic uses the correctly modified `cleanText`.
+        const textWidth = this.pageWidth - 20;
+        // Check if cleanText is not empty before calculating height
+        const textHeight = cleanText.length > 0 ? this.doc.heightOfString(cleanText, { width: textWidth }) : 0;
+        
+        const padding = 20;
+        const boxHeight = textHeight + padding;
+
+        if (cleanText.length > 0) {
+            this.doc.rect(this.margin, this.currentY, this.pageWidth, boxHeight).fill('#F8F9FA').stroke('#E9ECEF');
+            this.doc.fontSize(12).font('RegularFont').fillColor('#495057').text(cleanText, this.margin + 10, this.currentY + 10, { width: textWidth });
+            this.currentY += boxHeight + 15;
         }
     }
+
+    this.addHeading('Why This Matters for SilverSurfers', 14, '#E67E22');
+    this.addBodyText(info.importance);
+    this.addHeading('Impact on SilverSurfers', 14, '#8E44AD');
+    this.addBodyText(info.why);
+    if (info.recommendation) {
+        this.addHeading('How to Improve for SilverSurfers', 14, '#27AE60');
+        this.addBodyText(info.recommendation);
+    }
+    if (auditData.displayValue) {
+        this.addHeading('Detailed Results', 14, '#2980B9');
+        this.addBodyText(auditData.displayValue);
+    }
+}
     
     addImagePage(auditId) {
         const imageFile = this.imagePaths[auditId];
