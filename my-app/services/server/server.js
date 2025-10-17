@@ -1553,18 +1553,31 @@ app.post('/subscription/team/add', authRequired, async (req, res) => {
         });
       }
 
-      // Check if they are already a member of another team
-      const existingTeamMembership = await Subscription.findOne({
+      // Check if they are already an active member of another team (pending invitations are allowed)
+      const existingActiveMembership = await Subscription.findOne({
         'teamMembers.email': email.toLowerCase(),
-        'teamMembers.status': { $in: ['pending', 'active'] },
+        'teamMembers.status': 'active',
         user: { $ne: userId } // Not the current team owner
       });
 
-      if (existingTeamMembership) {
-        const existingTeamOwner = await User.findById(existingTeamMembership.user);
-        const existingTeamPlan = getPlanById(existingTeamMembership.planId);
+      if (existingActiveMembership) {
+        const existingTeamOwner = await User.findById(existingActiveMembership.user);
+        const existingTeamPlan = getPlanById(existingActiveMembership.planId);
         return res.status(400).json({ 
-          error: `This person is already a member of ${existingTeamOwner?.email || 'another team'}'s ${existingTeamPlan?.name || 'team'}. They cannot join your team.` 
+          error: `This person is already an active member of ${existingTeamOwner?.email || 'another team'}'s ${existingTeamPlan?.name || 'team'}. They cannot join your team.` 
+        });
+      }
+
+      // Check if they already have a pending invitation to this same team
+      const existingPendingInvitation = await Subscription.findOne({
+        'teamMembers.email': email.toLowerCase(),
+        'teamMembers.status': 'pending',
+        user: userId // Same team owner
+      });
+
+      if (existingPendingInvitation) {
+        return res.status(400).json({ 
+          error: 'This person already has a pending invitation to your team.' 
         });
       }
     }
