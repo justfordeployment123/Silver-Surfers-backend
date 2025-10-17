@@ -1904,7 +1904,8 @@ app.post('/subscription/team/accept', authRequired, async (req, res) => {
       subscriptionId: sub._id,
       ownerId: sub.user,
       planId: sub.planId,
-      teamMembers: sub.teamMembers.map(m => ({ email: m.email, status: m.status }))
+      subscriptionStatus: sub.status,
+      teamMembers: sub.teamMembers.map(m => ({ email: m.email, status: m.status, addedAt: m.addedAt }))
     })));
     
     const existingTeamMembership = await Subscription.findOne({
@@ -1923,10 +1924,31 @@ app.post('/subscription/team/accept', authRequired, async (req, res) => {
     if (existingTeamMembership) {
       const existingTeamOwner = await User.findById(existingTeamMembership.user);
       const existingTeamPlan = getPlanById(existingTeamMembership.planId);
-      console.log(`❌ Blocking team acceptance - user is active member of ${existingTeamOwner?.email}'s ${existingTeamPlan?.name}`);
-      return res.status(400).json({ 
-        error: `You are already an active member of ${existingTeamOwner?.email || 'another team'}'s ${existingTeamPlan?.name || 'team'}. You cannot join multiple teams.` 
-      });
+      console.log(`❌ Found existing active membership - cleaning up before accepting new invitation`);
+      
+      // Remove user from all existing team memberships before accepting new invitation
+      console.log(`🧹 Removing user from all existing team memberships...`);
+      
+      for (const membership of allTeamMemberships) {
+        // Remove user from this subscription's team members
+        membership.teamMembers = membership.teamMembers.filter(
+          member => member.email.toLowerCase() !== user.email.toLowerCase()
+        );
+        
+        // Update owner's team list
+        await User.findByIdAndUpdate(membership.user, {
+          $pull: {
+            'subscription.teamMembers': {
+              email: user.email.toLowerCase()
+            }
+          }
+        });
+        
+        await membership.save();
+        console.log(`🧹 Removed user from subscription ${membership._id}`);
+      }
+      
+      console.log(`✅ User removed from all existing team memberships, proceeding with new invitation...`);
     }
 
     // Find subscription with this user as pending team member
