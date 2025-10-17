@@ -735,3 +735,99 @@ export async function sendSubscriptionReinstatementEmail(to, planName) {
     html 
   });
 }
+
+// Subscription welcome/purchase confirmation email
+export async function sendSubscriptionWelcomeEmail(to, planName, billingCycle = 'monthly', currentPeriodEnd = null) {
+  const brandPrimary = '#2563eb';
+  const brandSuccess = '#059669';
+  const brandAccent = '#10b981';
+  
+  const formatDate = (date) => {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const getPlanFeatures = (plan) => {
+    const features = {
+      'starter': [
+        '5 accessibility scans per month',
+        'Senior-friendly scoring system',
+        'PDF reports with recommendations',
+        'Email delivery of reports',
+        'Basic support'
+      ],
+      'pro': [
+        '12 accessibility scans per month',
+        'Senior-friendly scoring system',
+        'PDF reports with recommendations',
+        'Email delivery of reports',
+        'Priority support',
+        'Advanced analytics',
+        'Team collaboration features'
+      ]
+    };
+    return features[plan.toLowerCase()] || features['starter'];
+  };
+
+  const planFeatures = getPlanFeatures(planName);
+  const billingText = billingCycle === 'yearly' ? 'annually' : 'monthly';
+  const nextBillingDate = currentPeriodEnd ? formatDate(currentPeriodEnd) : 'your next billing cycle';
+
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg, ${brandSuccess} 0%, ${brandAccent} 100%);color:#fff;">
+          <h1 style="margin:0;font-size:20px;">Welcome to SilverSurfers!</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">Thank you for subscribing!</h2>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            Congratulations! You've successfully subscribed to our <strong>${planName}</strong> plan. 
+            Your subscription is now active and you can start creating accessibility reports immediately.
+          </p>
+          
+          <div style="margin:20px 0;padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+            <h3 style="margin:0 0 12px 0;color:#059669;font-size:16px;">Your Plan Includes:</h3>
+            <ul style="margin:0;padding-left:20px;color:#374151;">
+              ${planFeatures.map(feature => `<li style="margin-bottom:8px;">${feature}</li>`).join('')}
+            </ul>
+          </div>
+
+          <div style="margin:20px 0;padding:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;">
+            <h3 style="margin:0 0 8px 0;color:#2563eb;font-size:16px;">Getting Started</h3>
+            <p style="margin:0 0 8px 0;line-height:1.6;color:#374151;">
+              1. Visit your dashboard to start your first accessibility scan
+            </p>
+            <p style="margin:0 0 8px 0;line-height:1.6;color:#374151;">
+              2. Enter your website URL and we'll analyze it for senior-friendly accessibility
+            </p>
+            <p style="margin:0;line-height:1.6;color:#374151;">
+              3. Receive detailed PDF reports with actionable recommendations
+            </p>
+          </div>
+
+          <div style="margin:20px 0;padding:16px;background:#fefce8;border:1px solid #fde047;border-radius:8px;">
+            <p style="margin:0;color:#a16207;font-size:14px;">
+              <strong>Billing Information:</strong> You're being billed ${billingText}. 
+              ${currentPeriodEnd ? `Your next billing date is ${nextBillingDate}.` : ''}
+            </p>
+          </div>
+
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            Need help getting started? Contact our support team anytime.
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to, 
+    subject: 'Welcome to SilverSurfers - Your Subscription is Active!', 
+    html 
+  });
+}

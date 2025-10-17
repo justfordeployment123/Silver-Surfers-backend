@@ -26,7 +26,7 @@ import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite
 import { generateSeniorAccessibilityReport } from '../report_generation/pdf_generator.js';
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
-import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback, sendSubscriptionCancellationEmail, sendSubscriptionReinstatementEmail } from './email.js';
+import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback, sendSubscriptionCancellationEmail, sendSubscriptionReinstatementEmail, sendSubscriptionWelcomeEmail } from './email.js';
 import { SUBSCRIPTION_PLANS, getPlanById, getPlanByPriceId } from './subscriptionPlans.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
 import BlogPost from './models/BlogPost.js';
@@ -569,7 +569,43 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
 // Webhook handlers
 async function handleSubscriptionCreated(subscription) {
   console.log('Subscription created:', subscription.id);
-  // Subscription creation is handled in the success callback
+  
+  try {
+    // Get the user associated with this subscription
+    const user = await User.findOne({ stripeCustomerId: subscription.customer });
+    
+    if (!user) {
+      console.error('User not found for subscription:', subscription.id);
+      return;
+    }
+
+    // Get plan information
+    const priceId = subscription?.items?.data?.[0]?.price?.id;
+    const plan = priceId ? getPlanByPriceId(priceId) : null;
+    const planName = plan?.name || 'Unknown Plan';
+    
+    // Determine billing cycle
+    const interval = subscription?.items?.data?.[0]?.price?.recurring?.interval;
+    const billingCycle = interval === 'year' ? 'yearly' : 'monthly';
+    
+    // Get current period end date
+    const currentPeriodEnd = subscription.current_period_end 
+      ? new Date(subscription.current_period_end * 1000) 
+      : null;
+
+    // Send welcome email
+    await sendSubscriptionWelcomeEmail(
+      user.email,
+      planName,
+      billingCycle,
+      currentPeriodEnd
+    );
+    
+    console.log(`📧 Subscription welcome email sent to ${user.email} for ${planName} plan`);
+  } catch (error) {
+    console.error('Failed to send subscription welcome email:', error);
+    // Don't fail the webhook if email fails
+  }
 }
 
 async function handleSubscriptionUpdated(subscription) {
@@ -2966,6 +3002,30 @@ app.get('/blogs', async (req, res) => {
   } catch (err) {
     console.error('Public blogs error:', err?.message || err);
     res.status(500).json({ error: 'Failed to fetch blogs' });
+  }
+});
+
+// Get single blog post by slug
+app.get('/blogs/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const publishedOnly = req.query.published !== 'false';
+    
+    const query = { slug };
+    if (publishedOnly) {
+      query.published = true;
+    }
+    
+    const post = await BlogPost.findOne(query).lean();
+    
+    if (!post) {
+      return res.status(404).json({ error: 'Blog post not found' });
+    }
+    
+    res.json({ post });
+  } catch (err) {
+    console.error('Single blog post error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch blog post' });
   }
 });
 
