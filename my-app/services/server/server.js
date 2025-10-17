@@ -27,6 +27,7 @@ import { generateSeniorAccessibilityReport } from '../report_generation/pdf_gene
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
 import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback } from './email.js';
+import { SUBSCRIPTION_PLANS, getPlanById, getPlanByPriceId } from './subscriptionPlans.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
 import BlogPost from './models/BlogPost.js';
 import FAQ from './models/FAQ.js';
@@ -36,7 +37,6 @@ import User from './models/User.js';
 import AuditJob from './models/AuditJob.js';
 import LegalDocument from './models/LegalDocument.js';
 import LegalAcceptance from './models/LegalAcceptance.js';
-import { SUBSCRIPTION_PLANS, getPlanById, getPlanByPriceId } from './subscriptionPlans.js';
 import { PersistentQueue } from './queue/PersistentQueue.js';
 
 // --- Placeholder for signaling the backend (assumed to be the same) ---
@@ -1537,6 +1537,38 @@ app.post('/subscription/team/add', authRequired, async (req, res) => {
       return res.status(400).json({ error: 'You cannot add yourself to your own team.' });
     }
 
+    // Check if the person already has an active subscription or is part of another team
+    const targetUser = await User.findOne({ email: email.toLowerCase() });
+    if (targetUser) {
+      // Check if they have their own active subscription
+      const existingSubscription = await Subscription.findOne({
+        user: targetUser._id,
+        status: { $in: ['active', 'trialing'] }
+      });
+      
+      if (existingSubscription) {
+        const existingPlan = getPlanById(existingSubscription.planId);
+        return res.status(400).json({ 
+          error: `This person already has an active ${existingPlan?.name || 'subscription'} plan. They cannot join your team.` 
+        });
+      }
+
+      // Check if they are already a member of another team
+      const existingTeamMembership = await Subscription.findOne({
+        'teamMembers.email': email.toLowerCase(),
+        'teamMembers.status': { $in: ['pending', 'active'] },
+        user: { $ne: userId } // Not the current team owner
+      });
+
+      if (existingTeamMembership) {
+        const existingTeamOwner = await User.findById(existingTeamMembership.user);
+        const existingTeamPlan = getPlanById(existingTeamMembership.planId);
+        return res.status(400).json({ 
+          error: `This person is already a member of ${existingTeamOwner?.email || 'another team'}'s ${existingTeamPlan?.name || 'team'}. They cannot join your team.` 
+        });
+      }
+    }
+
     // Generate invitation token
     const invitationToken = crypto.randomBytes(32).toString('hex');
 
@@ -1627,13 +1659,16 @@ app.post('/subscription/team/leave', authRequired, async (req, res) => {
     // Send notification to subscription owner and confirmation to member who left
     try {
       const owner = await User.findById(subscription.user);
+      const plan = getPlanById(subscription.planId);
+      const planName = plan?.name || 'Unknown Plan';
+      
       if (owner && owner.email) {
         // Send notification to owner that member left
         await sendTeamMemberLeftNotification(
           owner.email, 
           userEmail, 
           member.name || userEmail, 
-          subscription.plan?.name || 'Unknown Plan'
+          planName
         );
       }
       
@@ -1642,7 +1677,7 @@ app.post('/subscription/team/leave', authRequired, async (req, res) => {
         userEmail,
         owner?.email || 'Unknown',
         owner?.email || 'Unknown',
-        subscription.plan?.name || 'Unknown Plan'
+        planName
       );
     } catch (emailError) {
       console.error('Failed to send team member leave notifications:', emailError);
@@ -1829,6 +1864,34 @@ app.post('/subscription/team/accept', authRequired, async (req, res) => {
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Check if user already has their own active subscription
+    const existingSubscription = await Subscription.findOne({
+      user: userId,
+      status: { $in: ['active', 'trialing'] }
+    });
+    
+    if (existingSubscription) {
+      const existingPlan = getPlanById(existingSubscription.planId);
+      return res.status(400).json({ 
+        error: `You already have an active ${existingPlan?.name || 'subscription'} plan. You cannot join a team while having your own subscription.` 
+      });
+    }
+
+    // Check if user is already a member of another team
+    const existingTeamMembership = await Subscription.findOne({
+      'teamMembers.email': user.email.toLowerCase(),
+      'teamMembers.status': 'active',
+      user: { $ne: userId } // Not their own subscription
+    });
+
+    if (existingTeamMembership) {
+      const existingTeamOwner = await User.findById(existingTeamMembership.user);
+      const existingTeamPlan = getPlanById(existingTeamMembership.planId);
+      return res.status(400).json({ 
+        error: `You are already an active member of ${existingTeamOwner?.email || 'another team'}'s ${existingTeamPlan?.name || 'team'}. You cannot join multiple teams.` 
+      });
     }
 
     // Find subscription with this user as pending team member
