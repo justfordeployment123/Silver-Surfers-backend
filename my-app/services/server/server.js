@@ -653,6 +653,59 @@ await (async () => {
 // ------------------------------------------------------------
 // URL Precheck utilities
 // ------------------------------------------------------------
+
+// Generic solution for detecting accessible sites that block automated requests
+function isLikelyAccessible(url, response) {
+  try {
+    const urlObj = new URL(url);
+    const domain = urlObj.hostname.toLowerCase();
+    
+    // Check if we got redirected (usually a good sign)
+    const wasRedirected = response.finalUrl !== url;
+    
+    // Check response characteristics
+    const status = response.status;
+    const contentLength = response.headers?.['content-length'] || 0;
+    const contentType = response.headers?.['content-type'] || '';
+    
+    // Heuristics for determining if a site is likely accessible:
+    
+    // 1. If we got redirected, it's likely accessible
+    if (wasRedirected && status < 500) {
+      return true;
+    }
+    
+    // 2. If we got a substantial response (not just a blocking page)
+    if (contentLength > 500 && contentType.includes('text/html')) {
+      return true;
+    }
+    
+    // 3. If it's a well-known domain pattern (major TLDs, common patterns)
+    const isWellKnownDomain = (
+      domain.includes('.com') || 
+      domain.includes('.org') || 
+      domain.includes('.net') || 
+      domain.includes('.edu') || 
+      domain.includes('.gov') ||
+      domain.match(/^[a-z0-9-]+\.(com|org|net|edu|gov|io|co|ai|app|dev)$/i)
+    );
+    
+    // 4. If it's a 403 but it's a well-known domain (likely bot blocking)
+    if (status === 403 && isWellKnownDomain) {
+      return true;
+    }
+    
+    // 5. If it's a 429 (rate limited) but we got some response
+    if (status === 429 && contentLength > 0) {
+      return true;
+    }
+    
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function buildCandidateUrls(input) {
   const original = (input || '').trim();
   const out = { input: original, candidateUrls: [] };
@@ -677,18 +730,71 @@ function buildCandidateUrls(input) {
   return out;
 }
 
-async function tryFetch(url, timeoutMs = 8000) {
+async function tryFetch(url, timeoutMs = 15000, userAgentIndex = 0) {
   try {
     const axios = (await import('axios')).default;
+    
+    // Multiple User-Agent strings to try
+    const userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0'
+    ];
+    
+    // Add realistic headers to avoid blocking
+    const headers = {
+      'User-Agent': userAgents[userAgentIndex] || userAgents[0],
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+    };
+    
     const resp = await axios.get(url, {
       timeout: timeoutMs,
-      maxRedirects: 5,
-      validateStatus: () => true,
+      maxRedirects: 10, // Increased redirects
+      validateStatus: (status) => status < 500, // Accept 4xx but not 5xx
+      headers,
+      // Better SSL handling
+      httpsAgent: new (await import('https')).Agent({
+        rejectUnauthorized: false, // Allow self-signed certificates
+      }),
     });
+    
     const finalUrl = resp.request?.res?.responseUrl || resp.request?.responseURL || url;
-    const ok = resp.status >= 200 && resp.status < 400;
+    
+    // Determine if the URL is accessible using generic heuristics
+    let ok = false;
+    
+    // Standard success codes
+    if (resp.status >= 200 && resp.status < 400) {
+      ok = true;
+    } else {
+      // Use generic heuristics to determine if it's likely accessible
+      const responseInfo = {
+        status: resp.status,
+        finalUrl: finalUrl,
+        headers: resp.headers
+      };
+      
+      if (isLikelyAccessible(url, responseInfo)) {
+        ok = true;
+        console.log(`🔓 Treating ${resp.status} as success for ${url} (heuristics indicate accessible)`);
+        console.log(`   Debug: redirected=${responseInfo.finalUrl !== url}, contentLength=${resp.headers['content-length']}, contentType=${resp.headers['content-type']}`);
+      }
+    }
+    
+    console.log(`🔍 Precheck: ${url} → ${finalUrl} (${resp.status}) ${ok ? '✅' : '❌'}`);
+    
     return { ok, status: resp.status, redirected: finalUrl !== url, finalUrl };
   } catch (e) {
+    console.log(`❌ Precheck failed: ${url} - ${e?.message || 'request failed'}`);
     return { ok: false, error: e?.message || 'request failed' };
   }
 }
@@ -696,19 +802,65 @@ async function tryFetch(url, timeoutMs = 8000) {
 // URL precheck endpoint
 app.post('/precheck-url', async (req, res) => {
   const { url } = req.body || {};
+  console.log(`🔍 Precheck request for: ${url}`);
+  
   const { candidateUrls, input } = buildCandidateUrls(url);
   if (!candidateUrls.length) {
     return res.status(400).json({ success: false, error: 'URL is required' });
   }
+  
+  console.log(`🔍 Trying ${candidateUrls.length} URL variants:`, candidateUrls);
+  
   let last = null;
+  let attempts = 0;
+  
   for (const candidate of candidateUrls) {
-    const result = await tryFetch(candidate, 8000);
+    attempts++;
+    console.log(`🔍 Attempt ${attempts}/${candidateUrls.length}: ${candidate}`);
+    
+    // Add small delay between attempts to avoid rate limiting
+    if (attempts > 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    // Try with different User-Agent strings if the first attempt fails
+    let result = await tryFetch(candidate, 15000, 0);
+    
+    // If failed and it's a 403/429, try with different User-Agent
+    if (!result.ok && (result.status === 403 || result.status === 429)) {
+      console.log(`🔄 Retrying ${candidate} with different User-Agent...`);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Longer delay for retry
+      result = await tryFetch(candidate, 15000, 1);
+    }
+    
     last = result;
+    
     if (result.ok) {
-      return res.json({ success: true, input, normalizedUrl: candidate, finalUrl: result.finalUrl, status: result.status, redirected: !!result.redirected });
+      console.log(`✅ Precheck success: ${candidate} → ${result.finalUrl}`);
+      return res.json({ 
+        success: true, 
+        input, 
+        normalizedUrl: candidate, 
+        finalUrl: result.finalUrl, 
+        status: result.status, 
+        redirected: !!result.redirected 
+      });
+    } else {
+      console.log(`❌ Precheck failed: ${candidate} - ${result.error || `Status: ${result.status}`}`);
     }
   }
-  return res.status(400).json({ success: false, input, error: 'URL not reachable. Please check the domain and try again.' });
+  
+  // If all attempts failed, provide detailed error information
+  const errorMessage = last?.error || `All ${candidateUrls.length} URL variants failed to respond`;
+  console.log(`❌ All precheck attempts failed for ${input}: ${errorMessage}`);
+  
+  return res.status(400).json({ 
+    success: false, 
+    input, 
+    error: `URL not reachable. Please check the domain and try again. (${errorMessage})`,
+    attemptedUrls: candidateUrls,
+    lastAttempt: last
+  });
 });
 
 app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) => {
@@ -743,7 +895,7 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
   let normalizedUrl = null;
   for (const candidate of candidateUrls) {
-    const r = await tryFetch(candidate, 8000);
+    const r = await tryFetch(candidate, 15000);
     if (r.ok) { normalizedUrl = r.finalUrl || candidate; break; }
   }
   if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
@@ -804,7 +956,7 @@ app.post('/quick-audit', async (req, res) => {
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
   let normalizedUrl = null;
   for (const candidate of candidateUrls) {
-    const r = await tryFetch(candidate, 8000);
+    const r = await tryFetch(candidate, 15000);
     if (r.ok) { normalizedUrl = r.finalUrl || candidate; break; }
   }
   if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
@@ -1902,12 +2054,50 @@ app.post('/contact', async (req, res) => {
     if (!message || typeof message !== 'string' || message.trim().length < 5) {
       return res.status(400).json({ error: 'Message is required (min 5 chars).' });
     }
+    
     const doc = await ContactMessage.create({
       name: typeof name === 'string' ? name.trim() : '',
       email: typeof email === 'string' ? email.trim() : '',
       subject: typeof subject === 'string' ? subject.trim() : '',
       message: message.trim(),
     });
+
+    // Send email notification to info@mg.silversurfers.ai
+    try {
+      const { sendBasicEmail } = await import('./email.js');
+      
+      const emailSubject = `New Contact Form Message${subject ? `: ${subject}` : ''}`;
+      const emailText = `
+New contact form submission received:
+
+Name: ${doc.name || 'Not provided'}
+Email: ${doc.email || 'Not provided'}
+Subject: ${doc.subject || 'Not provided'}
+
+Message:
+${doc.message}
+
+---
+Submitted at: ${new Date().toISOString()}
+Message ID: ${doc._id}
+      `.trim();
+
+      const emailResult = await sendBasicEmail({
+        to: 'info@mg.silversurfers.ai',
+        subject: emailSubject,
+        text: emailText
+      });
+
+      if (emailResult.success) {
+        console.log('✅ Contact form email notification sent to info@mg.silversurfers.ai');
+      } else {
+        console.warn('⚠️ Failed to send contact form email notification:', emailResult.error);
+      }
+    } catch (emailError) {
+      console.error('❌ Error sending contact form email notification:', emailError);
+      // Don't fail the contact form submission if email fails
+    }
+
     res.status(201).json({ success: true, item: doc });
   } catch (err) {
     console.error('Contact submit error:', err?.message || err);
