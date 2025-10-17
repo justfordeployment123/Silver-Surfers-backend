@@ -37,6 +37,7 @@ import User from './models/User.js';
 import AuditJob from './models/AuditJob.js';
 import LegalDocument from './models/LegalDocument.js';
 import LegalAcceptance from './models/LegalAcceptance.js';
+import QuickScan from './models/QuickScan.js';
 import { PersistentQueue } from './queue/PersistentQueue.js';
 
 // --- Placeholder for signaling the backend (assumed to be the same) ---
@@ -965,6 +966,14 @@ app.post('/quick-audit', async (req, res) => {
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   
   try {
+    // Save quick scan record to database
+    const quickScanRecord = await QuickScan.create({
+      url: normalizedUrl,
+      email: email.toLowerCase(),
+      status: 'completed', // Will be updated based on actual result
+      scanDate: new Date()
+    });
+
     // Add job to persistent queue (FREE - no subscription required)
     const job = await quickScanQueue.addJob({
       email,
@@ -973,11 +982,11 @@ app.post('/quick-audit', async (req, res) => {
       taskId,
       jobType: 'quick-scan',
       subscriptionId: null, // No subscription required
-      priority: 2 // Higher priority for quick scans
+      priority: 2, // Higher priority for quick scans
+      quickScanId: quickScanRecord._id // Link to quick scan record
     });
 
-    // Quick scans are now FREE and don't store results in database
-    // Only create AuditJob for queue processing, no AnalysisRecord
+    console.log(`📊 Quick scan record saved: ${quickScanRecord._id} for ${email} on ${normalizedUrl}`);
 
     res.status(202).json({ 
       message: '🆓 FREE Quick audit request has been queued. You will receive results via email shortly!',
@@ -987,7 +996,6 @@ app.post('/quick-audit', async (req, res) => {
   } catch (error) {
     console.error('Failed to queue quick audit:', error);
     
-    // No rollback needed for free scans
     res.status(500).json({ error: 'Failed to queue audit request' });
   }
 });
@@ -2258,6 +2266,83 @@ app.get('/admin/contact', authRequired, async (req, res) => {
   } catch (err) {
     console.error('Get contact messages error:', err?.message || err);
     res.status(500).json({ error: 'Failed to fetch contact messages' });
+  }
+});
+
+// Admin endpoint to get all quick scans
+app.get('/admin/quick-scans', authRequired, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { page = 1, limit = 50, status, search, sortBy = 'scanDate', sortOrder = 'desc' } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Build query
+    const query = {};
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    if (search) {
+      query.$or = [
+        { url: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Build sort object
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const [quickScans, total] = await Promise.all([
+      QuickScan.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit)),
+      QuickScan.countDocuments(query)
+    ]);
+
+    // Get statistics
+    const stats = await QuickScan.aggregate([
+      { $group: {
+        _id: null,
+        totalScans: { $sum: 1 },
+        completedScans: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        failedScans: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+        uniqueEmails: { $addToSet: '$email' },
+        uniqueUrls: { $addToSet: '$url' }
+      }},
+      { $project: {
+        totalScans: 1,
+        completedScans: 1,
+        failedScans: 1,
+        uniqueEmails: { $size: '$uniqueEmails' },
+        uniqueUrls: { $size: '$uniqueUrls' }
+      }}
+    ]);
+
+    const statistics = stats[0] || {
+      totalScans: 0,
+      completedScans: 0,
+      failedScans: 0,
+      uniqueEmails: 0,
+      uniqueUrls: 0
+    };
+
+    res.json({
+      success: true,
+      items: quickScans,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / limit),
+      statistics
+    });
+  } catch (error) {
+    console.error('Error fetching quick scans:', error);
+    res.status(500).json({ error: 'Failed to fetch quick scans' });
   }
 });
 
