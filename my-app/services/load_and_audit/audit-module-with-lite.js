@@ -32,7 +32,7 @@ function calculateLiteScore(report) {
     return { finalScore };
 }
 
-// Anti-bot strategies with different configurations
+// Enhanced anti-bot strategies with better evasion techniques
 const ANTI_BOT_STRATEGIES = {
     basic: {
         name: 'Basic',
@@ -44,10 +44,25 @@ const ANTI_BOT_STRATEGIES = {
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--disable-blink-features=AutomationControlled'
         ],
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        waitTime: 2000
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        waitTime: 3000,
+        extraHeaders: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Cache-Control': 'max-age=0',
+            'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1'
+        }
     },
     stealth: {
         name: 'Stealth',
@@ -61,13 +76,28 @@ const ANTI_BOT_STRATEGIES = {
             '--disable-backgrounding-occluded-windows',
             '--disable-renderer-backgrounding',
             '--disable-web-security',
-            '--disable-features=TranslateUI'
+            '--disable-features=TranslateUI',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-default-apps'
         ],
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        waitTime: 5000,
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        waitTime: 6000,
         extraHeaders: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Cache-Control': 'max-age=0',
+            'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"macOS"',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1'
         }
     },
     aggressive: {
@@ -86,14 +116,34 @@ const ANTI_BOT_STRATEGIES = {
             '--disable-features=VizDisplayCompositor',
             '--disable-ipc-flooding-protection',
             '--disable-hang-monitor',
-            '--disable-prompt-on-repost'
+            '--disable-prompt-on-repost',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--disable-translate',
+            '--hide-scrollbars',
+            '--mute-audio',
+            '--no-first-run',
+            '--disable-infobars',
+            '--disable-notifications'
         ],
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-        waitTime: 8000,
+        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        waitTime: 10000,
         extraHeaders: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
             'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Linux"',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
             'Upgrade-Insecure-Requests': '1'
         },
         viewport: { width: 1920, height: 1080 }
@@ -131,6 +181,39 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
 
                 const page = await browser.newPage();
 
+                // Enhanced stealth techniques to avoid bot detection
+                await page.evaluateOnNewDocument(() => {
+                    // Remove webdriver property
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                    
+                    // Override the plugins property to use a custom getter
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5],
+                    });
+                    
+                    // Override the languages property to use a custom getter
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en'],
+                    });
+                    
+                    // Override the permissions property
+                    const originalQuery = window.navigator.permissions.query;
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+                    
+                    // Mock chrome runtime
+                    if (!window.chrome) {
+                        window.chrome = {
+                            runtime: {},
+                        };
+                    }
+                });
+
                 // Apply strategy-specific settings
                 if (strategyConfig.extraHeaders) {
                     await page.setExtraHTTPHeaders(strategyConfig.extraHeaders);
@@ -144,8 +227,13 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                     await page.setViewport(viewport);
                 }
 
-                // Navigate with strategy-specific timeout
+                // Navigate with strategy-specific timeout and human-like behavior
                 console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Navigating to ${url}...`);
+                
+                // Add random delay before navigation (human-like behavior)
+                const randomDelay = Math.random() * 2000 + 1000; // 1-3 seconds
+                await new Promise(resolve => setTimeout(resolve, randomDelay));
+                
                 const response = await page.goto(url, {
                     waitUntil: 'domcontentloaded',
                     timeout: 60000
@@ -155,14 +243,35 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                     throw new Error('No response received from page navigation');
                 }
 
-                if (response.status() !== 200) {
+                // More permissive status code handling - accept redirects and some 4xx codes
+                if (response.status() >= 500) {
+                    throw new Error(`HTTP ${response.status()}: Server error`);
+                }
+                
+                if (response.status() === 403) {
+                    // For 403, try to wait and see if it's just a temporary block
+                    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Got 403, waiting to see if page loads...`);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    
+                    // Try to get page content to see if it actually loaded
+                    try {
+                        const content = await page.content();
+                        if (content.length < 1000) {
+                            throw new Error(`HTTP ${response.status()}: Failed to load page - insufficient content`);
+                        }
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page content loaded despite 403 status`);
+                    } catch (contentError) {
+                        throw new Error(`HTTP ${response.status()}: Failed to load page - ${contentError.message}`);
+                    }
+                } else if (response.status() >= 400 && response.status() < 500) {
                     throw new Error(`HTTP ${response.status()}: Failed to load page`);
                 }
 
-                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page loaded successfully`);
+                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page loaded successfully (Status: ${response.status()})`);
 
-                // Strategy-specific wait time
-                await new Promise(resolve => setTimeout(resolve, strategyConfig.waitTime));
+                // Strategy-specific wait time with additional random delay
+                const totalWaitTime = strategyConfig.waitTime + Math.random() * 2000;
+                await new Promise(resolve => setTimeout(resolve, totalWaitTime));
 
                 const lighthouseOptions = {
                     output: format,

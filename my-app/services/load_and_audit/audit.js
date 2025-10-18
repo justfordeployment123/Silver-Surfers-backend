@@ -10,19 +10,38 @@ import customConfig from './custom-config.js';
 const ANTI_BOT_STRATEGIES = {
      basic: {
          name: 'Basic',
-         timeout: 120000, // ✅ INCREASED: 2 minutes (was 90s)
+         timeout: 120000, // 2 minutes
          useStealth: false,
-         args: [/* ... your existing args ... */],
-         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-         cookieTimeout: 2000,
+         args: [
+             '--no-sandbox',
+             '--disable-setuid-sandbox',
+             '--disable-dev-shm-usage',
+             '--disable-accelerated-2d-canvas',
+             '--no-first-run',
+             '--no-zygote',
+             '--disable-gpu',
+             '--disable-blink-features=AutomationControlled'
+         ],
+         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+         cookieTimeout: 3000,
          extraHeaders: {
+             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
              'Accept-Language': 'en-US,en;q=0.9',
-             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+             'Accept-Encoding': 'gzip, deflate, br, zstd',
+             'Cache-Control': 'max-age=0',
+             'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+             'Sec-Ch-Ua-Mobile': '?0',
+             'Sec-Ch-Ua-Platform': '"Windows"',
+             'Sec-Fetch-Dest': 'document',
+             'Sec-Fetch-Mode': 'navigate',
+             'Sec-Fetch-Site': 'none',
+             'Sec-Fetch-User': '?1',
+             'Upgrade-Insecure-Requests': '1'
          }
      },
      stealth: {
          name: 'Stealth',
-         timeout: 150000, // ✅ INCREASED: 2.5 minutes (was 2 mins)
+         timeout: 150000, // 2.5 minutes
          useStealth: true,
          args: [
              '--no-sandbox',
@@ -31,33 +50,76 @@ const ANTI_BOT_STRATEGIES = {
              '--disable-features=VizDisplayCompositor',
              '--disable-background-timer-throttling',
              '--disable-backgrounding-occluded-windows',
-             '--disable-renderer-backgrounding'
+             '--disable-renderer-backgrounding',
+             '--disable-web-security',
+             '--disable-features=TranslateUI',
+             '--disable-blink-features=AutomationControlled',
+             '--disable-extensions',
+             '--disable-plugins',
+             '--disable-default-apps'
          ],
-         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-         cookieTimeout: 2000,
+         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+         cookieTimeout: 6000,
          extraHeaders: {
+             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
              'Accept-Language': 'en-US,en;q=0.9',
-             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+             'Accept-Encoding': 'gzip, deflate, br, zstd',
+             'Cache-Control': 'max-age=0',
+             'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+             'Sec-Ch-Ua-Mobile': '?0',
+             'Sec-Ch-Ua-Platform': '"macOS"',
+             'Sec-Fetch-Dest': 'document',
+             'Sec-Fetch-Mode': 'navigate',
+             'Sec-Fetch-Site': 'none',
+             'Sec-Fetch-User': '?1',
+             'Upgrade-Insecure-Requests': '1'
          }
      },
      aggressive: {
          name: 'Aggressive',
-         timeout: 180000, // ✅ INCREASED: 3 minutes (was 2.5 mins)
+         timeout: 180000, // 3 minutes
          useStealth: true,
          args: [
              '--no-sandbox',
              '--disable-setuid-sandbox',
              '--disable-dev-shm-usage',
+             '--single-process',
              '--disable-background-timer-throttling',
              '--disable-backgrounding-occluded-windows',
-             '--disable-renderer-backgrounding'
+             '--disable-renderer-backgrounding',
+             '--disable-web-security',
+             '--disable-features=TranslateUI',
+             '--disable-features=VizDisplayCompositor',
+             '--disable-ipc-flooding-protection',
+             '--disable-hang-monitor',
+             '--disable-prompt-on-repost',
+             '--disable-blink-features=AutomationControlled',
+             '--disable-extensions',
+             '--disable-plugins',
+             '--disable-default-apps',
+             '--disable-sync',
+             '--disable-translate',
+             '--hide-scrollbars',
+             '--mute-audio',
+             '--no-first-run',
+             '--disable-infobars',
+             '--disable-notifications'
          ],
-         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-         cookieTimeout: 3000,
+         userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+         cookieTimeout: 10000,
          extraHeaders: {
+             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
              'Accept-Language': 'en-US,en;q=0.9',
-             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+             'Accept-Encoding': 'gzip, deflate, br, zstd',
              'Cache-Control': 'no-cache',
+             'Pragma': 'no-cache',
+             'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+             'Sec-Ch-Ua-Mobile': '?0',
+             'Sec-Ch-Ua-Platform': '"Linux"',
+             'Sec-Fetch-Dest': 'document',
+             'Sec-Fetch-Mode': 'navigate',
+             'Sec-Fetch-Site': 'none',
+             'Sec-Fetch-User': '?1',
              'Upgrade-Insecure-Requests': '1'
          },
          viewport: { width: 1920, height: 1080 }
