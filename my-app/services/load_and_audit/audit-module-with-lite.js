@@ -277,7 +277,16 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                     output: format,
                     logLevel: 'info',
                     maxWaitForFcp: 15000,
-                    maxWaitForLoad: 45000,
+                    maxWaitForLoad: 30000,
+                    // Disable fresh navigation to use existing page
+                    skipAboutBlank: true,
+                    disableStorageReset: true,
+                    // Allow Lighthouse to work with problematic responses
+                    maxWaitForLoad: 30000,
+                    // Disable network throttling to avoid additional issues
+                    throttlingMethod: 'devtools',
+                    // More permissive error handling
+                    disableNetworkThrottling: true,
                     ...(device === 'desktop' && {
                         formFactor: 'desktop',
                         screenEmulation: {
@@ -297,7 +306,33 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                 console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Starting Lighthouse audit...`);
 
                 const configToUse = isLiteVersion ? customConfigLite : customConfig;
-                const lighthouseResult = await lighthouse(page.url(), lighthouseOptions, configToUse, page);
+                // Use the page's current URL and pass the page object to avoid fresh navigation
+                const currentUrl = page.url();
+                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Running Lighthouse on current page URL: ${currentUrl}`);
+                
+                let lighthouseResult;
+                try {
+                    lighthouseResult = await lighthouse(currentUrl, lighthouseOptions, configToUse, page);
+                } catch (lighthouseError) {
+                    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Lighthouse error: ${lighthouseError.message}`);
+                    // If Lighthouse fails due to navigation issues, try with a more permissive approach
+                    if (lighthouseError.message.includes('403') || lighthouseError.message.includes('ERRORED_DOCUMENT_REQUEST')) {
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Retrying Lighthouse with more permissive settings...`);
+                        // Try with even more permissive settings
+                        const permissiveOptions = {
+                            ...lighthouseOptions,
+                            maxWaitForLoad: 60000,
+                            maxWaitForFcp: 30000,
+                            skipAboutBlank: true,
+                            disableStorageReset: true,
+                            throttlingMethod: 'devtools',
+                            disableNetworkThrottling: true,
+                        };
+                        lighthouseResult = await lighthouse(currentUrl, permissiveOptions, configToUse, page);
+                    } else {
+                        throw lighthouseError;
+                    }
+                }
 
                 if (!lighthouseResult || !lighthouseResult.lhr) {
                     throw new Error('Lighthouse failed to generate a report');
