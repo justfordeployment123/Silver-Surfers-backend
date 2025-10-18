@@ -796,184 +796,53 @@ await (async () => {
 // URL Precheck utilities
 // ------------------------------------------------------------
 
-// Generic solution for detecting accessible sites that block automated requests
-function isLikelyAccessible(url, response) {
-  try {
-    const urlObj = new URL(url);
-    const domain = urlObj.hostname.toLowerCase();
-    
-    // Check if we got redirected (usually a good sign)
-    const wasRedirected = response.finalUrl !== url;
-    
-    // Check response characteristics
-    const status = response.status;
-    const contentLength = response.headers?.['content-length'] || 0;
-    const contentType = response.headers?.['content-type'] || '';
-    
-    // Heuristics for determining if a site is likely accessible:
-    
-    // 1. If we got redirected, it's likely accessible
-    if (wasRedirected && status < 500) {
-      return true;
-    }
-    
-    // 2. If we got a substantial response (not just a blocking page)
-    if (contentLength > 500 && contentType.includes('text/html')) {
-      return true;
-    }
-    
-    // 3. If it's a well-known domain pattern (major TLDs, common patterns)
-    const isWellKnownDomain = (
-      domain.includes('.com') || 
-      domain.includes('.org') || 
-      domain.includes('.net') || 
-      domain.includes('.edu') || 
-      domain.includes('.gov') ||
-      domain.match(/^[a-z0-9-]+\.(com|org|net|edu|gov|io|co|ai|app|dev)$/i)
-    );
-    
-    // 4. If it's a 403 but it's a well-known domain (likely bot blocking)
-    if (status === 403 && isWellKnownDomain) {
-      return true;
-    }
-    
-    // 5. If it's a 429 (rate limited) but we got some response
-    if (status === 429 && contentLength > 0) {
-      return true;
-    }
-    
-    return false;
-  } catch {
-    return false;
-  }
-}
+// Simple URL precheck - removed complex heuristics for better reliability
 
+// Helper: normalize URL (prefer https). Returns {candidateUrls, input}
 function buildCandidateUrls(input) {
-  const original = (input || '').trim();
-  const out = { input: original, candidateUrls: [] };
-  if (!original) return out;
-  try {
-    // If it already parses with a scheme, keep it first
-    const u = new URL(original);
-    out.candidateUrls.push(u.toString());
-  } catch {
-    // Try common schemes and www
-    const bare = original.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
-    const variants = [
-      `https://${bare}`,
-      `http://${bare}`,
-      `https://www.${bare}`,
-      `http://www.${bare}`,
-    ];
-    out.candidateUrls.push(...variants);
+  const raw = (input || '').trim();
+  if (!raw) return { input: raw, candidateUrls: [] };
+  // If already has protocol, use as-is only
+  if (/^https?:\/\//i.test(raw)) {
+    return { input: raw, candidateUrls: [raw] };
   }
-  // Deduplicate while preserving order
-  out.candidateUrls = [...new Set(out.candidateUrls)];
-  return out;
+  // Strip leading protocol-like text if malformed
+  const cleaned = raw.replace(/^\w+:\/\//, '');
+  // Prefer https first, then http
+  return {
+    input: raw,
+    candidateUrls: [
+      `https://${cleaned}`,
+      `http://${cleaned}`
+    ]
+  };
 }
 
-async function tryFetch(url, timeoutMs = 15000, userAgentIndex = 0) {
+async function tryFetch(url, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const axios = (await import('axios')).default;
-    
-    // Multiple User-Agent strings to try
-    const userAgents = [
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0'
-    ];
-    
-    // Add realistic headers to avoid blocking
-    const headers = {
-      'User-Agent': userAgents[userAgentIndex] || userAgents[0],
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.5',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Connection': 'keep-alive',
-      'Upgrade-Insecure-Requests': '1',
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
-    };
-    
-    const resp = await axios.get(url, {
-      timeout: timeoutMs,
-      maxRedirects: 5, // Reduced redirects to prevent header overflow
-      validateStatus: (status) => status < 500, // Accept 4xx but not 5xx
-      headers,
-      // Better SSL handling
-      httpsAgent: new (await import('https')).Agent({
-        rejectUnauthorized: false, // Allow self-signed certificates
-      }),
-      // Prevent header overflow by limiting response size
-      maxContentLength: 1024 * 1024, // 1MB max response size
-      maxBodyLength: 1024 * 1024, // 1MB max body size
-      // Transform response to handle large headers
-      transformResponse: [(data) => {
-        // Don't process response data for precheck - we just need status
-        return data;
-      }],
-    });
-    
-    const finalUrl = resp.request?.res?.responseUrl || resp.request?.responseURL || url;
-    
-    // Determine if the URL is accessible using generic heuristics
-    let ok = false;
-    
-    // Standard success codes
-    if (resp.status >= 200 && resp.status < 400) {
-      ok = true;
-    } else {
-      // Use generic heuristics to determine if it's likely accessible
-      const responseInfo = {
-        status: resp.status,
-        finalUrl: finalUrl,
-        headers: resp.headers
-      };
-      
-      if (isLikelyAccessible(url, responseInfo)) {
-        ok = true;
-        console.log(`🔓 Treating ${resp.status} as success for ${url} (heuristics indicate accessible)`);
-        console.log(`   Debug: redirected=${responseInfo.finalUrl !== url}, contentLength=${resp.headers['content-length']}, contentType=${resp.headers['content-type']}`);
-      }
+    // Try HEAD first
+    let res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: controller.signal });
+    if (!res.ok || res.status === 405) {
+      // Some servers don't support HEAD well; try GET lightweight
+      res = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
     }
-    
-    console.log(`🔍 Precheck: ${url} → ${finalUrl} (${resp.status}) ${ok ? '✅' : '❌'}`);
-    
-    return { ok, status: resp.status, redirected: finalUrl !== url, finalUrl };
-  } catch (e) {
-    // Handle specific header overflow errors
-    if (e?.message?.includes('Header overflow') || e?.message?.includes('Parse Error')) {
-      console.log(`⚠️ Header overflow detected for ${url} - treating as potentially accessible`);
-      return { 
-        ok: true, // Treat as accessible since the server responded (just with large headers)
-        status: 200, 
-        redirected: false, 
-        finalUrl: url,
-        warning: 'Header overflow - server has large headers but is responding'
-      };
-    }
-    
-    // Handle other specific errors
-    if (e?.code === 'ENOTFOUND' || e?.code === 'ECONNREFUSED') {
-      return { ok: false, error: 'Domain not found or server not responding' };
-    }
-    
-    if (e?.code === 'ETIMEDOUT') {
-      return { ok: false, error: 'Request timeout' };
-    }
-    
-    console.log(`❌ Precheck failed: ${url} - ${e?.message || 'request failed'}`);
-    return { ok: false, error: e?.message || 'request failed' };
+    const finalUrl = res.url || url;
+    console.log(`🔍 Simple precheck: ${url} → ${finalUrl} (${res.status}) ✅`);
+    return { ok: true, status: res.status, finalUrl, redirected: res.redirected };
+  } catch (err) {
+    console.log(`❌ Precheck failed: ${url} - ${err?.message}`);
+    return { ok: false, error: err?.message || String(err) };
+  } finally {
+    clearTimeout(t);
   }
 }
 
-// URL precheck endpoint
+// URL precheck endpoint - simplified and more permissive
 app.post('/precheck-url', async (req, res) => {
   const { url } = req.body || {};
-  console.log(`🔍 Precheck request for: ${url}`);
+  console.log(`🔍 Simple precheck request for: ${url}`);
   
   const { candidateUrls, input } = buildCandidateUrls(url);
   if (!candidateUrls.length) {
@@ -982,29 +851,11 @@ app.post('/precheck-url', async (req, res) => {
   
   console.log(`🔍 Trying ${candidateUrls.length} URL variants:`, candidateUrls);
   
-  let last = null;
-  let attempts = 0;
-  
+  // Try each candidate URL - much simpler logic
   for (const candidate of candidateUrls) {
-    attempts++;
-    console.log(`🔍 Attempt ${attempts}/${candidateUrls.length}: ${candidate}`);
+    console.log(`🔍 Testing: ${candidate}`);
     
-    // Add small delay between attempts to avoid rate limiting
-    if (attempts > 1) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    // Try with different User-Agent strings if the first attempt fails
-    let result = await tryFetch(candidate, 15000, 0);
-    
-    // If failed and it's a 403/429, try with different User-Agent
-    if (!result.ok && (result.status === 403 || result.status === 429)) {
-      console.log(`🔄 Retrying ${candidate} with different User-Agent...`);
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Longer delay for retry
-      result = await tryFetch(candidate, 15000, 1);
-    }
-    
-    last = result;
+    const result = await tryFetch(candidate, 8000);
     
     if (result.ok) {
       console.log(`✅ Precheck success: ${candidate} → ${result.finalUrl}`);
@@ -1021,30 +872,13 @@ app.post('/precheck-url', async (req, res) => {
     }
   }
   
-  // If all attempts failed, provide detailed error information
-  let errorMessage = last?.error || `All ${candidateUrls.length} URL variants failed to respond`;
-  let userFriendlyError = 'URL not reachable. Please check the domain and try again.';
-  
-  // Handle specific error types with better user messages
-  if (last?.error?.includes('Header overflow') || last?.error?.includes('Parse Error')) {
-    errorMessage = 'Server has large headers (header overflow)';
-    userFriendlyError = 'The website has technical issues with large headers, but it may still be accessible. Please try the audit anyway.';
-  } else if (last?.error?.includes('Domain not found')) {
-    errorMessage = 'Domain not found';
-    userFriendlyError = 'The domain does not exist. Please check the URL spelling.';
-  } else if (last?.error?.includes('timeout')) {
-    errorMessage = 'Request timeout';
-    userFriendlyError = 'The website is taking too long to respond. Please try again later.';
-  }
-  
-  console.log(`❌ All precheck attempts failed for ${input}: ${errorMessage}`);
+  // If all attempts failed, provide simple error message
+  console.log(`❌ All precheck attempts failed for ${input}`);
   
   return res.status(400).json({ 
     success: false, 
     input, 
-    error: `${userFriendlyError} (${errorMessage})`,
-    attemptedUrls: candidateUrls,
-    lastAttempt: last
+    error: 'URL not reachable. Please check the domain and try again.'
   });
 });
 
@@ -1082,28 +916,16 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   let headerOverflowDetected = false;
   
   for (const candidate of candidateUrls) {
-    const r = await tryFetch(candidate, 15000);
+    const r = await tryFetch(candidate, 8000);
     if (r.ok) { 
       normalizedUrl = r.finalUrl || candidate; 
-      if (r.warning?.includes('Header overflow')) {
-        headerOverflowDetected = true;
-      }
       break; 
     }
   }
   
-  // If no URL worked but we detected header overflow, allow the audit to proceed
+  // If no URL worked, reject the request
   if (!normalizedUrl) {
-    // Check if the last error was header overflow
-    const lastAttempt = candidateUrls[candidateUrls.length - 1];
-    const lastResult = await tryFetch(lastAttempt, 15000);
-    if (lastResult.warning?.includes('Header overflow')) {
-      normalizedUrl = lastAttempt;
-      headerOverflowDetected = true;
-      console.log(`⚠️ Allowing audit to proceed despite header overflow for ${lastAttempt}`);
-    } else {
-      return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
-    }
+    return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
   }
 
   // Create persistent audit job
@@ -1164,28 +986,16 @@ app.post('/quick-audit', async (req, res) => {
   let headerOverflowDetected = false;
   
   for (const candidate of candidateUrls) {
-    const r = await tryFetch(candidate, 15000);
+    const r = await tryFetch(candidate, 8000);
     if (r.ok) { 
       normalizedUrl = r.finalUrl || candidate; 
-      if (r.warning?.includes('Header overflow')) {
-        headerOverflowDetected = true;
-      }
       break; 
     }
   }
   
-  // If no URL worked but we detected header overflow, allow the audit to proceed
+  // If no URL worked, reject the request
   if (!normalizedUrl) {
-    // Check if the last error was header overflow
-    const lastAttempt = candidateUrls[candidateUrls.length - 1];
-    const lastResult = await tryFetch(lastAttempt, 15000);
-    if (lastResult.warning?.includes('Header overflow')) {
-      normalizedUrl = lastAttempt;
-      headerOverflowDetected = true;
-      console.log(`⚠️ Allowing quick scan to proceed despite header overflow for ${lastAttempt}`);
-    } else {
-      return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
-    }
+    return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
   }
 
   // Create persistent audit job
