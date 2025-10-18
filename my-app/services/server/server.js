@@ -583,8 +583,8 @@ async function handleSubscriptionCreated(subscription) {
     
     if (!user) {
       console.error('User not found for subscription:', subscription.id);
-      return;
-    }
+            return;
+        }
 
     // Get plan information
     const priceId = subscription?.items?.data?.[0]?.price?.id;

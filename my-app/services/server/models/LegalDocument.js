@@ -4,7 +4,7 @@ const legalDocumentSchema = new mongoose.Schema({
   // Document identification
   type: { 
     type: String, 
-    enum: ['terms-of-use', 'privacy-policy', 'cookie-policy', 'data-processing-agreement'],
+    enum: ['terms-of-use', 'privacy-policy', 'cookie-policy', 'data-processing-agreement', 'accessibility-guides'],
     required: true,
     index: true 
   },
