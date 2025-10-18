@@ -568,9 +568,16 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
 
 // Webhook handlers
 async function handleSubscriptionCreated(subscription) {
-  console.log('Subscription created:', subscription.id);
+  console.log('Subscription created:', subscription.id, 'Status:', subscription.status);
   
   try {
+    // Only send welcome email if subscription is actually active/trialing
+    // Don't send for incomplete, past_due, or unpaid subscriptions
+    if (!['active', 'trialing'].includes(subscription.status)) {
+      console.log(`⏳ Subscription ${subscription.id} is ${subscription.status}, not sending welcome email yet`);
+      return;
+    }
+
     // Get the user associated with this subscription
     const user = await User.findOne({ stripeCustomerId: subscription.customer });
     
@@ -593,7 +600,7 @@ async function handleSubscriptionCreated(subscription) {
       ? new Date(subscription.current_period_end * 1000) 
       : null;
 
-    // Send welcome email
+    // Send welcome email only for active/trialing subscriptions
     await sendSubscriptionWelcomeEmail(
       user.email,
       planName,
@@ -601,7 +608,7 @@ async function handleSubscriptionCreated(subscription) {
       currentPeriodEnd
     );
     
-    console.log(`📧 Subscription welcome email sent to ${user.email} for ${planName} plan`);
+    console.log(`📧 Subscription welcome email sent to ${user.email} for ${planName} plan (${subscription.status})`);
   } catch (error) {
     console.error('Failed to send subscription welcome email:', error);
     // Don't fail the webhook if email fails
@@ -673,6 +680,32 @@ async function handleSubscriptionUpdated(subscription) {
         console.log(`📧 Subscription reinstatement email sent to ${updatedUser.email}`);
       } catch (emailErr) {
         console.error('Failed to send reinstatement email:', emailErr);
+        // Don't fail the webhook if email fails
+      }
+    }
+
+    // Send welcome email if subscription just became active from incomplete status
+    const wasIncomplete = localSubscription.status && !['active', 'trialing'].includes(localSubscription.status);
+    const isNowActive = ['active', 'trialing'].includes(subscription.status);
+    
+    if (wasIncomplete && isNowActive && updatedUser) {
+      try {
+        const planName = plan?.name || 'Unknown Plan';
+        const interval = subscription?.items?.data?.[0]?.price?.recurring?.interval;
+        const billingCycle = interval === 'year' ? 'yearly' : 'monthly';
+        const currentPeriodEnd = subscription.current_period_end 
+          ? new Date(subscription.current_period_end * 1000) 
+          : null;
+        
+        await sendSubscriptionWelcomeEmail(
+          updatedUser.email,
+          planName,
+          billingCycle,
+          currentPeriodEnd
+        );
+        console.log(`📧 Subscription welcome email sent to ${updatedUser.email} for ${planName} plan (subscription became active)`);
+      } catch (emailErr) {
+        console.error('Failed to send welcome email:', emailErr);
         // Don't fail the webhook if email fails
       }
     }
@@ -867,13 +900,21 @@ async function tryFetch(url, timeoutMs = 15000, userAgentIndex = 0) {
     
     const resp = await axios.get(url, {
       timeout: timeoutMs,
-      maxRedirects: 10, // Increased redirects
+      maxRedirects: 5, // Reduced redirects to prevent header overflow
       validateStatus: (status) => status < 500, // Accept 4xx but not 5xx
       headers,
       // Better SSL handling
       httpsAgent: new (await import('https')).Agent({
         rejectUnauthorized: false, // Allow self-signed certificates
       }),
+      // Prevent header overflow by limiting response size
+      maxContentLength: 1024 * 1024, // 1MB max response size
+      maxBodyLength: 1024 * 1024, // 1MB max body size
+      // Transform response to handle large headers
+      transformResponse: [(data) => {
+        // Don't process response data for precheck - we just need status
+        return data;
+      }],
     });
     
     const finalUrl = resp.request?.res?.responseUrl || resp.request?.responseURL || url;
@@ -903,6 +944,27 @@ async function tryFetch(url, timeoutMs = 15000, userAgentIndex = 0) {
     
     return { ok, status: resp.status, redirected: finalUrl !== url, finalUrl };
   } catch (e) {
+    // Handle specific header overflow errors
+    if (e?.message?.includes('Header overflow') || e?.message?.includes('Parse Error')) {
+      console.log(`⚠️ Header overflow detected for ${url} - treating as potentially accessible`);
+      return { 
+        ok: true, // Treat as accessible since the server responded (just with large headers)
+        status: 200, 
+        redirected: false, 
+        finalUrl: url,
+        warning: 'Header overflow - server has large headers but is responding'
+      };
+    }
+    
+    // Handle other specific errors
+    if (e?.code === 'ENOTFOUND' || e?.code === 'ECONNREFUSED') {
+      return { ok: false, error: 'Domain not found or server not responding' };
+    }
+    
+    if (e?.code === 'ETIMEDOUT') {
+      return { ok: false, error: 'Request timeout' };
+    }
+    
     console.log(`❌ Precheck failed: ${url} - ${e?.message || 'request failed'}`);
     return { ok: false, error: e?.message || 'request failed' };
   }
@@ -960,13 +1022,27 @@ app.post('/precheck-url', async (req, res) => {
   }
   
   // If all attempts failed, provide detailed error information
-  const errorMessage = last?.error || `All ${candidateUrls.length} URL variants failed to respond`;
+  let errorMessage = last?.error || `All ${candidateUrls.length} URL variants failed to respond`;
+  let userFriendlyError = 'URL not reachable. Please check the domain and try again.';
+  
+  // Handle specific error types with better user messages
+  if (last?.error?.includes('Header overflow') || last?.error?.includes('Parse Error')) {
+    errorMessage = 'Server has large headers (header overflow)';
+    userFriendlyError = 'The website has technical issues with large headers, but it may still be accessible. Please try the audit anyway.';
+  } else if (last?.error?.includes('Domain not found')) {
+    errorMessage = 'Domain not found';
+    userFriendlyError = 'The domain does not exist. Please check the URL spelling.';
+  } else if (last?.error?.includes('timeout')) {
+    errorMessage = 'Request timeout';
+    userFriendlyError = 'The website is taking too long to respond. Please try again later.';
+  }
+  
   console.log(`❌ All precheck attempts failed for ${input}: ${errorMessage}`);
   
   return res.status(400).json({ 
     success: false, 
     input, 
-    error: `URL not reachable. Please check the domain and try again. (${errorMessage})`,
+    error: `${userFriendlyError} (${errorMessage})`,
     attemptedUrls: candidateUrls,
     lastAttempt: last
   });
@@ -1003,11 +1079,32 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   const { candidateUrls } = buildCandidateUrls(url);
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
   let normalizedUrl = null;
+  let headerOverflowDetected = false;
+  
   for (const candidate of candidateUrls) {
     const r = await tryFetch(candidate, 15000);
-    if (r.ok) { normalizedUrl = r.finalUrl || candidate; break; }
+    if (r.ok) { 
+      normalizedUrl = r.finalUrl || candidate; 
+      if (r.warning?.includes('Header overflow')) {
+        headerOverflowDetected = true;
+      }
+      break; 
+    }
   }
-  if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
+  
+  // If no URL worked but we detected header overflow, allow the audit to proceed
+  if (!normalizedUrl) {
+    // Check if the last error was header overflow
+    const lastAttempt = candidateUrls[candidateUrls.length - 1];
+    const lastResult = await tryFetch(lastAttempt, 15000);
+    if (lastResult.warning?.includes('Header overflow')) {
+      normalizedUrl = lastAttempt;
+      headerOverflowDetected = true;
+      console.log(`⚠️ Allowing audit to proceed despite header overflow for ${lastAttempt}`);
+    } else {
+      return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
+    }
+  }
 
   // Create persistent audit job
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
@@ -1064,11 +1161,32 @@ app.post('/quick-audit', async (req, res) => {
   const { candidateUrls } = buildCandidateUrls(url);
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
   let normalizedUrl = null;
+  let headerOverflowDetected = false;
+  
   for (const candidate of candidateUrls) {
     const r = await tryFetch(candidate, 15000);
-    if (r.ok) { normalizedUrl = r.finalUrl || candidate; break; }
+    if (r.ok) { 
+      normalizedUrl = r.finalUrl || candidate; 
+      if (r.warning?.includes('Header overflow')) {
+        headerOverflowDetected = true;
+      }
+      break; 
+    }
   }
-  if (!normalizedUrl) return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
+  
+  // If no URL worked but we detected header overflow, allow the audit to proceed
+  if (!normalizedUrl) {
+    // Check if the last error was header overflow
+    const lastAttempt = candidateUrls[candidateUrls.length - 1];
+    const lastResult = await tryFetch(lastAttempt, 15000);
+    if (lastResult.warning?.includes('Header overflow')) {
+      normalizedUrl = lastAttempt;
+      headerOverflowDetected = true;
+      console.log(`⚠️ Allowing quick scan to proceed despite header overflow for ${lastAttempt}`);
+    } else {
+      return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
+    }
+  }
 
   // Create persistent audit job
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
@@ -1407,14 +1525,93 @@ app.post('/admin/subscription/update', authRequired, async (req, res) => {
       return res.status(400).json({ error: 'Invalid plan ID.' });
     }
 
-    // Get current subscription
+    // Get user details
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Get current subscription (if any)
     const currentSubscription = await Subscription.findOne({ 
       user: userId, 
       status: { $in: ['active', 'trialing'] } 
     });
 
+    // If no active subscription exists, create a new one
     if (!currentSubscription) {
-      return res.status(404).json({ error: 'No active subscription found for user.' });
+      console.log(`🔧 Admin creating new subscription for user ${userId} with plan ${planId}`);
+      
+      // Check if user has a Stripe customer ID, create one if not
+      if (!user.stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: user.email, // Use email as name if no name provided
+          metadata: {
+            userId: userId.toString(),
+            createdBy: 'admin'
+          }
+        });
+        user.stripeCustomerId = customer.id;
+        await user.save();
+      }
+
+      // Create a new subscription in Stripe
+      const newPriceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
+      if (!newPriceId) {
+        return res.status(400).json({ error: 'Price ID not configured for this plan.' });
+      }
+
+      const stripeSubscription = await stripe.subscriptions.create({
+        customer: user.stripeCustomerId,
+        items: [{ price: newPriceId }],
+        payment_behavior: 'default_incomplete',
+        payment_settings: { save_default_payment_method: 'on_subscription' },
+        expand: ['latest_invoice.payment_intent'],
+        metadata: {
+          userId: userId.toString(),
+          planId: planId,
+          createdBy: 'admin'
+        }
+      });
+
+      // Create local subscription record
+      const newSubscription = new Subscription({
+        user: userId,
+        stripeSubscriptionId: stripeSubscription.id,
+        stripeCustomerId: user.stripeCustomerId,
+        planId: planId,
+        status: 'active', // Admin-created subscriptions are immediately active
+        limits: plan.limits,
+        usage: {
+          scansThisMonth: 0,
+          totalScans: 0
+        },
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+        cancelAtPeriodEnd: false,
+        createdByAdmin: true
+      });
+
+      await newSubscription.save();
+
+      // Update user subscription info
+      await User.findByIdAndUpdate(userId, {
+        'subscription.status': 'active',
+        'subscription.planId': planId,
+        'subscription.limits': plan.limits,
+        'subscription.usage.scansThisMonth': 0,
+        'subscription.currentPeriodStart': new Date(),
+        'subscription.currentPeriodEnd': new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        'subscription.cancelAtPeriodEnd': false
+      });
+
+      console.log(`✅ Admin successfully created new subscription for user ${userId} with plan ${planId}`);
+
+      return res.json({ 
+        message: 'New subscription created successfully',
+        subscription: newSubscription,
+        created: true
+      });
     }
 
     const newPriceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
