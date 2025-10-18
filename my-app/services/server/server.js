@@ -1580,6 +1580,7 @@ app.post('/admin/subscription/update', authRequired, async (req, res) => {
         stripeSubscriptionId: stripeSubscription.id,
         stripeCustomerId: user.stripeCustomerId,
         planId: planId,
+        priceId: newPriceId, // Add the required priceId field
         status: 'active', // Admin-created subscriptions are immediately active
         limits: plan.limits,
         usage: {
@@ -1598,6 +1599,7 @@ app.post('/admin/subscription/update', authRequired, async (req, res) => {
       await User.findByIdAndUpdate(userId, {
         'subscription.status': 'active',
         'subscription.planId': planId,
+        'subscription.priceId': newPriceId, // Add the required priceId field
         'subscription.limits': plan.limits,
         'subscription.usage.scansThisMonth': 0,
         'subscription.currentPeriodStart': new Date(),
