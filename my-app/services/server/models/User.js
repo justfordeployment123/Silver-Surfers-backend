@@ -24,7 +24,7 @@ const UserSchema = new mongoose.Schema(
     stripeCustomerId: { type: String, index: true },
     subscription: {
       stripeSubscriptionId: { type: String },
-      status: { type: String, enum: ['active', 'canceled', 'past_due', 'unpaid', 'incomplete', 'trialing', 'none'], default: 'none' },
+      status: { type: String, enum: ['active', 'canceled', 'past_due', 'unpaid', 'incomplete', 'incomplete_expired', 'trialing', 'paused', 'none'], default: 'none' },
       currentPeriodStart: { type: Date },
       currentPeriodEnd: { type: Date },
       cancelAtPeriodEnd: { type: Boolean, default: false },
