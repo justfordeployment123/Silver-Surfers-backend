@@ -1706,14 +1706,59 @@ app.get('/payment-success', authRequired, async (req, res) => {
     }
 
     const userId = session.metadata?.userId;
+    const planId = session.metadata?.planId;
+    
     if (!userId || userId !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized access to this payment.' });
     }
 
-    // Get user's current one-time scans
+    // Get user
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Check if this session was already processed
+    const alreadyProcessed = user.purchaseHistory?.some(
+      purchase => purchase.sessionId === session.id
+    );
+
+    // If not already processed, grant the credit (backup in case webhook didn't fire)
+    if (!alreadyProcessed && session.metadata?.type === 'one-time') {
+      console.log(`💳 Manually processing one-time payment for session: ${session.id}`);
+      
+      const plan = getPlanById(planId);
+      
+      // Grant one-time scan credit
+      if (!user.oneTimeScans) {
+        user.oneTimeScans = 0;
+      }
+      user.oneTimeScans += 1;
+      
+      // Record the purchase
+      if (!user.purchaseHistory) {
+        user.purchaseHistory = [];
+      }
+      user.purchaseHistory.push({
+        date: new Date(),
+        planId: planId,
+        planName: plan?.name || 'One-Time Report',
+        amount: session.amount_total,
+        sessionId: session.id,
+        type: 'one-time'
+      });
+      
+      await user.save();
+      
+      console.log(`✅ One-time scan credit granted to user ${user.email} (manual processing)`);
+      
+      // Send confirmation email
+      try {
+        await sendOneTimePurchaseEmail(user.email, plan?.name || 'One-Time Report');
+        console.log(`📧 One-time purchase email sent to ${user.email}`);
+      } catch (emailError) {
+        console.error('Failed to send confirmation email:', emailError);
+      }
     }
 
     return res.json({ 
