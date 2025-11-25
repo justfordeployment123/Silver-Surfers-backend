@@ -26,7 +26,7 @@ import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite
 import { generateSeniorAccessibilityReport } from '../report_generation/pdf_generator.js';
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
-import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback, sendSubscriptionCancellationEmail, sendSubscriptionReinstatementEmail, sendSubscriptionWelcomeEmail } from './email.js';
+import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback, sendSubscriptionCancellationEmail, sendSubscriptionReinstatementEmail, sendSubscriptionWelcomeEmail, sendOneTimePurchaseEmail } from './email.js';
 import { SUBSCRIPTION_PLANS, getPlanById, getPlanByPriceId } from './subscriptionPlans.js';
 import AnalysisRecord from './models/AnalysisRecord.js';
 import BlogPost from './models/BlogPost.js';
@@ -540,6 +540,9 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
 
   try {
     switch (event.type) {
+      case 'checkout.session.completed':
+        await handleCheckoutSessionCompleted(event.data.object);
+        break;
       case 'customer.subscription.created':
         await handleSubscriptionCreated(event.data.object);
         break;
@@ -567,6 +570,60 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
 });
 
 // Webhook handlers
+async function handleCheckoutSessionCompleted(session) {
+  console.log('Checkout session completed:', session.id, 'Mode:', session.mode);
+  
+  try {
+    // Handle one-time payments
+    if (session.mode === 'payment' && session.metadata?.type === 'one-time') {
+      const userId = session.metadata.userId;
+      const planId = session.metadata.planId;
+      
+      const user = await User.findById(userId);
+      if (!user) {
+        console.error('User not found for one-time payment:', userId);
+        return;
+      }
+      
+      const plan = getPlanById(planId);
+      if (!plan) {
+        console.error('Plan not found for one-time payment:', planId);
+        return;
+      }
+      
+      // Grant one-time scan credit to user
+      if (!user.oneTimeScans) {
+        user.oneTimeScans = 0;
+      }
+      user.oneTimeScans += 1;
+      
+      // Record the purchase
+      if (!user.purchaseHistory) {
+        user.purchaseHistory = [];
+      }
+      user.purchaseHistory.push({
+        date: new Date(),
+        planId: planId,
+        planName: plan.name,
+        amount: session.amount_total,
+        sessionId: session.id,
+        type: 'one-time'
+      });
+      
+      await user.save();
+      
+      console.log(`✅ One-time scan credit granted to user ${user.email}`);
+      
+      // Send confirmation email
+      await sendOneTimePurchaseEmail(user.email, plan.name);
+      
+      console.log(`📧 One-time purchase email sent to ${user.email}`);
+    }
+  } catch (error) {
+    console.error('Failed to handle checkout session completed:', error);
+  }
+}
+
 async function handleSubscriptionCreated(subscription) {
   console.log('Subscription created:', subscription.id, 'Status:', subscription.status);
   
@@ -1056,11 +1113,6 @@ app.post('/create-checkout-session', authRequired, async (req, res) => {
       return res.status(400).json({ error: 'Please contact sales for custom pricing.' });
     }
 
-    const priceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
-    if (!priceId) {
-      return res.status(400).json({ error: 'Price ID not configured for this plan.' });
-    }
-
     // Get or create Stripe customer
     const user = await User.findById(userId);
     if (!user) {
@@ -1097,34 +1149,74 @@ app.post('/create-checkout-session', authRequired, async (req, res) => {
 
     const successUrlBase = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      customer: customerId,
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      subscription_data: {
+    // Handle one-time payment vs subscription
+    if (plan.type === 'one-time') {
+      // Create one-time payment session
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        customer: customerId,
+        line_items: [
+          {
+            price_data: {
+              currency: plan.currency || 'usd',
+              product_data: {
+                name: plan.name,
+                description: plan.description,
+              },
+              unit_amount: plan.price,
+            },
+            quantity: 1,
+          },
+        ],
         metadata: { 
           userId: userId,
           planId: planId,
-          billingCycle: billingCycle
+          type: 'one-time'
         },
-      },
-      metadata: { userId: userId, planId: planId, billingCycle: billingCycle },
-      success_url: `${successUrlBase}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${successUrlBase}/subscription?canceled=1`,
-      allow_promotion_codes: true,
-      billing_address_collection: 'required',
-    });
+        success_url: `${successUrlBase}/checkout?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${successUrlBase}/services?canceled=1`,
+        allow_promotion_codes: true,
+        billing_address_collection: 'required',
+      });
 
-    return res.json({ url: session.url });
+      return res.json({ url: session.url });
+    } else {
+      // Create subscription session
+      const priceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
+      if (!priceId) {
+        return res.status(400).json({ error: 'Price ID not configured for this plan.' });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        customer: customerId,
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        subscription_data: {
+          metadata: { 
+            userId: userId,
+            planId: planId,
+            billingCycle: billingCycle
+          },
+        },
+        metadata: { userId: userId, planId: planId, billingCycle: billingCycle },
+        success_url: `${successUrlBase}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${successUrlBase}/subscription?canceled=1`,
+        allow_promotion_codes: true,
+        billing_address_collection: 'required',
+      });
+
+      return res.json({ url: session.url });
+    }
   } catch (err) {
-    console.error('Stripe subscription session error:', err);
-    return res.status(500).json({ error: 'Failed to create subscription checkout session.' });
+    console.error('Stripe session error:', err);
+    return res.status(500).json({ error: 'Failed to create checkout session.' });
   }
 });
 

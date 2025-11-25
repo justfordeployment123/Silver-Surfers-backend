@@ -831,3 +831,64 @@ export async function sendSubscriptionWelcomeEmail(to, planName, billingCycle = 
     html 
   });
 }
+
+export async function sendOneTimePurchaseEmail(to, planName) {
+  const brandPrimary = '#2563eb';
+  const brandSuccess = '#059669';
+  const brandAccent = '#10b981';
+  const brandOrange = '#f97316';
+
+  const html = `
+    <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg, ${brandOrange} 0%, #ef4444 100%);color:#fff;">
+          <h1 style="margin:0;font-size:20px;">Thank You for Your Purchase!</h1>
+        </div>
+        <div style="padding:24px;color:#111827;">
+          <h2 style="margin:0 0 8px 0;font-size:18px;">Your Report is Ready to Create</h2>
+          <p style="margin:0 0 16px 0;line-height:1.6;color:#374151;">
+            Thank you for purchasing a <strong>${planName}</strong>! 
+            Your one-time scan credit has been added to your account and you're ready to generate your comprehensive accessibility report.
+          </p>
+          
+          <div style="margin:24px 0;padding:16px;background:#f9fafb;border-radius:8px;border-left:4px solid ${brandOrange};">
+            <h3 style="margin:0 0 8px 0;font-size:16px;color:${brandOrange};">What's Included:</h3>
+            <ul style="margin:8px 0;padding-left:20px;color:#374151;">
+              <li>1 comprehensive accessibility audit</li>
+              <li>Choose ONE device type for testing</li>
+              <li>All subpages scanned</li>
+              <li>Detailed PDF report with visual annotations</li>
+              <li>17-category analysis</li>
+              <li>Actionable recommendations</li>
+              <li>Email support</li>
+            </ul>
+          </div>
+
+          <div style="margin:24px 0;padding:16px;background:#ecfdf5;border-radius:8px;text-align:center;">
+            <p style="margin:0 0 12px 0;color:#065f46;font-weight:600;">Ready to start your audit?</p>
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout" 
+               style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg, ${brandOrange} 0%, #ef4444 100%);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
+              Start Your Audit Now
+            </a>
+          </div>
+
+          <p style="margin:16px 0 0 0;line-height:1.6;color:#6b7280;font-size:14px;">
+            Log in to your account and visit the Checkout page to begin your accessibility audit. 
+            If you have any questions, our support team is here to help.
+          </p>
+        </div>
+        <div style="padding:16px 24px;background:#f9fafb;border-top:1px solid #eef2f7;text-align:center;">
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            Need help? Contact us at support@silversurfers.ai
+          </p>
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #eef2f7;color:#6b7280;font-size:12px;">SilverSurfers • Accessibility for Everyone</div>
+      </div>
+    </div>`;
+    
+  return sendMailWithFallback({ 
+    to, 
+    subject: 'Your One-Time Report Purchase - Ready to Start!', 
+    html 
+  });
+}
