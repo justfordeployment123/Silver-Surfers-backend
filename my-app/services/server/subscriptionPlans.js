@@ -1,24 +1,52 @@
 // Subscription plans configuration
 export const SUBSCRIPTION_PLANS = {
+  oneTime: {
+    id: 'oneTime',
+    name: 'One-Time',
+    description: 'Perfect for getting started',
+    price: 49700, // $497.00
+    currency: 'usd',
+    type: 'one-time',
+    limits: {
+      scansPerMonth: 1,
+      maxUsers: 1,
+      features: [
+        '1 comprehensive audit',
+        'Choose ONE device type',
+        'All subpages scanned',
+        'Detailed PDF report',
+        'Visual annotations',
+        '17-category analysis',
+        'Email support'
+      ]
+    },
+    gradient: 'from-blue-500 to-indigo-500',
+    popular: false,
+    buttonText: 'Get Report'
+  },
   starter: {
     id: 'starter',
-    name: 'SilverSurfers Starter',
-    description: 'Perfect for small businesses starting their accessibility journey.',
+    name: 'Starter',
+    description: 'Regular monitoring with savings',
     // Monthly pricing (in cents)
     monthlyPriceId: process.env.STRIPE_STARTER_MONTHLY_PRICE_ID, // Set in .env
     yearlyPriceId: process.env.STRIPE_STARTER_YEARLY_PRICE_ID,   // Set in .env
-    monthlyPrice: 2900, // $29.00
-    yearlyPrice: 19700, // $197.00 (special offer)
+    monthlyPrice: 29700, // $297.00
+    yearlyPrice: 297000, // $2,970.00
     currency: 'usd',
     // Limits and features
     limits: {
       scansPerMonth: 5,
       maxUsers: 1,
       features: [
-        'SilverSurfers Score',
-        'Limited scans',
-        'Detailed reports',
-        'Single User'
+        '60 reports per year',
+        'Select device per report',
+        'All subpages scanned',
+        '1 user account',
+        'PDF reports',
+        'Actionable recommendations',
+        'Priority email support',
+        '2 months free'
       ]
     },
 
@@ -27,24 +55,29 @@ export const SUBSCRIPTION_PLANS = {
   },
   pro: {
     id: 'pro',
-    name: 'SilverSurfers Pro',
-    description: 'Comprehensive accessibility solution for growing businesses.',
+    name: 'Pro',
+    description: 'Complete solution + huge savings',
     // Monthly pricing (in cents)
     monthlyPriceId: process.env.STRIPE_PRO_MONTHLY_PRICE_ID, // Set in .env
     yearlyPriceId: process.env.STRIPE_PRO_YEARLY_PRICE_ID,   // Set in .env
-    monthlyPrice: 9900, // $99.00
-    yearlyPrice: 89900, // $899.00 (special offer)
+    monthlyPrice: 69700, // $697.00
+    yearlyPrice: 697000, // $6,970.00
     currency: 'usd',
     // Limits and features
     limits: {
       scansPerMonth: 12,
       maxUsers: 3,
       features: [
-        'SilverSurfers Score',
-        'Increased scans',
-        'Detailed reports',
-        'Multi-users',
-        'SilverSurfers Seal of Approval'
+        '144 reports per year',
+        'All devices tested together',
+        'All subpages scanned',
+        '3 team users',
+        'SilverSurfers Seal',
+        'Priority support',
+        'Historical tracking',
+        'White-label reports',
+        'Quarterly consultation',
+        '2 months free'
       ]
     },
     gradient: 'from-green-500 to-teal-500',
@@ -85,7 +118,7 @@ export const getPlanById = (planId) => {
 };
 
 export const getPlanByPriceId = (priceId) => {
-  return Object.values(SUBSCRIPTION_PLANS).find(plan => 
+  return Object.values(SUBSCRIPTION_PLANS).find(plan =>
     plan.monthlyPriceId === priceId || plan.yearlyPriceId === priceId
   );
 };
