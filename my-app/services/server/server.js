@@ -945,25 +945,50 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
 
-  // Check subscription usage limits and increment immediately to prevent race conditions
-  const subscription = req.subscription;
-  const currentUsage = subscription.usage?.scansThisMonth || 0;
-  const monthlyLimit = subscription.limits?.scansPerMonth;
-  
-  if (monthlyLimit !== -1 && currentUsage >= monthlyLimit) {
-    return res.status(403).json({ 
-      error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
-    });
-  }
+  const userId = req.user.id;
+  const isOneTimeScan = req.hasOneTimeScans;
 
-  // Increment usage counter immediately to prevent race conditions
-  try {
-    await Subscription.findByIdAndUpdate(subscription._id, {
-      $inc: { 'usage.scansThisMonth': 1 }
-    });
-  } catch (usageError) {
-    console.error('Failed to increment usage counter:', usageError);
-    return res.status(500).json({ error: 'Failed to process usage limit' });
+  // Handle one-time scans
+  if (isOneTimeScan) {
+    // Check if user has available one-time scans
+    const user = await User.findById(userId);
+    if (!user || !user.oneTimeScans || user.oneTimeScans <= 0) {
+      return res.status(403).json({ 
+        error: 'No one-time scans available. Please purchase a scan or subscribe to a plan.' 
+      });
+    }
+
+    // Decrement one-time scan immediately
+    try {
+      await User.findByIdAndUpdate(userId, {
+        $inc: { oneTimeScans: -1 }
+      });
+      console.log(`✅ Consumed 1 one-time scan for user ${email}. Remaining: ${user.oneTimeScans - 1}`);
+    } catch (error) {
+      console.error('Failed to decrement one-time scan:', error);
+      return res.status(500).json({ error: 'Failed to process one-time scan' });
+    }
+  } else {
+    // Handle subscription scans
+    const subscription = req.subscription;
+    const currentUsage = subscription.usage?.scansThisMonth || 0;
+    const monthlyLimit = subscription.limits?.scansPerMonth;
+    
+    if (monthlyLimit !== -1 && currentUsage >= monthlyLimit) {
+      return res.status(403).json({ 
+        error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
+      });
+    }
+
+    // Increment usage counter immediately to prevent race conditions
+    try {
+      await Subscription.findByIdAndUpdate(subscription._id, {
+        $inc: { 'usage.scansThisMonth': 1 }
+      });
+    } catch (usageError) {
+      console.error('Failed to increment usage counter:', usageError);
+      return res.status(500).json({ error: 'Failed to process usage limit' });
+    }
   }
 
   // Precheck and normalize URL
@@ -1174,7 +1199,7 @@ app.post('/create-checkout-session', authRequired, async (req, res) => {
           planId: planId,
           type: 'one-time'
         },
-        success_url: `${successUrlBase}/checkout?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${successUrlBase}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${successUrlBase}/services?canceled=1`,
         allow_promotion_codes: true,
         billing_address_collection: 'required',
@@ -1270,7 +1295,8 @@ app.get('/subscription', authRequired, async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
-        stripeCustomerId: user.stripeCustomerId
+        stripeCustomerId: user.stripeCustomerId,
+        oneTimeScans: user.oneTimeScans || 0
       },
       subscription: subscription ? {
         id: subscription._id,
@@ -1283,7 +1309,8 @@ app.get('/subscription', authRequired, async (req, res) => {
         usage: subscription.usage,
         limits: subscription.limits,
         isTeamMember: isTeamMember // Flag to indicate if user is a team member
-      } : null
+      } : null,
+      oneTimeScans: user.oneTimeScans || 0
     });
   } catch (err) {
     console.error('Get subscription error:', err);
@@ -1667,6 +1694,43 @@ app.get('/subscription/plans', async (req, res) => {
 });
 
 // Confirm subscription payment and activate
+// One-time payment success endpoint
+app.get('/payment-success', authRequired, async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    if (!session_id) return res.status(400).json({ error: 'session_id is required' });
+
+    const session = await stripe.checkout.sessions.retrieve(String(session_id));
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Payment not completed yet.' });
+    }
+
+    const userId = session.metadata?.userId;
+    if (!userId || userId !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized access to this payment.' });
+    }
+
+    // Get user's current one-time scans
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    return res.json({ 
+      message: 'Payment successful! Your one-time scan credit has been added.',
+      oneTimeScans: user.oneTimeScans || 0,
+      purchaseDetails: {
+        planId: session.metadata?.planId,
+        amount: session.amount_total,
+        date: new Date(session.created * 1000)
+      }
+    });
+  } catch (err) {
+    console.error('Payment success error:', err);
+    return res.status(500).json({ error: 'Failed to confirm payment.' });
+  }
+});
+
 app.get('/subscription-success', async (req, res) => {
   try {
     const { session_id } = req.query;
@@ -2297,6 +2361,7 @@ async function hasSubscriptionAccess(req, res, next) {
     if (subscription) {
       // User is the subscription owner
       req.subscription = subscription;
+      req.user.oneTimeScans = user.oneTimeScans || 0;
       return next();
     }
 
@@ -2316,6 +2381,7 @@ async function hasSubscriptionAccess(req, res, next) {
         if (isActiveMember) {
           req.subscription = ownerSubscription;
           req.isTeamMember = true;
+          req.user.oneTimeScans = user.oneTimeScans || 0;
           return next();
         }
       }
@@ -2327,7 +2393,21 @@ async function hasSubscriptionAccess(req, res, next) {
       });
     }
 
-    return res.status(403).json({ error: 'No active subscription access found.' });
+    // Check if user has one-time scans available (no subscription required)
+    if (user.oneTimeScans && user.oneTimeScans > 0) {
+      req.user.oneTimeScans = user.oneTimeScans;
+      req.hasOneTimeScans = true;
+      // Create a temporary subscription object for compatibility
+      req.subscription = {
+        _id: null,
+        user: userId,
+        usage: { scansThisMonth: 0 },
+        limits: { scansPerMonth: user.oneTimeScans }
+      };
+      return next();
+    }
+
+    return res.status(403).json({ error: 'No active subscription or one-time scans available.' });
 
   } catch (err) {
     console.error('Subscription access check error:', err);

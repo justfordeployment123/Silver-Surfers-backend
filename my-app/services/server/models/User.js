@@ -43,7 +43,17 @@ const UserSchema = new mongoose.Schema(
       }],
       isTeamMember: { type: Boolean, default: false },
       teamOwner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' } // Reference to owner if member
-    }
+    },
+    // One-time purchase credits
+    oneTimeScans: { type: Number, default: 0 },
+    purchaseHistory: [{
+      date: { type: Date, default: Date.now },
+      planId: { type: String },
+      planName: { type: String },
+      amount: { type: Number },
+      sessionId: { type: String },
+      type: { type: String, enum: ['one-time', 'subscription'], default: 'one-time' }
+    }]
   },
   { timestamps: true }
 );
