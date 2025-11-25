@@ -32,7 +32,7 @@ export const SUBSCRIPTION_PLANS = {
     monthlyPriceId: process.env.STRIPE_STARTER_MONTHLY_PRICE_ID, // Set in .env
     yearlyPriceId: process.env.STRIPE_STARTER_YEARLY_PRICE_ID,   // Set in .env
     monthlyPrice: 29700, // $297.00
-    yearlyPrice: 297000, // $2,970.00
+    yearlyPrice: 297000, // $2,970.00 (17% discount)
     currency: 'usd',
     // Limits and features
     limits: {
@@ -61,7 +61,7 @@ export const SUBSCRIPTION_PLANS = {
     monthlyPriceId: process.env.STRIPE_PRO_MONTHLY_PRICE_ID, // Set in .env
     yearlyPriceId: process.env.STRIPE_PRO_YEARLY_PRICE_ID,   // Set in .env
     monthlyPrice: 69700, // $697.00
-    yearlyPrice: 697000, // $6,970.00
+    yearlyPrice: 697000, // $6,970.00 (17% discount)
     currency: 'usd',
     // Limits and features
     limits: {
