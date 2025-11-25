@@ -1391,47 +1391,56 @@ app.post('/subscription/upgrade', authRequired, async (req, res) => {
       return res.status(400).json({ error: 'Price ID not configured for this plan.' });
     }
 
-    // Retrieve Stripe subscription to get the subscription item id
-    const stripeSub = await stripe.subscriptions.retrieve(currentSubscription.stripeSubscriptionId);
-    const subscriptionItemId = stripeSub?.items?.data?.[0]?.id;
-    if (!subscriptionItemId) {
-      return res.status(500).json({ error: 'Could not determine subscription item to update.' });
+    // Get user
+    const user = await User.findById(userId);
+    if (!user || !user.stripeCustomerId) {
+      return res.status(404).json({ error: 'User or Stripe customer not found.' });
     }
 
-    // Update subscription in Stripe (use subscription item id, not subscription id)
-    const updatedSubscription = await stripe.subscriptions.update(
-      currentSubscription.stripeSubscriptionId,
-      {
-        items: [{
-          id: subscriptionItemId,
+    const successUrlBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    // Create a checkout session for the upgrade (allows discount codes)
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      customer: user.stripeCustomerId,
+      line_items: [
+        {
           price: newPriceId,
-        }],
-        proration_behavior: 'create_prorations',
-        metadata: {
+          quantity: 1,
+        },
+      ],
+      subscription_data: {
+        metadata: { 
+          userId: userId,
           planId: planId,
           billingCycle: billingCycle,
-          directUpgrade: 'true'
-        }
-      }
-    );
-
-    // Update local subscription record
-    await Subscription.findByIdAndUpdate(currentSubscription._id, {
-      planId: planId,
-      priceId: newPriceId,
-      limits: plan.limits,
-      status: updatedSubscription.status
+          isUpgrade: 'true',
+          oldSubscriptionId: currentSubscription.stripeSubscriptionId
+        },
+      },
+      metadata: { 
+        userId: userId, 
+        planId: planId, 
+        billingCycle: billingCycle,
+        isUpgrade: 'true',
+        oldSubscriptionId: currentSubscription.stripeSubscriptionId
+      },
+      success_url: `${successUrlBase}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${successUrlBase}/subscription?canceled=1`,
+      allow_promotion_codes: true,
+      billing_address_collection: 'required',
     });
 
-    console.log(`User ${userId} upgraded subscription to plan ${planId}`);
+    console.log(`User ${userId} initiated upgrade to plan ${planId} with checkout session`);
 
     return res.json({ 
-      message: 'Subscription upgraded successfully.',
-      subscription: updatedSubscription
+      message: 'Checkout session created for upgrade.',
+      url: session.url
     });
   } catch (err) {
-    console.error('Direct subscription upgrade error:', err);
-    return res.status(500).json({ error: 'Failed to upgrade subscription.' });
+    console.error('Subscription upgrade error:', err);
+    return res.status(500).json({ error: 'Failed to create upgrade checkout session.' });
   }
 });
 
@@ -1789,6 +1798,8 @@ app.get('/subscription-success', async (req, res) => {
     const subscription = await stripe.subscriptions.retrieve(session.subscription);
     const userId = session.metadata?.userId;
     const planId = session.metadata?.planId;
+    const isUpgrade = session.metadata?.isUpgrade === 'true';
+    const oldSubscriptionId = session.metadata?.oldSubscriptionId;
 
     if (!userId || !planId) {
       return res.status(400).json({ error: 'Missing metadata.' });
@@ -1797,6 +1808,22 @@ app.get('/subscription-success', async (req, res) => {
     const plan = getPlanById(planId);
     if (!plan) {
       return res.status(400).json({ error: 'Invalid plan.' });
+    }
+
+    // If this is an upgrade, cancel the old subscription
+    if (isUpgrade && oldSubscriptionId) {
+      try {
+        console.log(`🔄 Canceling old subscription ${oldSubscriptionId} for upgrade`);
+        await stripe.subscriptions.cancel(oldSubscriptionId);
+        
+        // Delete old subscription record
+        await Subscription.deleteOne({ stripeSubscriptionId: oldSubscriptionId });
+        
+        console.log(`✅ Old subscription canceled successfully`);
+      } catch (cancelError) {
+        console.error('Failed to cancel old subscription:', cancelError);
+        // Continue anyway as new subscription is active
+      }
     }
 
     // Create or update subscription record

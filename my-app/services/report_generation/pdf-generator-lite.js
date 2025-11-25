@@ -243,14 +243,16 @@ class LiteAccessibilityPDFGenerator {
         // Header with gradient-like effect
         this.doc.rect(0, 0, this.doc.page.width, 100).fill('#2C3E50');
         this.doc.fontSize(24).font('BoldFont').fillColor('white')
-            .text('Upgrade to Premium SilverSurfers', this.margin, 25, { width: this.pageWidth, align: 'center' });
+            .text('Upgrade Now to Unlock the Detailed', this.margin, 20, { width: this.pageWidth, align: 'center' });
+        this.doc.fontSize(24).font('BoldFont').fillColor('white')
+            .text('Inclusion and Accessibility Analysis', this.margin, 48, { width: this.pageWidth, align: 'center' });
         this.doc.fontSize(14).font('RegularFont').fillColor('#ECF0F1')
-            .text('Unlock the complete senior accessibility analysis', this.margin, 55, { width: this.pageWidth, align: 'center' });
+            .text('Unlock the complete senior accessibility analysis', this.margin, 78, { width: this.pageWidth, align: 'center' });
 
         this.currentY = 120;
 
         // What you're missing section
-        this.addHeading('What You\'re Missing in the Lite Version:', 18, '#E74C3C');
+        this.addHeading('What You\'re Missing in the Quick Scan:', 18, '#E74C3C');
         this.currentY += 10;
 
         // Additional Audits
@@ -337,7 +339,7 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += 80;
 
         // Comparison summary
-        this.addBodyText('Lite Version: Basic overview of 11 essential checks', 11, '#95A5A6');
+        this.addBodyText('Quick Scan: Basic overview of 11 essential checks', 11, '#95A5A6');
         this.addBodyText('Premium Version: Comprehensive analysis of 18+ audits with visual highlighting, detailed recommendations, and professional reporting', 11, '#27AE60');
     }
 
@@ -354,7 +356,7 @@ class LiteAccessibilityPDFGenerator {
             this.doc.fontSize(24).font('BoldFont').fillColor('white')
                 .text('SilverSurfers Report', this.margin, 25, { width: this.pageWidth, align: 'center' });
             this.doc.fontSize(14).font('RegularFont').fillColor('white')
-                .text('Lite Version - Essential Checks', this.margin, 50, { width: this.pageWidth, align: 'center' });
+                .text('Quick Scan - Essential Checks', this.margin, 50, { width: this.pageWidth, align: 'center' });
 
             this.currentY = 110;
 
@@ -375,7 +377,7 @@ class LiteAccessibilityPDFGenerator {
 
             // Footer on last page
             this.currentY += 20;
-            this.addBodyText('This lite version provides a basic overview of essential senior accessibility checks. The premium version includes comprehensive analysis, visual highlighting, detailed recommendations, and professional reporting features to help you create truly senior-friendly websites.', 10, '#95A5A6');
+            this.addBodyText('This Quick Scan version provides a basic overview of essential older adult inclusion and accessibility checks.  Subscription versions include comprehensive analysis, visual highlighting, detailed recommendations, and professional reporting features to help you create truly older adult-friendly digital platforms.', 10, '#95A5A6');
 
             this.doc.end();
 
