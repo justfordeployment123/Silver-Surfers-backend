@@ -53,9 +53,10 @@ const signalBackend = async (payload) => {
 // =================================================================
 
 export const runFullAuditProcess = async (job) => {
-  const { email, url, userId, taskId } = job;
+  const { email, url, userId, taskId, planId, selectedDevice, firstName, lastName } = job;
+  const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Valued Customer';
   console.log(`\n\n--- [STARTING FULL JOB] ---`);
-  console.log(`Processing job for ${email} to audit ${url}`);
+  console.log(`Processing job for ${fullName} (${email}) to audit ${url} [Plan: ${planId || 'unknown'}]`);
 
   // Acquire browser lock for full audits
   if (isBrowserInUse) {
@@ -109,8 +110,22 @@ export const runFullAuditProcess = async (job) => {
     const linksToAudit = extractionResult.links;
     console.log(`Found ${linksToAudit.length} links for full audit.`);
 
+    // Determine which devices to audit based on plan
+    let devicesToAudit = ['desktop', 'mobile', 'tablet'];
+    if (planId === 'starter' && selectedDevice) {
+      // Starter plan: audit only the selected device
+      devicesToAudit = [selectedDevice];
+      console.log(`📱 Starter plan: Auditing selected device only - ${selectedDevice}`);
+    } else if (planId === 'pro') {
+      // Pro plan: audit all devices
+      console.log(`🚀 Pro plan: Auditing all devices - desktop, mobile, tablet`);
+    } else {
+      // Default: audit all devices (for custom or legacy plans)
+      console.log(`📊 Auditing all devices by default`);
+    }
+
     for (const link of linksToAudit) {
-      for (const device of ['desktop', 'mobile','tablet']) {
+      for (const device of devicesToAudit) {
         console.log(`--- Starting full ${device} audit for: ${link} ---`);
         let jsonReportPath = null;
         let imagePaths = {};
@@ -374,9 +389,10 @@ export const runFullAuditProcess = async (job) => {
 };
 
 export const runQuickScanProcess = async (job) => {
-    const { email, url, userId } = job;
+    const { email, url, userId, firstName, lastName } = job;
+    const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Valued Customer';
     console.log(`\n--- [STARTING QUICK SCAN] ---`);
-    console.log(`Processing quick scan for ${email} on ${url}`);
+    console.log(`Processing quick scan for ${fullName} (${email}) on ${url}`);
     
     let jsonReportPath = null;
     
@@ -940,13 +956,15 @@ app.post('/precheck-url', async (req, res) => {
 });
 
 app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) => {
-  const { email, url } = req.body || {};
+  const { email, url, selectedDevice, firstName, lastName } = req.body || {};
   if (!email || !url) {
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
 
   const userId = req.user.id;
   const isOneTimeScan = req.hasOneTimeScans;
+
+  console.log(`📊 Full audit requested for ${firstName} ${lastName} (${email}) - Device: ${selectedDevice || 'all'}`);
 
   // Handle one-time scans
   if (isOneTimeScan) {
@@ -1014,14 +1032,22 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   
   try {
+    // Get plan ID from subscription
+    const planId = subscription.planId || 'unknown';
+    const selectedDevice = req.body.selectedDevice || null; // Get device selection from request
+    
     // Add job to persistent queue
     const job = await fullAuditQueue.addJob({
       email,
       url: normalizedUrl,
+      firstName: firstName || '',
+      lastName: lastName || '',
       userId: subscription.user,
       taskId,
       jobType: 'full-audit',
       subscriptionId: subscription._id,
+      planId: planId,
+      selectedDevice: selectedDevice,
       priority: 1 // Normal priority
     });
 
@@ -1053,13 +1079,13 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
 });
 
 app.post('/quick-audit', async (req, res) => {
-  const { email, url } = req.body || {};
+  const { email, url, firstName, lastName } = req.body || {};
   if (!email || !url) {
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
 
   // Quick scan is now FREE - no authentication or subscription limits required
-  console.log(`🆓 FREE Quick scan requested for ${email} on ${url}`);
+  console.log(`🆓 FREE Quick scan requested for ${firstName} ${lastName} (${email}) on ${url}`);
 
   // Precheck and normalize URL
   const { candidateUrls } = buildCandidateUrls(url);
@@ -1096,6 +1122,8 @@ app.post('/quick-audit', async (req, res) => {
     const job = await quickScanQueue.addJob({
       email,
       url: normalizedUrl,
+      firstName: firstName || '',
+      lastName: lastName || '',
       userId: null, // No user required for free scans
       taskId,
       jobType: 'quick-scan',
