@@ -963,6 +963,7 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
 
   const userId = req.user.id;
   const isOneTimeScan = req.hasOneTimeScans;
+  const subscription = req.subscription; // Define subscription at function scope
 
   console.log(`📊 Full audit requested for ${firstName} ${lastName} (${email}) - Device: ${selectedDevice || 'all'}`);
 
@@ -988,7 +989,6 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     }
   } else {
     // Handle subscription scans
-    const subscription = req.subscription;
     const currentUsage = subscription.usage?.scansThisMonth || 0;
     const monthlyLimit = subscription.limits?.scansPerMonth;
     
@@ -1032,8 +1032,8 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   
   try {
-    // Get plan ID from subscription
-    const planId = subscription.planId || 'unknown';
+    // Get plan ID from subscription (or default for one-time scans)
+    const planId = subscription?.planId || 'oneTime';
     const selectedDevice = req.body.selectedDevice || null; // Get device selection from request
     
     // Add job to persistent queue
@@ -1042,10 +1042,10 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
       url: normalizedUrl,
       firstName: firstName || '',
       lastName: lastName || '',
-      userId: subscription.user,
+      userId: subscription?.user || userId,
       taskId,
       jobType: 'full-audit',
-      subscriptionId: subscription._id,
+      subscriptionId: subscription?._id || null,
       planId: planId,
       selectedDevice: selectedDevice,
       priority: 1 // Normal priority
@@ -1053,7 +1053,7 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
 
     // Create AnalysisRecord for backward compatibility
     await AnalysisRecord.create({
-      user: subscription.user,
+      user: subscription?.user || userId,
     email,
     url: normalizedUrl,
     taskId,
@@ -1069,10 +1069,19 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
   } catch (error) {
     console.error('Failed to queue full audit:', error);
     
-    // Rollback usage increment on failure
-    await Subscription.findByIdAndUpdate(subscription._id, {
-      $inc: { 'usage.scansThisMonth': -1 }
-    });
+    // Rollback usage increment on failure (only for subscription scans)
+    if (!isOneTimeScan && subscription) {
+      await Subscription.findByIdAndUpdate(subscription._id, {
+        $inc: { 'usage.scansThisMonth': -1 }
+      }).catch(err => console.error('Failed to rollback usage:', err));
+    }
+    
+    // Rollback one-time scan decrement on failure
+    if (isOneTimeScan) {
+      await User.findByIdAndUpdate(userId, {
+        $inc: { oneTimeScans: 1 }
+      }).catch(err => console.error('Failed to rollback one-time scan:', err));
+    }
     
     res.status(500).json({ error: 'Failed to queue audit request' });
   }
