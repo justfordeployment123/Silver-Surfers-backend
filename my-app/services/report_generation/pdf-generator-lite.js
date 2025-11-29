@@ -206,10 +206,36 @@ class LiteAccessibilityPDFGenerator {
     addLiteResults(reportData) {
         const audits = reportData.audits || {};
 
-        this.addBodyText('Key Areas Checked:', 12, '#2980B9');
-        this.currentY += 5;
+        // Add page break for results
+        this.addPage();
+        
+        // Results heading
+        this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937')
+            .text('Accessibility Checks Results', this.margin, this.currentY);
+        
+        // Divider line
+        this.doc.moveTo(this.margin, this.currentY + 25)
+            .lineTo(this.margin + this.pageWidth, this.currentY + 25)
+            .lineWidth(2).stroke('#3B82F6');
+        
+        this.currentY += 45;
+        
+        // Info box
+        this.doc.rect(this.margin, this.currentY, this.pageWidth, 40).fill('#EFF6FF').stroke('#3B82F6');
+        this.doc.fontSize(9).font('RegularFont').fillColor('#1E40AF')
+            .text('The Quick Scan report is a limited view of the website submitted and only audits the home page.', 
+                this.margin + 15, this.currentY + 13, { width: this.pageWidth - 30, align: 'left' });
+        
+        this.currentY += 55;
 
-        Object.keys(LITE_AUDIT_INFO).forEach(auditId => {
+        // Results in 2-column card grid
+        const cardWidth = (this.pageWidth - 15) / 2;
+        const cardHeight = 95;
+        const cardSpacing = 15;
+        let column = 0;
+        let rowStartY = this.currentY;
+
+        Object.keys(LITE_AUDIT_INFO).forEach((auditId, index) => {
             const auditResult = audits[auditId];
             const auditInfo = LITE_AUDIT_INFO[auditId];
 
@@ -219,77 +245,143 @@ class LiteAccessibilityPDFGenerator {
                 let status = score === 1 ? 'PASS' :
                     score > 0.5 ? 'NEEDS WORK' : 'FAIL';
 
-                let statusColor = score === 1 ? '#27AE60' :
-                    score > 0.5 ? '#F39C12' : '#E74C3C';
+                let bgColor, borderColor, statusColor, badgeBg;
+                if (score === 1) {
+                    bgColor = '#ECFDF5';
+                    borderColor = '#10B981';
+                    statusColor = '#FFFFFF';
+                    badgeBg = '#10B981';
+                } else if (score > 0.5) {
+                    bgColor = '#FEF3C7';
+                    borderColor = '#F59E0B';
+                    statusColor = '#FFFFFF';
+                    badgeBg = '#F59E0B';
+                } else {
+                    bgColor = '#FEE2E2';
+                    borderColor = '#EF4444';
+                    statusColor = '#FFFFFF';
+                    badgeBg = '#EF4444';
+                }
 
-                // Draw colored bullet
-                this.doc.circle(this.margin + 5, this.currentY + 6, 3).fill(statusColor);
+                // Check if we need a new page
+                if (rowStartY + cardHeight > this.doc.page.height - 50) {
+                    this.addPage();
+                    rowStartY = this.currentY;
+                    column = 0;
+                }
 
-                // Add text
-                this.doc.fontSize(10).font('BoldFont').fillColor('#2C3E50')
-                    .text(`${auditInfo.title}: ${status}`, this.margin + 15, this.currentY);
-                this.currentY += 15;
+                const cardX = this.margin + (column * (cardWidth + cardSpacing));
+                const cardY = rowStartY;
 
-                this.doc.fontSize(9).font('RegularFont').fillColor('#666')
-                    .text(auditInfo.impact, this.margin + 15, this.currentY, { width: this.pageWidth - 15 });
-                this.currentY += this.doc.heightOfString(auditInfo.impact, { width: this.pageWidth - 15 }) + 8;
+                // Draw card with left border
+                this.doc.rect(cardX, cardY, cardWidth, cardHeight).fill(bgColor);
+                this.doc.rect(cardX, cardY, 4, cardHeight).fill(borderColor);
+
+                // Status badge in top right
+                const badgeWidth = 50;
+                const badgeHeight = 20;
+                const badgeX = cardX + cardWidth - badgeWidth - 10;
+                const badgeY = cardY + 10;
+                this.doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 10).fill(badgeBg);
+                this.doc.fontSize(8).font('BoldFont').fillColor(statusColor)
+                    .text(status, badgeX, badgeY + 6, { width: badgeWidth, align: 'center' });
+
+                // Title
+                this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937')
+                    .text(auditInfo.title, cardX + 12, cardY + 15, { width: cardWidth - 80 });
+
+                // Description
+                this.doc.fontSize(8).font('RegularFont').fillColor('#6B7280')
+                    .text(auditInfo.impact, cardX + 12, cardY + 45, { 
+                        width: cardWidth - 24, 
+                        height: cardHeight - 60,
+                        ellipsis: true
+                    });
+
+                // Move to next column or row
+                column++;
+                if (column >= 2) {
+                    column = 0;
+                    rowStartY += cardHeight + cardSpacing;
+                }
             }
         });
+        
+        // Update currentY to after the last row
+        this.currentY = rowStartY + (column > 0 ? cardHeight + cardSpacing : 0);
     }
 
     addPremiumComparisonPage() {
         this.addPage();
 
         // Header with gradient-like effect - matching website colors
-        this.doc.rect(0, 0, this.doc.page.width, 100).fill('#2563EB');
+        this.doc.rect(0, 0, this.doc.page.width, 100).fill('#1E40AF');
         this.doc.fontSize(20).font('BoldFont').fillColor('white')
-            .text('Unlock Your Complete SilverSurfers Accessibility Audit—Upgrade Today', this.margin, 35, { width: this.pageWidth, align: 'center' });
+            .text('Upgrade SilverSurfers Subscription', this.margin, 30, { width: this.pageWidth, align: 'center' });
+        
+        this.doc.fontSize(12).font('RegularFont').fillColor('#BFDBFE')
+            .text('Unlock the complete senior accessibility analysis', this.margin, 60, { width: this.pageWidth, align: 'center' });
 
-        this.currentY = 120;
+        this.currentY = 130;
 
-        // What you're missing section
-        this.addHeading('What You\'re Missing in the Quick Scan:', 18, '#E74C3C');
-        this.currentY += 10;
-
-        // Additional Audits
-        this.doc.rect(this.margin, this.currentY, this.pageWidth, 30).fill('#FFEBEE').stroke('#E74C3C');
-        this.doc.fontSize(14).font('BoldFont').fillColor('#C62828')
-            .text('7 Additional Critical Audits', this.margin + 10, this.currentY + 8);
-        this.currentY += 40;
-
+        // Premium features section - Boxes with blue background
+        const boxWidth = (this.pageWidth - 30) / 2;
+        const boxHeight = 220;
+        
+        // Box 1: Additional Critical Audits
+        this.doc.roundedRect(this.margin, this.currentY, boxWidth, boxHeight, 10).fill('#1E3A8A');
+        this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
+            .text('🔍 7 Additional Critical Audits', this.margin + 15, this.currentY + 15, { width: boxWidth - 30 });
+        
+        let yPos = this.currentY + 45;
         PREMIUM_FEATURES.additionalAudits.forEach(audit => {
-            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                .text(`• ${audit}`, this.margin + 10, this.currentY);
-            this.currentY += 15;
+            this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
+                .text('✓ ' + audit, this.margin + 15, yPos, { width: boxWidth - 30 });
+            yPos += 20;
         });
 
-        this.currentY += 10;
-
-        // Visual Features
-        this.doc.rect(this.margin, this.currentY, this.pageWidth, 30).fill('#E3F2FD').stroke('#1976D2');
-        this.doc.fontSize(14).font('BoldFont').fillColor('#0D47A1')
-            .text('Visual Analysis & Screenshots', this.margin + 10, this.currentY + 8);
-        this.currentY += 40;
-
+        // Box 2: Visual Analysis
+        const box2X = this.margin + boxWidth + 30;
+        this.doc.roundedRect(box2X, this.currentY, boxWidth, boxHeight, 10).fill('#1E3A8A');
+        this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
+            .text('📊 Visual Analysis & Screenshots', box2X + 15, this.currentY + 15, { width: boxWidth - 30 });
+        
+        yPos = this.currentY + 45;
         PREMIUM_FEATURES.visualFeatures.forEach(feature => {
-            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                .text(`• ${feature}`, this.margin + 10, this.currentY);
-            this.currentY += 15;
+            this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
+                .text('✓ ' + feature, box2X + 15, yPos, { width: boxWidth - 30 });
+            yPos += 20;
         });
-
-        this.currentY += 10;
-
-        // Detailed Analysis
-        this.doc.rect(this.margin, this.currentY, this.pageWidth, 30).fill('#E8F5E8').stroke('#388E3C');
-        this.doc.fontSize(14).font('BoldFont').fillColor('#1B5E20')
-            .text('Comprehensive Analysis & Recommendations', this.margin + 10, this.currentY + 8);
-        this.currentY += 40;
-
+        
+        this.currentY += boxHeight + 20;
+        
+        // Box 3: Comprehensive Analysis (full width)
+        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, 180, 10).fill('#1E3A8A');
+        this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
+            .text('📋 Comprehensive Analysis', this.margin + 15, this.currentY + 15, { width: this.pageWidth - 30 });
+        
+        yPos = this.currentY + 45;
         PREMIUM_FEATURES.detailedAnalysis.forEach(feature => {
-            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                .text(`• ${feature}`, this.margin + 10, this.currentY);
-            this.currentY += 15;
+            this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
+                .text('✓ ' + feature, this.margin + 15, yPos, { width: this.pageWidth - 30 });
+            yPos += 20;
         });
+        
+        this.currentY += 200;
+        
+        // Upgrade button
+        const buttonWidth = 200;
+        const buttonX = (this.doc.page.width - buttonWidth) / 2;
+        this.doc.roundedRect(buttonX, this.currentY, buttonWidth, 40, 20).fill('#FFFFFF');
+        this.doc.fontSize(14).font('BoldFont').fillColor('#1E40AF')
+            .text('Upgrade Now', buttonX, this.currentY + 12, { width: buttonWidth, align: 'center' });
+        
+        this.currentY += 70;
+        
+        // Bottom explanatory text
+        this.doc.fontSize(9).font('RegularFont').fillColor('#6B7280')
+            .text('This Quick Scan version provides a basic overview of essential senior accessibility checks. The premium version includes comprehensive analysis, visual highlighting, detailed recommendations, and professional reporting features to help you create truly senior-friendly websites.', 
+                this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
     }
 
     addPremiumFeaturesPage() {
@@ -348,20 +440,47 @@ class LiteAccessibilityPDFGenerator {
             this.doc.pipe(stream);
 
             // Header - matching website blue/green gradient colors
-            this.doc.rect(0, 0, this.doc.page.width, 80).fill('#2563EB');
-            this.doc.fontSize(24).font('BoldFont').fillColor('white')
-                .text('SilverSurfers Quick Scan Report', this.margin, 30, { width: this.pageWidth, align: 'center' });
+            this.doc.rect(0, 0, this.doc.page.width, 120).fill('#7C3AED');
+            
+            // Title
+            this.doc.fontSize(28).font('BoldFont').fillColor('white')
+                .text('SilverSurfers Quick Scan Report', this.margin, 40, { width: this.pageWidth, align: 'center' });
+            
+            // Subtitle
+            this.doc.fontSize(12).font('RegularFont').fillColor('#E9D5FF')
+                .text('QUICK SCAN VERSION - ESSENTIAL CHECKS', this.margin, 80, { width: this.pageWidth, align: 'center' });
 
-            this.currentY = 110;
+            this.currentY = 140;
 
-            // Website info
+            // Score section with blue background
+            const scoreBoxHeight = 200;
+            this.doc.rect(0, this.currentY, this.doc.page.width, scoreBoxHeight).fill('#5B8DEF');
+            
+            // Draw score circle
+            const centerX = this.doc.page.width / 2;
+            const circleY = this.currentY + 80;
+            this.doc.circle(centerX, circleY, 60).lineWidth(8).stroke('#FFFFFF').opacity(0.3);
+            this.doc.circle(centerX, circleY, 60).lineWidth(8).stroke('#FFFFFF').opacity(1);
+            
+            // Score text
+            this.doc.fontSize(48).font('BoldFont').fillColor('white').opacity(1)
+                .text(`${scoreData.finalScore.toFixed(0)}%`, 0, circleY - 24, { width: this.doc.page.width, align: 'center' });
+            
+            // Score label
+            this.doc.fontSize(14).font('RegularFont').fillColor('white')
+                .text('SilverSurfers Score', 0, circleY + 80, { width: this.doc.page.width, align: 'center' });
+            
+            this.currentY += scoreBoxHeight + 20;
+
+            // Website info box
             if (reportData.finalUrl) {
-                this.addBodyText(`Website: ${reportData.finalUrl}`, 12, '#7F8C8D');
-                this.currentY += 10;
+                this.doc.rect(this.margin, this.currentY, this.pageWidth, 50).fill('#F5F5F5');
+                this.doc.fontSize(12).font('BoldFont').fillColor('#333333')
+                    .text('Website Analyzed:', this.margin + 15, this.currentY + 12);
+                this.doc.fontSize(11).font('RegularFont').fillColor('#3B82F6')
+                    .text(reportData.finalUrl, this.margin + 15, this.currentY + 30);
+                this.currentY += 70;
             }
-
-            // Score
-            this.addScoreDisplay(scoreData);
 
             // Results
             this.addLiteResults(reportData);
