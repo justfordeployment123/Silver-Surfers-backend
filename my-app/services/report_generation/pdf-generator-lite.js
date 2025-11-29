@@ -356,7 +356,8 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += boxHeight + 20;
         
         // Box 3: Comprehensive Analysis (full width)
-        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, 180, 10).fill('#1E3A8A');
+        const box3Height = 140;
+        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, box3Height, 10).fill('#1E3A8A');
         this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
             .text('Comprehensive Analysis', this.margin + 15, this.currentY + 15, { width: this.pageWidth - 30 });
         
@@ -367,7 +368,7 @@ class LiteAccessibilityPDFGenerator {
             yPos += 24;
         });
         
-        this.currentY += 200;
+        this.currentY += box3Height + 15;
         
         // Upgrade button
         const buttonWidth = 200;
@@ -376,12 +377,12 @@ class LiteAccessibilityPDFGenerator {
         this.doc.fontSize(14).font('BoldFont').fillColor('#1E40AF')
             .text('Upgrade Now', buttonX, this.currentY + 12, { width: buttonWidth, align: 'center' });
         
-        this.currentY += 65;
+        this.currentY += 60;
         
         // Bottom explanatory text - properly wrapped
-        this.doc.fontSize(9).font('RegularFont').fillColor('#6B7280')
+        this.doc.fontSize(8).font('RegularFont').fillColor('#6B7280')
             .text('This Quick Scan version provides a basic overview of essential senior accessibility checks. The premium version includes comprehensive analysis, visual highlighting, detailed recommendations, and professional reporting features to help you create truly senior-friendly websites.', 
-                this.margin + 20, this.currentY, { width: this.pageWidth - 40, align: 'left', lineGap: 4 });
+                this.margin + 20, this.currentY, { width: this.pageWidth - 40, align: 'left', lineGap: 3 });
     }
 
     addPremiumFeaturesPage() {
