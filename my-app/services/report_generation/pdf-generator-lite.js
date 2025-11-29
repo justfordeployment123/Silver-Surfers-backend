@@ -489,10 +489,6 @@ class LiteAccessibilityPDFGenerator {
             // Add premium comparison page
             this.addPremiumComparisonPage();
 
-            // Footer on last page
-            this.currentY += 20;
-            this.addBodyText('This Quick Scan report provides a basic overview of essential accessibility checks for older adults. A paid subscription includes comprehensive analysis, visual highlights, detailed recommendations, and professional reporting features to help you create a truly older adult-friendly website.', 10, '#95A5A6');
-
             this.doc.end();
 
             return new Promise((resolve, reject) => {
