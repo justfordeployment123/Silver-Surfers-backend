@@ -1055,8 +1055,12 @@ app.post('/start-audit', authRequired, hasSubscriptionAccess, async (req, res) =
     await AnalysisRecord.create({
       user: subscription?.user || userId,
     email,
+    firstName: firstName || '',
+    lastName: lastName || '',
     url: normalizedUrl,
     taskId,
+    planId: planId,
+    device: selectedDevice,
     status: 'queued',
     emailStatus: 'pending',
     });
@@ -1123,6 +1127,8 @@ app.post('/quick-audit', async (req, res) => {
     const quickScanRecord = await QuickScan.create({
       url: normalizedUrl,
       email: email.toLowerCase(),
+      firstName: firstName || '',
+      lastName: lastName || '',
       status: 'completed', // Will be updated based on actual result
       scanDate: new Date()
     });
@@ -2773,6 +2779,76 @@ app.get('/admin/quick-scans', authRequired, async (req, res) => {
   } catch (error) {
     console.error('Error fetching quick scans:', error);
     res.status(500).json({ error: 'Failed to fetch quick scans' });
+  }
+});
+
+// Admin endpoint to get subscription scans (from AnalysisRecord)
+app.get('/admin/subscription-scans', authRequired, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { page = 1, limit = 50, planFilter, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Build query - only get subscription-based scans (not one-time quick scans)
+    const query = {};
+    if (planFilter && planFilter !== 'all') {
+      query.planId = planFilter;
+    }
+    if (search) {
+      query.$or = [
+        { url: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Build sort object
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const [records, total] = await Promise.all([
+      AnalysisRecord.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit)),
+      AnalysisRecord.countDocuments(query)
+    ]);
+
+    // Get statistics
+    const stats = await AnalysisRecord.aggregate([
+      { $group: {
+        _id: null,
+        totalScans: { $sum: 1 },
+        starterScans: { $sum: { $cond: [{ $eq: ['$planId', 'starter'] }, 1, 0] } },
+        proScans: { $sum: { $cond: [{ $eq: ['$planId', 'pro'] }, 1, 0] } },
+        completedScans: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        failedScans: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } }
+      }}
+    ]);
+
+    const statistics = stats[0] || {
+      totalScans: 0,
+      starterScans: 0,
+      proScans: 0,
+      completedScans: 0,
+      failedScans: 0
+    };
+
+    res.json({
+      success: true,
+      items: records,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / limit),
+      statistics
+    });
+  } catch (error) {
+    console.error('Error fetching subscription scans:', error);
+    res.status(500).json({ error: 'Failed to fetch subscription scans' });
   }
 });
 

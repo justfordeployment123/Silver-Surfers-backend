@@ -12,6 +12,20 @@ const quickScanSchema = new mongoose.Schema({
     lowercase: true,
     trim: true
   },
+  firstName: {
+    type: String,
+    default: ''
+  },
+  lastName: {
+    type: String,
+    default: ''
+  },
+  scanScore: {
+    type: Number,
+    min: 0,
+    max: 100,
+    default: null
+  },
   scanDate: {
     type: Date,
     default: Date.now

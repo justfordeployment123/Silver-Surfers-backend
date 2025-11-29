@@ -13,58 +13,58 @@ const LITE_AUDIT_INFO = {
     'color-contrast': {
         title: 'Color Contrast',
         category: 'Vision',
-        impact: 'Essential for seniors with vision changes to read text clearly.',
+        impact: 'Essential for older adults with vision changes to read text clearly.',
     },
     'target-size': {
         title: 'Touch Target Size',
         category: 'Motor',
-        impact: 'Larger buttons help seniors with tremors or arthritis.',
+        impact: 'Larger buttons help older adults with tremors or arthritis.',
     },
     // CHANGE: Replace 'font-size' with 'text-font-audit' to match your custom audit
     'text-font-audit': {
         title: 'Font Size',
         category: 'Vision',
-        impact: 'Larger fonts are crucial for seniors with presbyopia.',
+        impact: 'Larger fonts are crucial for older adults with presbyopia.',
     },
     'viewport': {
         title: 'Mobile Design',
         category: 'Technical',
-        impact: 'Proper mobile display for seniors using tablets/phones.',
+        impact: 'Proper mobile display for older adults using tablets/phones.',
     },
     'link-name': {
         title: 'Link Text',
         category: 'Cognitive',
-        impact: 'Clear link descriptions help seniors navigate confidently.',
+        impact: 'Clear link descriptions help older adults navigate confidently.',
     },
     'button-name': {
         title: 'Button Labels',
         category: 'Cognitive',
-        impact: 'Descriptive button text prevents confusion for seniors.',
+        impact: 'Descriptive button text prevents confusion for older adults.',
     },
     'label': {
         title: 'Form Labels',
         category: 'Cognitive',
-        impact: 'Clear form labels help seniors complete tasks successfully.',
+        impact: 'Clear form labels help older adults complete tasks successfully.',
     },
     'heading-order': {
         title: 'Content Structure',
         category: 'Cognitive',
-        impact: 'Logical headings reduce cognitive load for seniors.',
+        impact: 'Logical headings reduce cognitive load for older adults.',
     },
     'is-on-https': {
         title: 'Security',
         category: 'Security',
-        impact: 'Secure connections protect seniors from online scams.',
+        impact: 'Secure connections protect older adults from online scams.',
     },
     'largest-contentful-paint': {
         title: 'Loading Speed',
         category: 'Performance',
-        impact: 'Fast loading prevents seniors from thinking site is broken.',
+        impact: 'Fast loading prevents older adults from thinking site is broken.',
     },
     'cumulative-layout-shift': {
         title: 'Stable Layout',
         category: 'Performance',
-        impact: 'Stable pages prevent seniors from clicking wrong elements.',
+        impact: 'Stable pages prevent older adults from clicking wrong elements.',
     }
 };
 
@@ -240,14 +240,10 @@ class LiteAccessibilityPDFGenerator {
     addPremiumComparisonPage() {
         this.addPage();
 
-        // Header with gradient-like effect
-        this.doc.rect(0, 0, this.doc.page.width, 100).fill('#2C3E50');
-        this.doc.fontSize(24).font('BoldFont').fillColor('white')
-            .text('Upgrade Now to Unlock the Detailed', this.margin, 20, { width: this.pageWidth, align: 'center' });
-        this.doc.fontSize(24).font('BoldFont').fillColor('white')
-            .text('Inclusion and Accessibility Analysis', this.margin, 48, { width: this.pageWidth, align: 'center' });
-        this.doc.fontSize(14).font('RegularFont').fillColor('#ECF0F1')
-            .text('Unlock the complete senior accessibility analysis', this.margin, 78, { width: this.pageWidth, align: 'center' });
+        // Header with gradient-like effect - matching website colors
+        this.doc.rect(0, 0, this.doc.page.width, 100).fill('#2563EB');
+        this.doc.fontSize(20).font('BoldFont').fillColor('white')
+            .text('Unlock Your Complete SilverSurfers Accessibility Audit—Upgrade Today', this.margin, 35, { width: this.pageWidth, align: 'center' });
 
         this.currentY = 120;
 
@@ -351,12 +347,10 @@ class LiteAccessibilityPDFGenerator {
             const stream = fs.createWriteStream(outputFile);
             this.doc.pipe(stream);
 
-            // Header
-            this.doc.rect(0, 0, this.doc.page.width, 80).fill('#34495E');
+            // Header - matching website blue/green gradient colors
+            this.doc.rect(0, 0, this.doc.page.width, 80).fill('#2563EB');
             this.doc.fontSize(24).font('BoldFont').fillColor('white')
-                .text('SilverSurfers Report', this.margin, 25, { width: this.pageWidth, align: 'center' });
-            this.doc.fontSize(14).font('RegularFont').fillColor('white')
-                .text('Quick Scan - Essential Checks', this.margin, 50, { width: this.pageWidth, align: 'center' });
+                .text('SilverSurfers Quick Scan Report', this.margin, 30, { width: this.pageWidth, align: 'center' });
 
             this.currentY = 110;
 
@@ -377,7 +371,7 @@ class LiteAccessibilityPDFGenerator {
 
             // Footer on last page
             this.currentY += 20;
-            this.addBodyText('This Quick Scan version provides a basic overview of essential older adult inclusion and accessibility checks.  Subscription versions include comprehensive analysis, visual highlighting, detailed recommendations, and professional reporting features to help you create truly older adult-friendly digital platforms.', 10, '#95A5A6');
+            this.addBodyText('This Quick Scan report provides a basic overview of essential accessibility checks for older adults. A paid subscription includes comprehensive analysis, visual highlights, detailed recommendations, and professional reporting features to help you create a truly older adult-friendly website.', 10, '#95A5A6');
 
             this.doc.end();
 

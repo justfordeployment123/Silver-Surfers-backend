@@ -3,9 +3,13 @@ import mongoose from 'mongoose';
 const analysisRecordSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true, required: false },
   email: { type: String, index: true },
+  firstName: { type: String, default: '' },
+  lastName: { type: String, default: '' },
   url: { type: String, required: true },
   taskId: { type: String, index: true },
   stripeSessionId: { type: String, index: true },
+  planId: { type: String, default: null },
+  device: { type: String, default: null },
   status: { type: String, enum: ['queued','processing','completed','failed'], default: 'queued' },
   emailStatus: { type: String, enum: ['pending','sending','sent','failed'], default: 'pending' },
   reportDirectory: { type: String },
