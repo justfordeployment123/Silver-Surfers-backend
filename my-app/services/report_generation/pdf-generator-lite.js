@@ -330,41 +330,41 @@ class LiteAccessibilityPDFGenerator {
         
         // Box 1: Additional Critical Audits
         this.doc.roundedRect(this.margin, this.currentY, boxWidth, boxHeight, 10).fill('#1E3A8A');
-        this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
-            .text('🔍 7 Additional Critical Audits', this.margin + 15, this.currentY + 15, { width: boxWidth - 30 });
+        this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
+            .text('7 Additional Critical Audits', this.margin + 15, this.currentY + 15, { width: boxWidth - 30 });
         
-        let yPos = this.currentY + 45;
+        let yPos = this.currentY + 40;
         PREMIUM_FEATURES.additionalAudits.forEach(audit => {
             this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
-                .text('✓ ' + audit, this.margin + 15, yPos, { width: boxWidth - 30 });
-            yPos += 20;
+                .text('• ' + audit, this.margin + 15, yPos, { width: boxWidth - 30, lineGap: 1 });
+            yPos += 24;
         });
 
         // Box 2: Visual Analysis
         const box2X = this.margin + boxWidth + 30;
         this.doc.roundedRect(box2X, this.currentY, boxWidth, boxHeight, 10).fill('#1E3A8A');
-        this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
-            .text('📊 Visual Analysis & Screenshots', box2X + 15, this.currentY + 15, { width: boxWidth - 30 });
+        this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
+            .text('Visual Analysis & Screenshots', box2X + 15, this.currentY + 15, { width: boxWidth - 30 });
         
-        yPos = this.currentY + 45;
+        yPos = this.currentY + 40;
         PREMIUM_FEATURES.visualFeatures.forEach(feature => {
             this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
-                .text('✓ ' + feature, box2X + 15, yPos, { width: boxWidth - 30 });
-            yPos += 20;
+                .text('• ' + feature, box2X + 15, yPos, { width: boxWidth - 30, lineGap: 1 });
+            yPos += 24;
         });
         
         this.currentY += boxHeight + 20;
         
         // Box 3: Comprehensive Analysis (full width)
         this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, 180, 10).fill('#1E3A8A');
-        this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
-            .text('📋 Comprehensive Analysis', this.margin + 15, this.currentY + 15, { width: this.pageWidth - 30 });
+        this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
+            .text('Comprehensive Analysis', this.margin + 15, this.currentY + 15, { width: this.pageWidth - 30 });
         
-        yPos = this.currentY + 45;
+        yPos = this.currentY + 40;
         PREMIUM_FEATURES.detailedAnalysis.forEach(feature => {
             this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
-                .text('✓ ' + feature, this.margin + 15, yPos, { width: this.pageWidth - 30 });
-            yPos += 20;
+                .text('• ' + feature, this.margin + 15, yPos, { width: this.pageWidth - 30, lineGap: 1 });
+            yPos += 24;
         });
         
         this.currentY += 200;
@@ -376,12 +376,12 @@ class LiteAccessibilityPDFGenerator {
         this.doc.fontSize(14).font('BoldFont').fillColor('#1E40AF')
             .text('Upgrade Now', buttonX, this.currentY + 12, { width: buttonWidth, align: 'center' });
         
-        this.currentY += 70;
+        this.currentY += 65;
         
-        // Bottom explanatory text
+        // Bottom explanatory text - properly wrapped
         this.doc.fontSize(9).font('RegularFont').fillColor('#6B7280')
             .text('This Quick Scan version provides a basic overview of essential senior accessibility checks. The premium version includes comprehensive analysis, visual highlighting, detailed recommendations, and professional reporting features to help you create truly senior-friendly websites.', 
-                this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+                this.margin + 20, this.currentY, { width: this.pageWidth - 40, align: 'left', lineGap: 4 });
     }
 
     addPremiumFeaturesPage() {
@@ -393,7 +393,7 @@ class LiteAccessibilityPDFGenerator {
         // Professional Reporting
         this.doc.rect(this.margin, this.currentY, this.pageWidth, 30).fill('#FFF3E0').stroke('#F57C00');
         this.doc.fontSize(14).font('BoldFont').fillColor('#E65100')
-            .text('📄 Professional Client-Ready Reports', this.margin + 10, this.currentY + 8);
+            .text('Professional Client-Ready Reports', this.margin + 10, this.currentY + 8);
         this.currentY += 40;
 
         PREMIUM_FEATURES.reportingFeatures.forEach(feature => {
