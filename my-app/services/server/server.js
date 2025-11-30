@@ -416,6 +416,22 @@ export const runQuickScanProcess = async (job) => {
           const pdfResult = await generateLiteAccessibilityReport(jsonReportPath, userSpecificOutputDir);
 
         console.log(`✅ Quick scan PDF generated for ${email} at ${pdfResult.reportPath}`);
+        console.log(`📊 Quick scan score: ${pdfResult.score}%`);
+
+        // Update QuickScan record with the score
+        if (job.quickScanId) {
+            try {
+                await QuickScan.findByIdAndUpdate(job.quickScanId, {
+                    scanScore: parseFloat(pdfResult.score),
+                    status: 'completed',
+                    reportGenerated: true,
+                    reportPath: pdfResult.reportPath
+                });
+                console.log(`✅ Quick scan score saved to database: ${pdfResult.score}%`);
+            } catch (updateErr) {
+                console.error('Failed to update quick scan record with score:', updateErr);
+            }
+        }
 
         // Send the quick scan report via email (attachments from the output folder)
         await sendAuditReportEmail({
@@ -456,6 +472,19 @@ export const runQuickScanProcess = async (job) => {
 
     } catch (error) {
         console.error(`A critical error occurred during the quick scan for ${email}:`, error.message);
+        
+        // Update QuickScan record with failed status
+        if (job.quickScanId) {
+            try {
+                await QuickScan.findByIdAndUpdate(job.quickScanId, {
+                    status: 'failed',
+                    errorMessage: error.message
+                });
+                console.log(`❌ Quick scan status updated to failed`);
+            } catch (updateErr) {
+                console.error('Failed to update quick scan record status:', updateErr);
+            }
+        }
         
         // Quick scan is FREE - no usage tracking needed even on failure
         console.log(`🆓 FREE Quick scan failed for ${email} - no usage tracking`);
