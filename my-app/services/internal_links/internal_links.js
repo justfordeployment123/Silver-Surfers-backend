@@ -8,7 +8,7 @@ const cheerio = require('cheerio');
 export class InternalLinksExtractor {
   constructor(options = {}) {
     this.config = {
-      maxLinks: options.maxLinks || 10,
+      maxLinks: options.maxLinks || 2,
       maxDepth: options.maxDepth || 2,
       delayMs: options.delayMs || 2000,
       timeout: options.timeout || 15000,

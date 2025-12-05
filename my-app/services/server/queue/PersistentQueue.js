@@ -123,12 +123,18 @@ class PersistentQueue {
         await job.startProcessing(process.env.NODE_ENV || 'development');
         console.log(`🔄 Processing job ${job.taskId} in ${this.queueName}`);
         
-        // Execute the job
+        // Execute the job - Pass all relevant job data including custom fields
         const result = await this.processFunction({
           email: job.email,
           url: job.url,
           userId: job.userId,
-          taskId: job.taskId
+          taskId: job.taskId,
+          quickScanId: job.quickScanId, // For quick scan score updates
+          firstName: job.firstName,
+          lastName: job.lastName,
+          planId: job.planId,
+          selectedDevice: job.selectedDevice,
+          jobType: job.jobType
         });
         
         // Mark as completed

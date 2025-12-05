@@ -59,6 +59,11 @@ const auditJobSchema = new mongoose.Schema({
   userAgent: { type: String },
   ipAddress: { type: String },
   subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' },
+  quickScanId: { type: mongoose.Schema.Types.ObjectId, ref: 'QuickScan' }, // Link to QuickScan record
+  
+  // User details (for email personalization)
+  firstName: { type: String },
+  lastName: { type: String },
   
   // Processing context
   processingNode: { type: String }, // Which server instance is processing this
