@@ -531,11 +531,16 @@ const corsOptions = {
     }
     
     console.warn(`CORS: Blocked request from unauthorized origin: ${origin}`);
+    console.warn(`CORS: Allowed origins are: ${allowedOrigins.join(', ')}`);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true, // Allow cookies and authorization headers
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 600, // Cache preflight request for 10 minutes
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 // Security headers middleware
@@ -554,10 +559,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// Apply CORS middleware BEFORE other middleware
+app.use(cors(corsOptions));
+
 // Ensure Stripe webhook receives the raw body for signature verification
 app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
-app.use(cors(corsOptions));
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
 
