@@ -112,10 +112,10 @@ export const runFullAuditProcess = async (job) => {
 
     // Determine which devices to audit based on plan
     let devicesToAudit = ['desktop', 'mobile', 'tablet'];
-    if (planId === 'starter' && selectedDevice) {
-      // Starter plan: audit only the selected device
+    if ((planId === 'starter' || planId === 'oneTime' || planId === 'one-time') && selectedDevice) {
+      // Starter plan and One-Time plan: audit only the selected device
       devicesToAudit = [selectedDevice];
-      console.log(`📱 Starter plan: Auditing selected device only - ${selectedDevice}`);
+      console.log(`📱 ${planId} plan: Auditing selected device only - ${selectedDevice}`);
     } else if (planId === 'pro') {
       // Pro plan: audit all devices
       console.log(`🚀 Pro plan: Auditing all devices - desktop, mobile, tablet`);

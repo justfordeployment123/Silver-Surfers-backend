@@ -7,6 +7,7 @@ export const SUBSCRIPTION_PLANS = {
     price: 49700, // $497.00
     currency: 'usd',
     type: 'one-time',
+    isOneTime: true,
     limits: {
       scansPerMonth: 1,
       maxUsers: 1,

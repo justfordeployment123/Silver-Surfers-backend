@@ -211,7 +211,7 @@ class LiteAccessibilityPDFGenerator {
         
         // Results heading
         this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937')
-            .text('Accessibility Checks Results', this.margin, this.currentY);
+            .text('Accessibility Check Results', this.margin, this.currentY);
         
         // Divider line
         this.doc.moveTo(this.margin, this.currentY + 25)
@@ -441,14 +441,14 @@ class LiteAccessibilityPDFGenerator {
             this.doc.pipe(stream);
 
             // Header - matching website blue/green gradient colors
-            this.doc.rect(0, 0, this.doc.page.width, 120).fill('#7C3AED');
+            this.doc.rect(0, 0, this.doc.page.width, 120).fill('#5B8DEF');
             
             // Title
             this.doc.fontSize(28).font('BoldFont').fillColor('white')
                 .text('SilverSurfers Quick Scan Report', this.margin, 40, { width: this.pageWidth, align: 'center' });
             
             // Subtitle
-            this.doc.fontSize(12).font('RegularFont').fillColor('#E9D5FF')
+            this.doc.fontSize(12).font('RegularFont').fillColor('#E3F2FD')
                 .text('QUICK SCAN VERSION - ESSENTIAL CHECKS', this.margin, 80, { width: this.pageWidth, align: 'center' });
 
             this.currentY = 140;
