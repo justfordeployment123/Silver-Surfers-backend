@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import { URL } from 'url';
 import lighthouse from 'lighthouse';
 import puppeteer from 'puppeteer-extra';
@@ -400,7 +401,7 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
             const timestamp = Date.now();
             const reportPath = `report-${hostname}-${timestamp}.${format}`;
 
-            fs.writeFileSync(reportPath, report);
+            await fsPromises.writeFile(reportPath, report);
             console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Lighthouse report saved to ${reportPath}`);
 
             return {

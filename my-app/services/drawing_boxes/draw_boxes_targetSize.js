@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import sharp from 'sharp';
 
 async function isVisuallyDistinct(imagePathOrBuffer, rect) {
@@ -109,7 +110,8 @@ export async function processTargetSizeAudit(jsonReportPath, outputImagePath) {
     }
 
     console.log(`🔄 Reading report: ${jsonReportPath}`);
-    const lighthouseReport = JSON.parse(fs.readFileSync(jsonReportPath, 'utf8'));
+    const reportContent = await fsPromises.readFile(jsonReportPath, 'utf8');
+    const lighthouseReport = JSON.parse(reportContent);
 
     const screenshotData = lighthouseReport.fullPageScreenshot?.screenshot?.data;
     if (!screenshotData) {

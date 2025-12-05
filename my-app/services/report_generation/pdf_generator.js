@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import PDFDocument from 'pdfkit';
@@ -716,7 +717,7 @@ addOverallScoreDisplay(scoreData) {
 
     async generateReport(inputFile, outputFile, options = {}) {
         try {
-            const reportData = JSON.parse(fs.readFileSync(inputFile, 'utf8'));
+            const reportData = JSON.parse(await fsPromises.readFile(inputFile, 'utf8'));
             const clientEmail = options.clientEmail || 'unknown-client';
             const formFactor = options.formFactor || reportData.configSettings?.formFactor || 'desktop';
             const url = reportData.finalUrl || 'unknown-url';
@@ -745,9 +746,7 @@ addOverallScoreDisplay(scoreData) {
             } else {
                 clientFolder = path.resolve(clientEmail);
             }
-            if (!fs.existsSync(clientFolder)) {
-                fs.mkdirSync(clientFolder, { recursive: true });
-            }
+            await fsPromises.mkdir(clientFolder, { recursive: true });
 
             // Set final output path
             const finalOutputPath = path.join(clientFolder, fileName);
@@ -856,17 +855,15 @@ export async function generateSeniorAccessibilityReport(options = {}) {
     }
     const dirName = `${sanitize(email_address)}_${sanitize(baseUrl)}`;
     const uniqueDir = path.resolve(__dirname, 'Seal_Reasoning_email_baseurl', dirName);
-    if (!fs.existsSync(uniqueDir)) {
-        fs.mkdirSync(uniqueDir, { recursive: true });
-    }
+    await fsPromises.mkdir(uniqueDir, { recursive: true });
     const resultsFile = path.join(uniqueDir, 'results.json');
     let resultsData = [];
-    if (fs.existsSync(resultsFile)) {
-        try {
-            resultsData = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
-        } catch (e) {
-            resultsData = [];
-        }
+    try {
+        const fileContent = await fsPromises.readFile(resultsFile, 'utf8');
+        resultsData = JSON.parse(fileContent);
+    } catch (e) {
+        // File doesn't exist or invalid JSON, start fresh
+        resultsData = [];
     }
     resultsData.push({
         Url: result.url,
@@ -874,6 +871,6 @@ export async function generateSeniorAccessibilityReport(options = {}) {
         device: options.device || options.formFactor || null,
         timestamp: new Date().toISOString()
     });
-    fs.writeFileSync(resultsFile, JSON.stringify(resultsData, null, 2));
+    await fsPromises.writeFile(resultsFile, JSON.stringify(resultsData, null, 2));
     return result;
 }

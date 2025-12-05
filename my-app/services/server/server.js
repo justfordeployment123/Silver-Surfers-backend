@@ -58,11 +58,8 @@ export const runFullAuditProcess = async (job) => {
   console.log(`\n\n--- [STARTING FULL JOB] ---`);
   console.log(`Processing job for ${fullName} (${email}) to audit ${url} [Plan: ${planId || 'unknown'}]`);
 
-  // Acquire browser lock for full audits
-  if (isBrowserInUse) {
-    throw new Error('Browser is already in use by another full audit');
-  }
-  isBrowserInUse = true;
+  // Removed browser lock - Puppeteer can handle multiple browser instances concurrently
+  // Each audit will spawn its own browser instance
 
   // Final destination for generated PDFs
   const finalReportFolder = path.resolve(process.cwd(), 'reports-full', email);
@@ -381,10 +378,10 @@ export const runFullAuditProcess = async (job) => {
     await signalBackend({ status: 'failed', clientEmail: email, error: jobError.message });
     throw jobError; // Re-throw for persistent queue error handling
   } finally {
-    // Always cleanup temp working folder and release browser lock
+    // Always cleanup temp working folder
     await fs.rm(jobFolder, { recursive: true, force: true }).catch(() => {});
-    isBrowserInUse = false; // Release browser lock
-    console.log(`[FullAudit] Finished job for ${email}. Browser lock released.`);
+    // Removed browser lock release - no longer using global browser lock
+    console.log(`[FullAudit] Finished job for ${email}.`);
   }
 };
 
@@ -500,7 +497,8 @@ export const runQuickScanProcess = async (job) => {
 // =================================================================
 // ## Browser Lock Management (Handled by PersistentQueue) ##
 // =================================================================
-let isBrowserInUse = false; // Global browser lock for full audits only
+// Removed global browser lock - Puppeteer handles multiple concurrent browser instances
+// Each runFullAuditProcess will spawn its own isolated browser
 
 
 // =================================================================
@@ -875,7 +873,7 @@ await (async () => {
     
     // Create queue instances now that functions are defined
     fullAuditQueue = new PersistentQueue('FullAudit', runFullAuditProcess, {
-      concurrency: 1, // Only one full audit at a time due to browser lock
+      concurrency: 2, // ✅ Allows 2 full audits to run simultaneously (balanced for server resources)
       maxRetries: 3,
       retryDelay: 10000
     });

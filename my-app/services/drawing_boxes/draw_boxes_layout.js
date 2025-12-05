@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import sharp from 'sharp';
 
 function extractBoxData(lighthouseReport, auditId) {
@@ -84,7 +85,8 @@ export async function processLayoutBrittleAudit(jsonReportPath, outputImagePath)
     console.log(`🔄 Reading report: ${jsonReportPath}`);
     let lighthouseReport;
     try {
-        lighthouseReport = JSON.parse(fs.readFileSync(jsonReportPath, 'utf8'));
+        const reportContent = await fsPromises.readFile(jsonReportPath, 'utf8');
+        lighthouseReport = JSON.parse(reportContent);
     } catch (error) {
         console.error('❌ Error parsing JSON report:', error.message);
         return null; // Return null on failure
