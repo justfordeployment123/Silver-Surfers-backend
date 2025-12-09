@@ -82,10 +82,11 @@ class PersistentQueue {
       await job.save();
       console.log(`✅ Job added to ${this.queueName} queue: ${job.taskId}`);
       
-      // Trigger processing if not already running
+      // Always nudge the processor; it respects concurrency limits and will no-op if busy
       if (!this.isProcessing) {
-        this.processQueue();
+        this.isProcessing = true;
       }
+      this.processQueue();
       
       return job;
     } catch (error) {

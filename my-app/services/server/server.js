@@ -1166,7 +1166,7 @@ app.post('/quick-audit', async (req, res) => {
       email: email.toLowerCase(),
       firstName: firstName || '',
       lastName: lastName || '',
-      status: 'completed', // Will be updated based on actual result
+      status: 'queued', // Start as queued; updated when processing finishes
       scanDate: new Date()
     });
 
