@@ -194,6 +194,19 @@ class PersistentQueue {
       const failedJobs = await AuditJob.getFailedJobs();
       console.log(`📋 Found ${failedJobs.length} failed jobs for potential retry`);
       
+      for (const job of failedJobs) {
+        try {
+          // Check if retryAfter has passed
+          if (!job.retryAfter || job.retryAfter <= new Date()) {
+            // Reset failed job for retry
+            await job.resetForRetry();
+            console.log(`🔄 Reset failed job for retry: ${job.taskId}`);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to reset failed job ${job.taskId}:`, error);
+        }
+      }
+      
     } catch (error) {
       console.error(`❌ Error during job recovery:`, error);
     }

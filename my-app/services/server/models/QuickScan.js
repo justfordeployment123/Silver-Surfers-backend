@@ -32,8 +32,8 @@ const quickScanSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['completed', 'failed'],
-    default: 'completed'
+    enum: ['queued', 'processing', 'completed', 'failed'],
+    default: 'queued'
   },
   reportGenerated: {
     type: Boolean,

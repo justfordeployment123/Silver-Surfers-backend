@@ -386,10 +386,20 @@ export const runFullAuditProcess = async (job) => {
 };
 
 export const runQuickScanProcess = async (job) => {
-    const { email, url, userId, firstName, lastName } = job;
+    const { email, url, userId, firstName, lastName, quickScanId } = job;
     const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Valued Customer';
     console.log(`\n--- [STARTING QUICK SCAN] ---`);
     console.log(`Processing quick scan for ${fullName} (${email}) on ${url}`);
+    
+    // Update QuickScan record to processing status
+    if (quickScanId) {
+        try {
+            await QuickScan.findByIdAndUpdate(quickScanId, { status: 'processing' });
+            console.log(`📊 Quick scan marked as processing: ${quickScanId}`);
+        } catch (err) {
+            console.error('Failed to mark quick scan as processing:', err);
+        }
+    }
     
     let jsonReportPath = null;
     
@@ -3470,6 +3480,55 @@ app.get('/records/:taskId', async (req, res) => {
   } catch (err) {
     console.error('Get record error:', err?.message || err);
     res.status(500).json({ error: 'Failed to fetch record' });
+  }
+});
+
+// Admin endpoint to check queue status
+app.get('/admin/queue-status', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const fullAuditStats = await fullAuditQueue?.getStats() || { error: 'Queue not initialized' };
+    const quickScanStats = await quickScanQueue?.getStats() || { error: 'Queue not initialized' };
+
+    res.json({
+      success: true,
+      fullAudit: fullAuditStats,
+      quickScan: quickScanStats,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    console.error('Queue status error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch queue status' });
+  }
+});
+
+// Admin endpoint to manually recover failed jobs
+app.post('/admin/queue-recovery', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    console.log('🔍 Admin triggered manual queue recovery');
+    await fullAuditQueue?.recoverJobs();
+    await quickScanQueue?.recoverJobs();
+
+    const fullAuditStats = await fullAuditQueue?.getStats() || { error: 'Queue not initialized' };
+    const quickScanStats = await quickScanQueue?.getStats() || { error: 'Queue not initialized' };
+
+    res.json({
+      success: true,
+      message: 'Queue recovery completed',
+      fullAudit: fullAuditStats,
+      quickScan: quickScanStats,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    console.error('Queue recovery error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to recover queue' });
   }
 });
 
