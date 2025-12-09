@@ -184,7 +184,7 @@ export async function collectAttachmentsRecursive(rootDir) {
   return results;
 }
 
-export async function sendAuditReportEmail({ to, subject, text, folderPath }) {
+export async function sendAuditReportEmail({ to, subject, text, folderPath, isQuickScan = false, websiteUrl = '', quickScanScore = null }) {
   const { transporter, reason } = buildTransport();
   if (!transporter) {
     console.warn('Email skipped:', reason);
@@ -233,8 +233,17 @@ export async function sendAuditReportEmail({ to, subject, text, folderPath }) {
     
     uploadedFiles.forEach(file => {
       // Extract just the filename without folder path
-      const displayName = path.basename(file.filename);
-      emailBody += `• ${displayName} (${file.sizeMB}MB)\n`;
+      let displayName = path.basename(file.filename);
+      
+      // For quick scans, add "Website Results for:" prefix and score
+      if (isQuickScan && displayName.endsWith('.pdf')) {
+        const scoreText = quickScanScore !== null && quickScanScore !== undefined 
+          ? ` (${Math.round(quickScanScore)}%)` 
+          : '';
+        displayName = `Website Results for: ${displayName}${scoreText}`;
+      }
+      
+      emailBody += `• ${displayName}\n`;
       emailBody += `  Download: ${file.downloadUrl}\n\n`;
     });
     
