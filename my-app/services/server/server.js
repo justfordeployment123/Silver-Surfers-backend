@@ -2830,13 +2830,14 @@ app.get('/admin/subscription-scans', authRequired, async (req, res) => {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
-    const { page = 1, limit = 50, planFilter, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    const { page = 1, limit = 50, planFilter, planId, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
     const skip = (page - 1) * limit;
 
     // Build query - only get subscription-based scans (not one-time quick scans)
     const query = {};
-    if (planFilter && planFilter !== 'all') {
-      query.planId = planFilter;
+    const selectedPlan = planId || planFilter;
+    if (selectedPlan && selectedPlan !== 'all') {
+      query.planId = selectedPlan;
     }
     if (search) {
       query.$or = [
