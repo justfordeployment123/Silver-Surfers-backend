@@ -231,7 +231,7 @@ class LiteAccessibilityPDFGenerator {
 
         // Results in 2-column card grid
         const cardWidth = (this.pageWidth - 15) / 2;
-        const cardHeight = 140;
+        const cardHeight = 120;
         const cardSpacing = 15;
         let column = 0;
         let rowStartY = this.currentY;
@@ -279,23 +279,23 @@ class LiteAccessibilityPDFGenerator {
                 this.doc.rect(cardX, cardY, 4, cardHeight).fill(borderColor);
 
                 // Status badge in top right
-                const badgeWidth = 70;
-                const badgeHeight = 22;
+                const badgeWidth = 90;
+                const badgeHeight = 24;
                 const badgeX = cardX + cardWidth - badgeWidth - 10;
-                const badgeY = cardY + 10;
+                const badgeY = cardY + 8;
                 this.doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 10).fill(badgeBg);
-                this.doc.fontSize(12).font('BoldFont').fillColor(statusColor)
-                    .text(status, badgeX, badgeY + 4, { width: badgeWidth, align: 'center' });
+                this.doc.fontSize(11).font('BoldFont').fillColor(statusColor)
+                    .text(status, badgeX, badgeY + 5, { width: badgeWidth, align: 'center' });
 
                 // Title
-                this.doc.fontSize(15).font('BoldFont').fillColor('#1F2937')
-                    .text(auditInfo.title, cardX + 12, cardY + 14, { width: cardWidth - 90 });
+                this.doc.fontSize(14).font('BoldFont').fillColor('#1F2937')
+                    .text(auditInfo.title, cardX + 12, cardY + 12, { width: cardWidth - 95 });
 
                 // Description
-                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280')
-                    .text(auditInfo.impact, cardX + 12, cardY + 50, { 
+                this.doc.fontSize(11).font('RegularFont').fillColor('#6B7280')
+                    .text(auditInfo.impact, cardX + 12, cardY + 46, { 
                         width: cardWidth - 24, 
-                        height: cardHeight - 70,
+                        height: cardHeight - 64,
                         ellipsis: true,
                         lineGap: 3
                     });
