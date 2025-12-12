@@ -177,7 +177,7 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += fontSize + 12;
     }
 
-    addBodyText(text, fontSize = 11, color = '#2C3E50') {
+    addBodyText(text, fontSize = 14, color = '#2C3E50') {
         this.doc.fontSize(fontSize).font('RegularFont').fillColor(color)
             .text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'justify', lineGap: 3 });
         this.currentY += this.doc.heightOfString(text, { width: this.pageWidth, lineGap: 3 }) + 12;
@@ -221,16 +221,17 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += 45;
         
         // Info box
-        this.doc.rect(this.margin, this.currentY, this.pageWidth, 40).fill('#EFF6FF').stroke('#3B82F6');
-        this.doc.fontSize(9).font('RegularFont').fillColor('#1E40AF')
+        const infoBoxHeight = 90;
+        this.doc.rect(this.margin, this.currentY, this.pageWidth, infoBoxHeight).fill('#EFF6FF').stroke('#3B82F6');
+        this.doc.fontSize(14).font('RegularFont').fillColor('#1E40AF')
             .text('The Quick Scan report is a limited view of the website submitted and only audits the home page.', 
-                this.margin + 15, this.currentY + 13, { width: this.pageWidth - 30, align: 'left' });
+                this.margin + 15, this.currentY + 20, { width: this.pageWidth - 30, align: 'left', lineGap: 4 });
         
-        this.currentY += 55;
+        this.currentY += infoBoxHeight + 30;
 
         // Results in 2-column card grid
         const cardWidth = (this.pageWidth - 15) / 2;
-        const cardHeight = 95;
+        const cardHeight = 160;
         const cardSpacing = 15;
         let column = 0;
         let rowStartY = this.currentY;
@@ -278,24 +279,25 @@ class LiteAccessibilityPDFGenerator {
                 this.doc.rect(cardX, cardY, 4, cardHeight).fill(borderColor);
 
                 // Status badge in top right
-                const badgeWidth = 50;
-                const badgeHeight = 20;
+                const badgeWidth = 70;
+                const badgeHeight = 26;
                 const badgeX = cardX + cardWidth - badgeWidth - 10;
                 const badgeY = cardY + 10;
                 this.doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 10).fill(badgeBg);
-                this.doc.fontSize(8).font('BoldFont').fillColor(statusColor)
-                    .text(status, badgeX, badgeY + 6, { width: badgeWidth, align: 'center' });
+                this.doc.fontSize(14).font('BoldFont').fillColor(statusColor)
+                    .text(status, badgeX, badgeY + 5, { width: badgeWidth, align: 'center' });
 
                 // Title
-                this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937')
-                    .text(auditInfo.title, cardX + 12, cardY + 15, { width: cardWidth - 80 });
+                this.doc.fontSize(16).font('BoldFont').fillColor('#1F2937')
+                    .text(auditInfo.title, cardX + 12, cardY + 15, { width: cardWidth - 90 });
 
                 // Description
-                this.doc.fontSize(8).font('RegularFont').fillColor('#6B7280')
-                    .text(auditInfo.impact, cardX + 12, cardY + 45, { 
+                this.doc.fontSize(14).font('RegularFont').fillColor('#6B7280')
+                    .text(auditInfo.impact, cardX + 12, cardY + 60, { 
                         width: cardWidth - 24, 
-                        height: cardHeight - 60,
-                        ellipsis: true
+                        height: cardHeight - 75,
+                        ellipsis: true,
+                        lineGap: 4
                     });
 
                 // Move to next column or row
@@ -319,45 +321,46 @@ class LiteAccessibilityPDFGenerator {
         this.doc.fontSize(20).font('BoldFont').fillColor('white')
             .text('Upgrade SilverSurfers Subscription', this.margin, 30, { width: this.pageWidth, align: 'center' });
         
-        this.doc.fontSize(12).font('RegularFont').fillColor('#BFDBFE')
+        this.doc.fontSize(16).font('RegularFont').fillColor('#BFDBFE')
             .text('Unlock the complete senior accessibility analysis', this.margin, 60, { width: this.pageWidth, align: 'center' });
 
         this.currentY = 130;
 
         // Premium features section - Boxes with blue background
-        const boxWidth = (this.pageWidth - 30) / 2;
-        const boxHeight = 260;
+        const fullBoxWidth = this.pageWidth;
+        const boxHeight = 320;
         
-        // Box 1: Additional Critical Audits
-        this.doc.roundedRect(this.margin, this.currentY, boxWidth, boxHeight, 10).fill('#1E3A8A');
-        this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
-            .text('Receive additional critical Audits', this.margin + 15, this.currentY + 15, { width: boxWidth - 30 });
+        // Box 1: Additional Critical Audits (full width)
+        this.doc.roundedRect(this.margin, this.currentY, fullBoxWidth, boxHeight, 10).fill('#1E3A8A');
+        this.doc.fontSize(16).font('BoldFont').fillColor('#FFFFFF')
+            .text('Receive additional critical Audits', this.margin + 15, this.currentY + 15, { width: fullBoxWidth - 30 });
         
-        let yPos = this.currentY + 40;
+        let yPos = this.currentY + 45;
         const bulletX = this.margin + 15;
-        const textX = bulletX + 10;
-        const textWidth = boxWidth - 40;
+        const textX = bulletX + 12;
+        const textWidth = fullBoxWidth - 45;
         PREMIUM_FEATURES.additionalAudits.forEach(audit => {
-            this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
-                .text('•', bulletX, yPos, { width: 10 });
-            const textHeight = this.doc.heightOfString(audit, { width: textWidth - 10, lineGap: 2 });
-            this.doc.text(audit, textX, yPos, { width: textWidth - 10, lineGap: 2 });
-            yPos += textHeight + 10;
+            this.doc.fontSize(14).font('RegularFont').fillColor('#BFDBFE')
+                .text('•', bulletX, yPos, { width: 14 });
+            const textHeight = this.doc.heightOfString(audit, { width: textWidth - 10, lineGap: 3 });
+            this.doc.text(audit, textX, yPos, { width: textWidth - 10, lineGap: 3 });
+            yPos += textHeight + 12;
         });
 
         this.currentY += boxHeight + 20;
         
-        // Box 2: Comprehensive Analysis (full width)
-        const box3Height = 170;
-        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, box3Height, 10).fill('#1E3A8A');
-        this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
-            .text('Comprehensive Analysis', this.margin + 15, this.currentY + 15, { width: this.pageWidth - 30 });
+        // Box 2: Comprehensive Analysis (full width, matching)
+        const box3Height = 210;
+        this.doc.roundedRect(this.margin, this.currentY, fullBoxWidth, box3Height, 10).fill('#1E3A8A');
+        this.doc.fontSize(16).font('BoldFont').fillColor('#FFFFFF')
+            .text('Comprehensive Analysis', this.margin + 15, this.currentY + 15, { width: fullBoxWidth - 30 });
         
-        yPos = this.currentY + 40;
+        yPos = this.currentY + 45;
         PREMIUM_FEATURES.detailedAnalysis.forEach(feature => {
-            this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
-                .text('• ' + feature, this.margin + 15, yPos, { width: this.pageWidth - 30, lineGap: 1 });
-            yPos += 24;
+            this.doc.fontSize(14).font('RegularFont').fillColor('#BFDBFE')
+                .text('• ' + feature, this.margin + 15, yPos, { width: fullBoxWidth - 30, lineGap: 3 });
+            const featureHeight = this.doc.heightOfString(feature, { width: fullBoxWidth - 45, lineGap: 3 });
+            yPos += featureHeight + 12;
         });
         
         this.currentY += box3Height + 15;
@@ -372,15 +375,15 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += 60;
         
         // Bottom explanatory text - properly wrapped
-        this.doc.fontSize(8).font('RegularFont').fillColor('#6B7280')
-            .text('This Quick Scan report provides a basic overview of the homepage highlighting essential older adult accessibility checks.  Subscription packages includes comprehensive analysis, detailed recommendations, and professional reporting features to help you create a truly older adult-friendly digital experience.', 
-                this.margin + 20, this.currentY, { width: this.pageWidth - 40, align: 'left', lineGap: 3 });
+        this.doc.fontSize(14).font('RegularFont').fillColor('#6B7280')
+            .text('This Quick Scan report provides a basic overview of the homepage highlighting essential older adult accessibility checks. Subscription packages includes comprehensive analysis, detailed recommendations, and professional reporting features to help you create a truly older adult-friendly digital experience.', 
+                this.margin + 20, this.currentY, { width: this.pageWidth - 40, align: 'left', lineGap: 4 });
     }
 
     addPremiumFeaturesPage() {
         this.addPage();
 
-        this.addHeading('Premium Report Features:', 18, '#2980B9');
+        this.addHeading('Premium Report Features:', 16, '#2980B9');
         this.currentY += 10;
 
         // Professional Reporting
@@ -390,9 +393,10 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += 40;
 
         PREMIUM_FEATURES.reportingFeatures.forEach(feature => {
-            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                .text(`• ${feature}`, this.margin + 10, this.currentY);
-            this.currentY += 15;
+            this.doc.fontSize(14).font('RegularFont').fillColor('#2C3E50')
+                .text(`• ${feature}`, this.margin + 10, this.currentY, { lineGap: 3 });
+            const featureHeight = this.doc.heightOfString(`• ${feature}`, { width: this.pageWidth - 20, lineGap: 3 });
+            this.currentY += featureHeight + 10;
         });
 
         this.currentY += 20;
@@ -402,26 +406,33 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += 10;
 
         Object.entries(PREMIUM_FEATURES.categories).forEach(([category, description]) => {
-            this.doc.fontSize(12).font('BoldFont').fillColor('#2C3E50')
+            this.doc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
                 .text(category, this.margin, this.currentY);
-            this.currentY += 15;
-            this.doc.fontSize(10).font('RegularFont').fillColor('#666')
-                .text(description, this.margin + 10, this.currentY);
-            this.currentY += 20;
+            this.currentY += 18;
+            this.doc.fontSize(14).font('RegularFont').fillColor('#666')
+                .text(description, this.margin + 10, this.currentY, { lineGap: 3 });
+            const descHeight = this.doc.heightOfString(description, { width: this.pageWidth - 20, lineGap: 3 });
+            this.currentY += descHeight + 10;
         });
 
         // Call to action
         this.currentY += 20;
+
+        // Ensure the CTA and summary fit on the page when using larger fonts
+        if (this.currentY + 180 > this.doc.page.height - this.margin) {
+            this.addPage();
+        }
+
         this.doc.rect(this.margin, this.currentY, this.pageWidth, 60).fill('#27AE60').stroke('#1E8449');
         this.doc.fontSize(16).font('BoldFont').fillColor('white')
             .text('Upgrade to Premium Today!', this.margin + 10, this.currentY + 10);
-        this.doc.fontSize(12).font('RegularFont').fillColor('#D5F4E6')
+        this.doc.fontSize(14).font('RegularFont').fillColor('#D5F4E6')
             .text('Get the complete senior accessibility analysis your website deserves.', this.margin + 10, this.currentY + 35);
         this.currentY += 80;
 
         // Comparison summary
-        this.addBodyText('Quick Scan: Basic overview of 11 essential checks', 11, '#95A5A6');
-        this.addBodyText('Premium Version: Comprehensive analysis of 18+ audits with visual highlighting, detailed recommendations, and professional reporting', 11, '#27AE60');
+        this.addBodyText('Quick Scan: Basic overview of 11 essential checks', 14, '#95A5A6');
+        this.addBodyText('Premium Version: Comprehensive analysis of 18+ audits with visual highlighting, detailed recommendations, and professional reporting', 14, '#27AE60');
     }
 
     async generateLiteReport(inputFile, outputFile) { // <-- REMOVED THE DEFAULT VALUE
@@ -440,7 +451,7 @@ class LiteAccessibilityPDFGenerator {
                 .text('SilverSurfers Quick Scan Report', this.margin, 40, { width: this.pageWidth, align: 'center' });
             
             // Subtitle
-            this.doc.fontSize(12).font('RegularFont').fillColor('#E3F2FD')
+            this.doc.fontSize(14).font('RegularFont').fillColor('#E3F2FD')
                 .text('QUICK SCAN VERSION - ESSENTIAL CHECKS', this.margin, 80, { width: this.pageWidth, align: 'center' });
 
             this.currentY = 140;
@@ -467,12 +478,12 @@ class LiteAccessibilityPDFGenerator {
 
             // Website info box
             if (reportData.finalUrl) {
-                this.doc.rect(this.margin, this.currentY, this.pageWidth, 50).fill('#F5F5F5');
-                this.doc.fontSize(12).font('BoldFont').fillColor('#333333')
-                    .text('Website Analyzed:', this.margin + 15, this.currentY + 12);
-                this.doc.fontSize(11).font('RegularFont').fillColor('#3B82F6')
-                    .text(reportData.finalUrl, this.margin + 15, this.currentY + 30);
-                this.currentY += 70;
+                this.doc.rect(this.margin, this.currentY, this.pageWidth, 70).fill('#F5F5F5');
+                this.doc.fontSize(16).font('BoldFont').fillColor('#333333')
+                    .text('Website Analyzed:', this.margin + 15, this.currentY + 16);
+                this.doc.fontSize(14).font('RegularFont').fillColor('#3B82F6')
+                    .text(reportData.finalUrl, this.margin + 15, this.currentY + 40);
+                this.currentY += 90;
             }
 
             // Results
