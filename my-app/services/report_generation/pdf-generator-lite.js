@@ -221,17 +221,17 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += 45;
         
         // Info box
-        const infoBoxHeight = 90;
+        const infoBoxHeight = 80;
         this.doc.rect(this.margin, this.currentY, this.pageWidth, infoBoxHeight).fill('#EFF6FF').stroke('#3B82F6');
-        this.doc.fontSize(14).font('RegularFont').fillColor('#1E40AF')
+        this.doc.fontSize(12).font('RegularFont').fillColor('#1E40AF')
             .text('The Quick Scan report is a limited view of the website submitted and only audits the home page.', 
-                this.margin + 15, this.currentY + 20, { width: this.pageWidth - 30, align: 'left', lineGap: 4 });
+                this.margin + 15, this.currentY + 18, { width: this.pageWidth - 30, align: 'left', lineGap: 3 });
         
-        this.currentY += infoBoxHeight + 30;
+        this.currentY += infoBoxHeight + 25;
 
         // Results in 2-column card grid
         const cardWidth = (this.pageWidth - 15) / 2;
-        const cardHeight = 160;
+        const cardHeight = 140;
         const cardSpacing = 15;
         let column = 0;
         let rowStartY = this.currentY;
@@ -280,24 +280,24 @@ class LiteAccessibilityPDFGenerator {
 
                 // Status badge in top right
                 const badgeWidth = 70;
-                const badgeHeight = 26;
+                const badgeHeight = 22;
                 const badgeX = cardX + cardWidth - badgeWidth - 10;
                 const badgeY = cardY + 10;
                 this.doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 10).fill(badgeBg);
-                this.doc.fontSize(14).font('BoldFont').fillColor(statusColor)
-                    .text(status, badgeX, badgeY + 5, { width: badgeWidth, align: 'center' });
+                this.doc.fontSize(12).font('BoldFont').fillColor(statusColor)
+                    .text(status, badgeX, badgeY + 4, { width: badgeWidth, align: 'center' });
 
                 // Title
-                this.doc.fontSize(16).font('BoldFont').fillColor('#1F2937')
-                    .text(auditInfo.title, cardX + 12, cardY + 15, { width: cardWidth - 90 });
+                this.doc.fontSize(15).font('BoldFont').fillColor('#1F2937')
+                    .text(auditInfo.title, cardX + 12, cardY + 14, { width: cardWidth - 90 });
 
                 // Description
-                this.doc.fontSize(14).font('RegularFont').fillColor('#6B7280')
-                    .text(auditInfo.impact, cardX + 12, cardY + 60, { 
+                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280')
+                    .text(auditInfo.impact, cardX + 12, cardY + 50, { 
                         width: cardWidth - 24, 
-                        height: cardHeight - 75,
+                        height: cardHeight - 70,
                         ellipsis: true,
-                        lineGap: 4
+                        lineGap: 3
                     });
 
                 // Move to next column or row
@@ -328,39 +328,39 @@ class LiteAccessibilityPDFGenerator {
 
         // Premium features section - Boxes with blue background
         const fullBoxWidth = this.pageWidth;
-        const boxHeight = 320;
+        const boxHeight = 280;
         
         // Box 1: Additional Critical Audits (full width)
         this.doc.roundedRect(this.margin, this.currentY, fullBoxWidth, boxHeight, 10).fill('#1E3A8A');
         this.doc.fontSize(16).font('BoldFont').fillColor('#FFFFFF')
             .text('Receive additional critical Audits', this.margin + 15, this.currentY + 15, { width: fullBoxWidth - 30 });
         
-        let yPos = this.currentY + 45;
+        let yPos = this.currentY + 40;
         const bulletX = this.margin + 15;
         const textX = bulletX + 12;
         const textWidth = fullBoxWidth - 45;
         PREMIUM_FEATURES.additionalAudits.forEach(audit => {
-            this.doc.fontSize(14).font('RegularFont').fillColor('#BFDBFE')
+            this.doc.fontSize(13).font('RegularFont').fillColor('#BFDBFE')
                 .text('•', bulletX, yPos, { width: 14 });
             const textHeight = this.doc.heightOfString(audit, { width: textWidth - 10, lineGap: 3 });
             this.doc.text(audit, textX, yPos, { width: textWidth - 10, lineGap: 3 });
-            yPos += textHeight + 12;
+            yPos += textHeight + 10;
         });
 
         this.currentY += boxHeight + 20;
         
         // Box 2: Comprehensive Analysis (full width, matching)
-        const box3Height = 210;
+        const box3Height = 190;
         this.doc.roundedRect(this.margin, this.currentY, fullBoxWidth, box3Height, 10).fill('#1E3A8A');
         this.doc.fontSize(16).font('BoldFont').fillColor('#FFFFFF')
             .text('Comprehensive Analysis', this.margin + 15, this.currentY + 15, { width: fullBoxWidth - 30 });
         
-        yPos = this.currentY + 45;
+        yPos = this.currentY + 40;
         PREMIUM_FEATURES.detailedAnalysis.forEach(feature => {
-            this.doc.fontSize(14).font('RegularFont').fillColor('#BFDBFE')
+            this.doc.fontSize(13).font('RegularFont').fillColor('#BFDBFE')
                 .text('• ' + feature, this.margin + 15, yPos, { width: fullBoxWidth - 30, lineGap: 3 });
             const featureHeight = this.doc.heightOfString(feature, { width: fullBoxWidth - 45, lineGap: 3 });
-            yPos += featureHeight + 12;
+            yPos += featureHeight + 10;
         });
         
         this.currentY += box3Height + 15;
@@ -375,9 +375,9 @@ class LiteAccessibilityPDFGenerator {
         this.currentY += 60;
         
         // Bottom explanatory text - properly wrapped
-        this.doc.fontSize(14).font('RegularFont').fillColor('#6B7280')
+        this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280')
             .text('This Quick Scan report provides a basic overview of the homepage highlighting essential older adult accessibility checks. Subscription packages includes comprehensive analysis, detailed recommendations, and professional reporting features to help you create a truly older adult-friendly digital experience.', 
-                this.margin + 20, this.currentY, { width: this.pageWidth - 40, align: 'left', lineGap: 4 });
+                this.margin + 20, this.currentY, { width: this.pageWidth - 40, align: 'left', lineGap: 3 });
     }
 
     addPremiumFeaturesPage() {
