@@ -322,7 +322,7 @@ class LiteAccessibilityPDFGenerator {
             .text('Upgrade SilverSurfers Subscription', this.margin, 30, { width: this.pageWidth, align: 'center' });
         
         this.doc.fontSize(16).font('RegularFont').fillColor('#BFDBFE')
-            .text('Unlock the complete senior accessibility analysis', this.margin, 60, { width: this.pageWidth, align: 'center' });
+            .text('Unlock the complete older adult accessibility analysis', this.margin, 60, { width: this.pageWidth, align: 'center' });
 
         this.currentY = 130;
 
