@@ -465,7 +465,7 @@ export const runQuickScanProcess = async (job) => {
         await sendAuditReportEmail({
           to: email,
           subject: 'Your SilverSurfers Quick Scan Results',
-          text: 'Attached is your senior-friendly Quick Scan report. Thanks for trying SilverSurfers! For a full multi-page audit analysis and detailed guidance, consider upgrading.',
+          text: 'Attached is your older adult-friendly Quick Scan report. Thanks for trying SilverSurfers! For a full multi-page audit analysis and detailed guidance, consider upgrading.',
           folderPath: userSpecificOutputDir,
           isQuickScan: true, // Flag to add "Website Results for:" prefix
           websiteUrl: url, // Pass the URL for display
