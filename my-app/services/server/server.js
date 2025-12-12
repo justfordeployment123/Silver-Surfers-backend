@@ -24,6 +24,7 @@ import { InternalLinksExtractor } from '../internal_links/internal_links.js';
 import { runLighthouseAudit } from '../load_and_audit/audit.js'; // Changed to your modified audit module
 import { runLighthouseLiteAudit } from '../load_and_audit/audit-module-with-lite.js'; // Keep lite for quick scans
 import { generateSeniorAccessibilityReport } from '../report_generation/pdf_generator.js';
+import { generateStarterAccessibilityReport } from '../report_generation/starter_pdf_generator.js';
 import { createAllHighlightedImages } from '../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../report_generation/pdf-generator-lite.js';
 import { sendAuditReportEmail, collectAttachmentsRecursive, sendTeamInvitationEmail, sendTeamMemberRemovedEmail, sendTeamMemberLeftNotification, sendTeamMemberLeftConfirmation, sendNewTeamMemberNotification, sendMailWithFallback, sendSubscriptionCancellationEmail, sendSubscriptionReinstatementEmail, sendSubscriptionWelcomeEmail, sendOneTimePurchaseEmail } from './email.js';
@@ -133,15 +134,30 @@ export const runFullAuditProcess = async (job) => {
             jsonReportPath = auditResult.reportPath;
             imagePaths = await createAllHighlightedImages(jsonReportPath, jobFolder);
 
-            await generateSeniorAccessibilityReport({
-              inputFile: jsonReportPath,
-              url: link,
-              email_address: email,
-              device: device,
-              imagePaths,
-              outputDir: finalReportFolder,
-              formFactor: device
-            });
+            // Use Starter report generator for Starter and One-Time plans, Pro report for Pro plan
+            const isStarterPlan = planId === 'starter' || planId === 'oneTime' || planId === 'one-time';
+            
+            if (isStarterPlan) {
+              await generateStarterAccessibilityReport({
+                inputFile: jsonReportPath,
+                url: link,
+                email_address: email,
+                device: device,
+                imagePaths,
+                outputDir: finalReportFolder,
+                formFactor: device
+              });
+            } else {
+              await generateSeniorAccessibilityReport({
+                inputFile: jsonReportPath,
+                url: link,
+                email_address: email,
+                device: device,
+                imagePaths,
+                outputDir: finalReportFolder,
+                formFactor: device
+              });
+            }
           } else {
             console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);
           }
@@ -174,11 +190,16 @@ export const runFullAuditProcess = async (job) => {
     }
     // Send a single email with all files in the report folder
     if (record) { record.emailStatus = 'sending'; await record.save().catch(()=>{}); }
+    
+    // For Starter plan, filter to only send reports for the selected device
+    const deviceFilterForEmail = (planId === 'starter' || planId === 'oneTime' || planId === 'one-time') ? selectedDevice : null;
+    
     const sendResult = await sendAuditReportEmail({
       to: email,
       subject: 'Your SilverSurfers Audit Results',
       text: 'Attached are all your senior accessibility audit results. Thank you for using SilverSurfers!',
       folderPath: finalReportFolder,
+      deviceFilter: deviceFilterForEmail,
     });
     if (record) {
       if (sendResult?.success) {

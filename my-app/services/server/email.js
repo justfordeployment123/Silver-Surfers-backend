@@ -154,7 +154,7 @@ async function uploadToDrive(filePath, fileName, folderPath, email) {
 }
 
 // Enhanced file collection with size checking
-export async function collectAttachmentsRecursive(rootDir) {
+export async function collectAttachmentsRecursive(rootDir, deviceFilter = null) {
   const results = [];
   async function walk(dir) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -165,6 +165,14 @@ export async function collectAttachmentsRecursive(rootDir) {
       } else if (de.isFile()) {
         // Only attach PDFs by default to keep emails smaller
         if (full.toLowerCase().endsWith('.pdf')) {
+          // Filter by device if specified (check filename for device)
+          if (deviceFilter) {
+            // Only include reports for the selected device
+            const hasDeviceMatch = full.includes(`-${deviceFilter}.pdf`) || full.includes(`_${deviceFilter}.pdf`);
+            if (!hasDeviceMatch) {
+              continue; // Skip this file
+            }
+          }
           const fileSize = await getFileSize(full);
           results.push({ 
             filename: path.relative(rootDir, full), 
@@ -184,18 +192,18 @@ export async function collectAttachmentsRecursive(rootDir) {
   return results;
 }
 
-export async function sendAuditReportEmail({ to, subject, text, folderPath, isQuickScan = false, websiteUrl = '', quickScanScore = null }) {
+export async function sendAuditReportEmail({ to, subject, text, folderPath, isQuickScan = false, websiteUrl = '', quickScanScore = null, deviceFilter = null }) {
   const { transporter, reason } = buildTransport();
   if (!transporter) {
     console.warn('Email skipped:', reason);
     return { success: false, error: reason };
   }
 
-  // Collect all files in the report folder with size information
+  // Collect all files in the report folder with size information (filtered by device if specified)
   let files = [];
   let totalSize = 0;
   if (folderPath) {
-    files = await collectAttachmentsRecursive(folderPath);
+    files = await collectAttachmentsRecursive(folderPath, deviceFilter);
     totalSize = files.reduce((sum, file) => sum + file.size, 0);
   }
 
