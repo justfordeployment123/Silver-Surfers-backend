@@ -326,37 +326,29 @@ class LiteAccessibilityPDFGenerator {
 
         // Premium features section - Boxes with blue background
         const boxWidth = (this.pageWidth - 30) / 2;
-        const boxHeight = 220;
+        const boxHeight = 260;
         
         // Box 1: Additional Critical Audits
         this.doc.roundedRect(this.margin, this.currentY, boxWidth, boxHeight, 10).fill('#1E3A8A');
         this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
-            .text('7 Additional Critical Audits', this.margin + 15, this.currentY + 15, { width: boxWidth - 30 });
+            .text('Receive additional critical Audits', this.margin + 15, this.currentY + 15, { width: boxWidth - 30 });
         
         let yPos = this.currentY + 40;
+        const bulletX = this.margin + 15;
+        const textX = bulletX + 10;
+        const textWidth = boxWidth - 40;
         PREMIUM_FEATURES.additionalAudits.forEach(audit => {
             this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
-                .text('• ' + audit, this.margin + 15, yPos, { width: boxWidth - 30, lineGap: 1 });
-            yPos += 24;
+                .text('•', bulletX, yPos, { width: 10 });
+            const textHeight = this.doc.heightOfString(audit, { width: textWidth - 10, lineGap: 2 });
+            this.doc.text(audit, textX, yPos, { width: textWidth - 10, lineGap: 2 });
+            yPos += textHeight + 10;
         });
 
-        // Box 2: Visual Analysis
-        const box2X = this.margin + boxWidth + 30;
-        this.doc.roundedRect(box2X, this.currentY, boxWidth, boxHeight, 10).fill('#1E3A8A');
-        this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
-            .text('Visual Analysis & Screenshots', box2X + 15, this.currentY + 15, { width: boxWidth - 30 });
-        
-        yPos = this.currentY + 40;
-        PREMIUM_FEATURES.visualFeatures.forEach(feature => {
-            this.doc.fontSize(9).font('RegularFont').fillColor('#BFDBFE')
-                .text('• ' + feature, box2X + 15, yPos, { width: boxWidth - 30, lineGap: 1 });
-            yPos += 24;
-        });
-        
         this.currentY += boxHeight + 20;
         
-        // Box 3: Comprehensive Analysis (full width)
-        const box3Height = 140;
+        // Box 2: Comprehensive Analysis (full width)
+        const box3Height = 170;
         this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, box3Height, 10).fill('#1E3A8A');
         this.doc.fontSize(13).font('BoldFont').fillColor('#FFFFFF')
             .text('Comprehensive Analysis', this.margin + 15, this.currentY + 15, { width: this.pageWidth - 30 });
@@ -381,7 +373,7 @@ class LiteAccessibilityPDFGenerator {
         
         // Bottom explanatory text - properly wrapped
         this.doc.fontSize(8).font('RegularFont').fillColor('#6B7280')
-            .text('This Quick Scan version provides a basic overview of essential senior accessibility checks. The premium version includes comprehensive analysis, visual highlighting, detailed recommendations, and professional reporting features to help you create truly senior-friendly websites.', 
+            .text('This Quick Scan report provides a basic overview of the homepage highlighting essential older adult accessibility checks.  Subscription packages includes comprehensive analysis, detailed recommendations, and professional reporting features to help you create a truly older adult-friendly digital experience.', 
                 this.margin + 20, this.currentY, { width: this.pageWidth - 40, align: 'left', lineGap: 3 });
     }
 
@@ -440,8 +432,8 @@ class LiteAccessibilityPDFGenerator {
             const stream = fs.createWriteStream(outputFile);
             this.doc.pipe(stream);
 
-            // Header - matching website blue/green gradient colors
-            this.doc.rect(0, 0, this.doc.page.width, 120).fill('#5B8DEF');
+            // Header - align with deep blue used in premium sections
+            this.doc.rect(0, 0, this.doc.page.width, 120).fill('#1E3A8A');
             
             // Title
             this.doc.fontSize(28).font('BoldFont').fillColor('white')
@@ -455,7 +447,7 @@ class LiteAccessibilityPDFGenerator {
 
             // Score section with blue background
             const scoreBoxHeight = 200;
-            this.doc.rect(0, this.currentY, this.doc.page.width, scoreBoxHeight).fill('#5B8DEF');
+            this.doc.rect(0, this.currentY, this.doc.page.width, scoreBoxHeight).fill('#1E3A8A');
             
             // Draw score circle
             const centerX = this.doc.page.width / 2;
