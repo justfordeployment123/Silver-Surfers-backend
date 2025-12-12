@@ -231,7 +231,7 @@ class LiteAccessibilityPDFGenerator {
 
         // Results in 2-column card grid
         const cardWidth = (this.pageWidth - 15) / 2;
-        const cardHeight = 120;
+        const cardHeight = 100;
         const cardSpacing = 15;
         let column = 0;
         let rowStartY = this.currentY;
@@ -280,7 +280,7 @@ class LiteAccessibilityPDFGenerator {
 
                 // Status badge in top right
                 const badgeWidth = 90;
-                const badgeHeight = 24;
+                const badgeHeight = 20;
                 const badgeX = cardX + cardWidth - badgeWidth - 10;
                 const badgeY = cardY + 8;
                 this.doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 10).fill(badgeBg);
