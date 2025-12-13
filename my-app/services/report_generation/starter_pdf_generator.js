@@ -105,7 +105,7 @@ function calculateSeniorFriendlinessScore(report) {
     }
 
     const auditRefs = categoryConfig.auditRefs;
-    const auditResults = report.audits;
+    const auditResults = report.audits || {};
 
     let totalWeightedScore = 0;
     let totalWeight = 0;
@@ -115,8 +115,8 @@ function calculateSeniorFriendlinessScore(report) {
         const { id, weight } = auditRef;
         const result = auditResults[id];
 
-        if (result && result.score !== null) {
-            const score = result.score ?? 0;
+        if (result && typeof result.score === 'number') {
+            const score = result.score;
             const weightedScore = score * weight;
             totalWeightedScore += weightedScore;
             totalWeight += weight;
@@ -128,6 +128,25 @@ function calculateSeniorFriendlinessScore(report) {
                 weighted: weightedScore.toFixed(2)
             });
         }
+    }
+
+    // Fallback: if no data matched auditRefs, populate from available audits with default weight 1
+    if (scoreTable.length === 0) {
+        const refMap = new Map(auditRefs.map(r => [r.id, r.weight]));
+        Object.entries(auditResults).forEach(([id, result]) => {
+            if (result && typeof result.score === 'number') {
+                const weight = refMap.get(id) ?? 1;
+                const weightedScore = result.score * weight;
+                totalWeightedScore += weightedScore;
+                totalWeight += weight;
+                scoreTable.push({
+                    component: AUDIT_INFO[id]?.title || id,
+                    score: Math.round(result.score * 100),
+                    weight,
+                    weighted: weightedScore.toFixed(2)
+                });
+            }
+        });
     }
 
     if (totalWeight === 0) {
@@ -426,7 +445,7 @@ export class StarterAccessibilityPDFGenerator {
     addDetailedResults(reportData) {
         this.addPage();
         this.doc.fontSize(20).font('BoldFont').fillColor('#1F2937').text('Section 4: Detailed Audit Results', this.margin, this.currentY);
-        this.currentY += 30;
+        this.currentY += 36;
 
         const audits = reportData.audits || {};
         
@@ -444,11 +463,11 @@ export class StarterAccessibilityPDFGenerator {
             // Section title (cleaned)
             const cleanTitle = sanitizeText(info.title);
             this.doc.fontSize(13).font('BoldFont').fillColor('#1F2937').text(cleanTitle, this.margin, this.currentY);
-            this.currentY += 5;
+            this.currentY += 8;
             
             // Underline
-            this.doc.rect(this.margin, this.currentY, 430, 2).fill('#4F46E5');
-            this.currentY += 12;
+            this.doc.rect(this.margin, this.currentY, this.pageWidth, 2).fill('#4F46E5');
+            this.currentY += 14;
 
             // Score and status
             const score = auditData.score;
@@ -462,17 +481,18 @@ export class StarterAccessibilityPDFGenerator {
                 statusColor = '#EF4444';
             }
 
-            this.doc.fontSize(10).font('RegularFont').fillColor('#4B5563').text('Status: ');
-            this.doc.fontSize(10).font('BoldFont').fillColor(statusColor).text(status);
-            this.currentY += 15;
+            // Render status on one line with explicit coordinates to prevent overlap
+            this.doc.fontSize(10).font('RegularFont').fillColor('#4B5563').text('Status:', this.margin, this.currentY);
+            this.doc.fontSize(10).font('BoldFont').fillColor(statusColor).text(status, this.margin + 60, this.currentY);
+            this.currentY += 18;
 
             // Description - clean and format
             if (auditData.description) {
                 const cleanDesc = sanitizeText(auditData.description
                     .replace(/\[(.*?)\]\(.*?\)/g, '$1'));
                 if (cleanDesc) {
-                    this.doc.fontSize(10).font('RegularFont').fillColor('#374151').text(cleanDesc, this.margin, this.currentY, { width: this.pageWidth - 80 });
-                    this.currentY += this.doc.heightOfString(cleanDesc, { width: this.pageWidth - 80 }) + 10;
+                    this.doc.fontSize(10).font('RegularFont').fillColor('#374151').text(cleanDesc, this.margin, this.currentY, { width: this.pageWidth });
+                    this.currentY += this.doc.heightOfString(cleanDesc, { width: this.pageWidth }) + 12;
                 }
             }
 
@@ -480,9 +500,10 @@ export class StarterAccessibilityPDFGenerator {
             if (auditData.displayValue) {
                 const cleanDisplayValue = sanitizeText(auditData.displayValue);
                 if (cleanDisplayValue) {
-                    this.doc.fontSize(9).font('BoldFont').fillColor('#1F2937').text('Detailed Results:');
-                    this.doc.fontSize(9).font('RegularFont').fillColor('#4B5563').text(cleanDisplayValue, this.margin, this.currentY + 12, { width: this.pageWidth - 80 });
-                    this.currentY += this.doc.heightOfString(cleanDisplayValue, { width: this.pageWidth - 80 }) + 15;
+                    this.doc.fontSize(9).font('BoldFont').fillColor('#1F2937').text('Detailed Results:', this.margin, this.currentY);
+                    this.currentY += 12;
+                    this.doc.fontSize(9).font('RegularFont').fillColor('#4B5563').text(cleanDisplayValue, this.margin, this.currentY, { width: this.pageWidth });
+                    this.currentY += this.doc.heightOfString(cleanDisplayValue, { width: this.pageWidth }) + 16;
                 }
             }
 
