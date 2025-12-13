@@ -185,9 +185,12 @@ export const runFullAuditProcess = async (job) => {
     }
 
     console.log(`🎉 All links for ${email} have been processed for both desktop and mobile.`);
+    console.log(`\n=== EMAIL SENDING PHASE STARTING ===`);
 
     // Pre-check attachments to ensure we have content to send
+    console.log(`📂 Checking for attachments in: ${finalReportFolder}`);
     const attachmentsPreview = await collectAttachmentsRecursive(finalReportFolder).catch(() => []);
+    console.log(`📊 Found ${attachmentsPreview.length} attachments`);
     if (record) {
       record.attachmentCount = Array.isArray(attachmentsPreview) ? attachmentsPreview.length : 0;
       await record.save().catch(()=>{});
