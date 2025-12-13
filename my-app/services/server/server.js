@@ -54,11 +54,24 @@ const signalBackend = async (payload) => {
 // =================================================================
 
 export const runFullAuditProcess = async (job) => {
-  const { email, url, userId, taskId, planId, selectedDevice, firstName, lastName } = job;
+  const { email, url, userId, taskId, planId, selectedDevice, firstName, lastName, subscriptionId } = job;
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Valued Customer';
   console.log(`\n\n--- [STARTING FULL JOB] ---`);
-  const planLabel = planId || 'unknown';
-  console.log(`Processing job for ${fullName} (${email}) to audit ${url} [Plan: ${planLabel}]`);
+
+  let effectivePlanId = planId;
+  if (!effectivePlanId && subscriptionId) {
+    try {
+      const sub = await Subscription.findById(subscriptionId).lean();
+      if (sub?.planId) effectivePlanId = sub.planId;
+    } catch (e) {
+      console.warn('Plan lookup failed for subscriptionId', subscriptionId, e?.message || e);
+    }
+  }
+  if (!effectivePlanId) {
+    effectivePlanId = 'starter'; // Default to starter behavior if missing
+  }
+
+  console.log(`Processing job for ${fullName} (${email}) to audit ${url} [Plan: ${effectivePlanId}]`);
 
   // Removed browser lock - Puppeteer can handle multiple browser instances concurrently
   // Each audit will spawn its own browser instance
@@ -110,7 +123,7 @@ export const runFullAuditProcess = async (job) => {
     console.log(`Found ${linksToAudit.length} links for full audit.`);
 
     // Determine which devices to audit based on plan
-    const isProPlan = planId === 'pro';
+    const isProPlan = effectivePlanId === 'pro';
     let devicesToAudit;
     if (isProPlan) {
       devicesToAudit = ['desktop', 'mobile', 'tablet'];
@@ -118,7 +131,7 @@ export const runFullAuditProcess = async (job) => {
     } else {
       // Treat anything that is not pro as starter/one-time: single device, default desktop
       devicesToAudit = selectedDevice ? [selectedDevice] : ['desktop'];
-      console.log(`📱 Non-pro plan (${planId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
+      console.log(`📱 Non-pro plan (${effectivePlanId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
     }
 
     for (const link of linksToAudit) {

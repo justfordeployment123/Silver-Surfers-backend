@@ -14,6 +14,9 @@ const auditJobSchema = new mongoose.Schema({
     required: true,
     index: true 
   },
+  // Plan and device context
+  planId: { type: String },
+  selectedDevice: { type: String },
   
   // Status tracking
   status: { 
