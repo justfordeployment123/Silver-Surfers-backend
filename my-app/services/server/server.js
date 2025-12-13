@@ -144,9 +144,14 @@ export const runFullAuditProcess = async (job) => {
           const auditResult = await runLighthouseAudit({ url: link, device, format: 'json' });
           if (auditResult.success) {
             jsonReportPath = auditResult.reportPath;
+            console.log(`📸 Starting image generation for ${link} (${device})...`);
             imagePaths = await createAllHighlightedImages(jsonReportPath, jobFolder);
+            console.log(`✅ Image generation completed for ${link} (${device})`);
 
             // Use Starter report generator for Starter and One-Time plans, Pro report for Pro plan
+            console.log(`📄 Starting PDF generation for ${link} (${device}) with plan: ${isProPlan ? 'pro' : 'starter'}`);
+            console.log(`   Output directory: ${finalReportFolder}`);
+            
             if (isProPlan) {
               await generateSeniorAccessibilityReport({
                 inputFile: jsonReportPath,
@@ -157,6 +162,7 @@ export const runFullAuditProcess = async (job) => {
                 outputDir: finalReportFolder,
                 formFactor: device
               });
+              console.log(`✅ Pro PDF generated for ${link} (${device})`);
             } else {
               await generateStarterAccessibilityReport({
                 inputFile: jsonReportPath,
@@ -167,12 +173,14 @@ export const runFullAuditProcess = async (job) => {
                 outputDir: finalReportFolder,
                 formFactor: device
               });
+              console.log(`✅ Starter PDF generated for ${link} (${device})`);
             }
           } else {
             console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);
           }
         } catch (pageError) {
           console.error(`An unexpected error occurred while auditing ${link} (${device}):`, pageError.message);
+          console.error(`Stack trace:`, pageError.stack);
         } finally {
           if (jsonReportPath) await fs.unlink(jsonReportPath).catch((e) => console.error(e.message));
           if (imagePaths && typeof imagePaths === 'object') {
