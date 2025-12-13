@@ -266,6 +266,12 @@ export class StarterAccessibilityPDFGenerator {
         this.currentY += 50;
 
         // Score calculation table
+        try {
+            console.log('[StarterPDF] Section 1 scoreTable length:', Array.isArray(scoreData.scoreTable) ? scoreData.scoreTable.length : 'N/A');
+            if (Array.isArray(scoreData.scoreTable) && scoreData.scoreTable.length) {
+                console.log('[StarterPDF] First 3 score rows:', scoreData.scoreTable.slice(0, 3));
+            }
+        } catch {}
         this.drawScoreTable(scoreData.scoreTable);
         
         this.currentY += 20;
@@ -307,10 +313,10 @@ export class StarterAccessibilityPDFGenerator {
             
             x = this.margin;
             const componentName = sanitizeText(String(item.component || '')).substring(0, 40);
-            this.doc.text(componentName || '—', x + 8, this.currentY + 7, { width: widths[0] - 16, fontSize: 9 });
-            this.doc.text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 7, { width: widths[1] - 16, align: 'center', fontSize: 9 });
-            this.doc.text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 7, { width: widths[2] - 16, align: 'center', fontSize: 9 });
-            this.doc.text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 7, { width: widths[3] - 16, align: 'center', fontSize: 9 });
+            this.doc.fontSize(9).fillColor('#1F2937').text(componentName || '—', x + 8, this.currentY + 7, { width: widths[0] - 16 });
+            this.doc.fontSize(9).fillColor('#1F2937').text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 7, { width: widths[1] - 16, align: 'center' });
+            this.doc.fontSize(9).fillColor('#1F2937').text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 7, { width: widths[2] - 16, align: 'center' });
+            this.doc.fontSize(9).fillColor('#1F2937').text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 7, { width: widths[3] - 16, align: 'center' });
             
             this.currentY += rowHeight;
         });
@@ -396,6 +402,14 @@ export class StarterAccessibilityPDFGenerator {
         this.doc.fontSize(20).font('BoldFont').fillColor('#1F2937').text('Section 3: Summary Table', this.margin, this.currentY);
         this.currentY += 35;
 
+        // Debug
+        try {
+            console.log('[StarterPDF] Section 3 scoreTable length:', Array.isArray(scoreData.scoreTable) ? scoreData.scoreTable.length : 'N/A');
+            if (Array.isArray(scoreData.scoreTable) && scoreData.scoreTable.length) {
+                console.log('[StarterPDF] First 3 summary rows:', scoreData.scoreTable.slice(0, 3));
+            }
+        } catch {}
+
         // Check if scoreTable is empty
         if (!scoreData.scoreTable || scoreData.scoreTable.length === 0) {
             this.doc.fontSize(11).font('RegularFont').fillColor('#6B7280').text('No audit data available for summary.', this.margin, this.currentY);
@@ -430,11 +444,11 @@ export class StarterAccessibilityPDFGenerator {
             this.doc.rect(this.margin, this.currentY, this.pageWidth, rowHeight).fill(bgColor).stroke('#E5E7EB');
             
             x = this.margin;
-            const componentName = String(item.component || '').substring(0, 30);
-            this.doc.text(componentName, x + 8, this.currentY + 6, { width: widths[0] - 16, fontSize: 8 });
-            this.doc.text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 6, { width: widths[1] - 16, align: 'center', fontSize: 8 });
-            this.doc.text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 6, { width: widths[2] - 16, align: 'center', fontSize: 8 });
-            this.doc.text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 6, { width: widths[3] - 16, align: 'center', fontSize: 8 });
+            const componentName = sanitizeText(String(item.component || '')).substring(0, 30);
+            this.doc.fontSize(8).fillColor('#1F2937').text(componentName || '—', x + 8, this.currentY + 6, { width: widths[0] - 16 });
+            this.doc.fontSize(8).fillColor('#1F2937').text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 6, { width: widths[1] - 16, align: 'center' });
+            this.doc.fontSize(8).fillColor('#1F2937').text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 6, { width: widths[2] - 16, align: 'center' });
+            this.doc.fontSize(8).fillColor('#1F2937').text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 6, { width: widths[3] - 16, align: 'center' });
             
             this.currentY += rowHeight;
         });
@@ -463,7 +477,7 @@ export class StarterAccessibilityPDFGenerator {
             // Section title (cleaned)
             const cleanTitle = sanitizeText(info.title);
             this.doc.fontSize(13).font('BoldFont').fillColor('#1F2937').text(cleanTitle, this.margin, this.currentY);
-            this.currentY += 8;
+            this.currentY += 9;
             
             // Underline
             this.doc.rect(this.margin, this.currentY, this.pageWidth, 2).fill('#4F46E5');
