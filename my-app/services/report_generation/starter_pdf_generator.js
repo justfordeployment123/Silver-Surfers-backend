@@ -149,6 +149,21 @@ export class StarterAccessibilityPDFGenerator {
             const reportData = JSON.parse(rawData);
             const scoreData = calculateSeniorFriendlinessScore(reportData);
 
+            // Ensure output directory and file path
+            const outDir = options.outputDir || process.cwd();
+            const baseName = path.basename(reportData.finalUrl || reportData.url || 'report').replace(/[^a-zA-Z0-9.-]/g, '_');
+            const deviceTag = options.formFactor || options.device || 'desktop';
+            const finalOutputPath = outputFile && path.isAbsolute(outputFile)
+                ? outputFile
+                : path.join(outDir, `${baseName}-${deviceTag}-starter.pdf`);
+
+            // Create directory if missing
+            try { fs.mkdirSync(outDir, { recursive: true }); } catch {}
+
+            // Pipe BEFORE writing any content (PDFKit requirement)
+            const writeStream = fs.createWriteStream(finalOutputPath);
+            this.doc.pipe(writeStream);
+
             // Add pages in Starter order: Title, Score Calculation, Summary, Summary Table, Detailed Results
             this.addIntroPage(reportData, scoreData);
             this.addScoreCalculationPage(reportData, scoreData);
@@ -156,18 +171,18 @@ export class StarterAccessibilityPDFGenerator {
             this.addSummaryTable(scoreData);
             this.addDetailedResults(reportData);
 
-            // Save PDF
+            // Finalize document and await write completion
             await new Promise((resolve, reject) => {
-                this.doc.pipe(fs.createWriteStream(outputFile));
-                this.doc.on('finish', resolve);
+                writeStream.on('finish', resolve);
+                writeStream.on('error', reject);
                 this.doc.on('error', reject);
                 this.doc.end();
             });
 
-            console.log(`✅ Starter audit PDF generated: ${outputFile}`);
+            console.log(`✅ Starter audit PDF generated: ${finalOutputPath}`);
             return {
                 success: true,
-                reportPath: outputFile,
+                reportPath: finalOutputPath,
                 score: scoreData.finalScore,
                 url: reportData.finalUrl || reportData.url || 'Unknown'
             };
