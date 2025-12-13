@@ -57,7 +57,8 @@ export const runFullAuditProcess = async (job) => {
   const { email, url, userId, taskId, planId, selectedDevice, firstName, lastName } = job;
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Valued Customer';
   console.log(`\n\n--- [STARTING FULL JOB] ---`);
-  console.log(`Processing job for ${fullName} (${email}) to audit ${url} [Plan: ${planId || 'unknown'}]`);
+  const planLabel = planId || 'unknown';
+  console.log(`Processing job for ${fullName} (${email}) to audit ${url} [Plan: ${planLabel}]`);
 
   // Removed browser lock - Puppeteer can handle multiple browser instances concurrently
   // Each audit will spawn its own browser instance
@@ -109,17 +110,15 @@ export const runFullAuditProcess = async (job) => {
     console.log(`Found ${linksToAudit.length} links for full audit.`);
 
     // Determine which devices to audit based on plan
-    let devicesToAudit = ['desktop', 'mobile', 'tablet'];
-    if ((planId === 'starter' || planId === 'oneTime' || planId === 'one-time') && selectedDevice) {
-      // Starter plan and One-Time plan: audit only the selected device
-      devicesToAudit = [selectedDevice];
-      console.log(`📱 ${planId} plan: Auditing selected device only - ${selectedDevice}`);
-    } else if (planId === 'pro') {
-      // Pro plan: audit all devices
-      console.log(`🚀 Pro plan: Auditing all devices - desktop, mobile, tablet`);
+    const isProPlan = planId === 'pro';
+    let devicesToAudit;
+    if (isProPlan) {
+      devicesToAudit = ['desktop', 'mobile', 'tablet'];
+      console.log('🚀 Pro plan: Auditing all devices - desktop, mobile, tablet');
     } else {
-      // Default: audit all devices (for custom or legacy plans)
-      console.log(`📊 Auditing all devices by default`);
+      // Treat anything that is not pro as starter/one-time: single device, default desktop
+      devicesToAudit = selectedDevice ? [selectedDevice] : ['desktop'];
+      console.log(`📱 Non-pro plan (${planId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
     }
 
     for (const link of linksToAudit) {
@@ -135,10 +134,8 @@ export const runFullAuditProcess = async (job) => {
             imagePaths = await createAllHighlightedImages(jsonReportPath, jobFolder);
 
             // Use Starter report generator for Starter and One-Time plans, Pro report for Pro plan
-            const isStarterPlan = planId === 'starter' || planId === 'oneTime' || planId === 'one-time';
-            
-            if (isStarterPlan) {
-              await generateStarterAccessibilityReport({
+            if (isProPlan) {
+              await generateSeniorAccessibilityReport({
                 inputFile: jsonReportPath,
                 url: link,
                 email_address: email,
@@ -148,7 +145,7 @@ export const runFullAuditProcess = async (job) => {
                 formFactor: device
               });
             } else {
-              await generateSeniorAccessibilityReport({
+              await generateStarterAccessibilityReport({
                 inputFile: jsonReportPath,
                 url: link,
                 email_address: email,
@@ -192,7 +189,7 @@ export const runFullAuditProcess = async (job) => {
     if (record) { record.emailStatus = 'sending'; await record.save().catch(()=>{}); }
     
     // For Starter plan, filter to only send reports for the selected device
-    const deviceFilterForEmail = (planId === 'starter' || planId === 'oneTime' || planId === 'one-time') ? selectedDevice : null;
+    const deviceFilterForEmail = isProPlan ? null : (selectedDevice || 'desktop');
     
     const sendResult = await sendAuditReportEmail({
       to: email,
