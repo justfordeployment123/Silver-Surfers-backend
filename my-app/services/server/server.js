@@ -204,13 +204,30 @@ export const runFullAuditProcess = async (job) => {
     // For Starter plan, filter to only send reports for the selected device
     const deviceFilterForEmail = isProPlan ? null : (selectedDevice || 'desktop');
     
-    const sendResult = await sendAuditReportEmail({
-      to: email,
-      subject: 'Your SilverSurfers Audit Results',
-      text: 'Attached are all your senior accessibility audit results. Thank you for using SilverSurfers!',
-      folderPath: finalReportFolder,
-      deviceFilter: deviceFilterForEmail,
-    });
+    console.log(`📧 Preparing to send email to ${email} with device filter: ${deviceFilterForEmail || 'none (all devices)'}`);
+    console.log(`📂 Report folder: ${finalReportFolder}`);
+    
+    let sendResult;
+    try {
+      // Add timeout to email sending (5 minutes max)
+      const emailPromise = sendAuditReportEmail({
+        to: email,
+        subject: 'Your SilverSurfers Audit Results',
+        text: 'Attached are all your senior accessibility audit results. Thank you for using SilverSurfers!',
+        folderPath: finalReportFolder,
+        deviceFilter: deviceFilterForEmail,
+      });
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Email sending timed out after 5 minutes')), 300000)
+      );
+      
+      sendResult = await Promise.race([emailPromise, timeoutPromise]);
+      console.log(`✉️ Email send result:`, JSON.stringify(sendResult, null, 2));
+    } catch (emailError) {
+      console.error(`❌ Email sending failed:`, emailError.message);
+      sendResult = { success: false, error: emailError.message };
+    }
     if (record) {
       if (sendResult?.success) {
         record.emailStatus = 'sent';
@@ -472,15 +489,30 @@ export const runQuickScanProcess = async (job) => {
         }
 
         // Send the quick scan report via email (attachments from the output folder)
-        await sendAuditReportEmail({
-          to: email,
-          subject: 'Your SilverSurfers Quick Scan Results',
-          text: 'Attached is your older adult-friendly Quick Scan report. Thanks for trying SilverSurfers! For a full multi-page audit analysis and detailed guidance, consider upgrading.',
-          folderPath: userSpecificOutputDir,
-          isQuickScan: true, // Flag to add "Website Results for:" prefix
-          websiteUrl: url, // Pass the URL for display
-          quickScanScore: pdfResult.score, // Pass the score for display
-        });
+        console.log(`📧 Preparing to send quick scan email to ${email}`);
+        console.log(`📂 Quick scan folder: ${userSpecificOutputDir}`);
+        
+        try {
+          const emailPromise = sendAuditReportEmail({
+            to: email,
+            subject: 'Your SilverSurfers Quick Scan Results',
+            text: 'Attached is your older adult-friendly Quick Scan report. Thanks for trying SilverSurfers! For a full multi-page audit analysis and detailed guidance, consider upgrading.',
+            folderPath: userSpecificOutputDir,
+            isQuickScan: true, // Flag to add "Website Results for:" prefix
+            websiteUrl: url, // Pass the URL for display
+            quickScanScore: pdfResult.score, // Pass the score for display
+          });
+          
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Quick scan email timed out after 5 minutes')), 300000)
+          );
+          
+          const emailResult = await Promise.race([emailPromise, timeoutPromise]);
+          console.log(`✉️ Quick scan email result:`, JSON.stringify(emailResult, null, 2));
+        } catch (emailError) {
+          console.error(`❌ Quick scan email failed:`, emailError.message);
+          throw emailError; // Re-throw to trigger failure handling
+        }
 
         // Cleanup the quick scan folder using the cleanup route (same pattern as full audit)
         try {

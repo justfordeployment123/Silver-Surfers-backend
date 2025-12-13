@@ -193,6 +193,13 @@ export async function collectAttachmentsRecursive(rootDir, deviceFilter = null) 
 }
 
 export async function sendAuditReportEmail({ to, subject, text, folderPath, isQuickScan = false, websiteUrl = '', quickScanScore = null, deviceFilter = null }) {
+  console.log(`\n📧 === sendAuditReportEmail STARTED ===`);
+  console.log(`   To: ${to}`);
+  console.log(`   Subject: ${subject}`);
+  console.log(`   Folder: ${folderPath}`);
+  console.log(`   Device Filter: ${deviceFilter || 'none'}`);
+  console.log(`   Is Quick Scan: ${isQuickScan}`);
+  
   const { transporter, reason } = buildTransport();
   if (!transporter) {
     console.warn('Email skipped:', reason);
@@ -279,9 +286,13 @@ export async function sendAuditReportEmail({ to, subject, text, folderPath, isQu
 
   try {
     // Verify transport before sending to fail fast with clearer errors
+    console.log('🔍 Verifying SMTP transport...');
     await transporter.verify();
+    console.log('✅ SMTP transport verified, sending email...');
+    
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent:', info.response);
+    console.log('✅ Email sent successfully:', info.response);
+    console.log(`📧 === sendAuditReportEmail COMPLETED ===\n`);
     
     return {
       success: true,
@@ -297,7 +308,9 @@ export async function sendAuditReportEmail({ to, subject, text, folderPath, isQu
       messageId: info.messageId,
     };
   } catch (error) {
-    console.error('Email error:', error);
+    console.error('❌ Email error:', error);
+    console.error('❌ Email error stack:', error.stack);
+    console.log(`📧 === sendAuditReportEmail FAILED ===\n`);
     return { success: false, error: error.message };
   }
 }
