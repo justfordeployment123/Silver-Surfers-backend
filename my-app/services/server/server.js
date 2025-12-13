@@ -152,28 +152,38 @@ export const runFullAuditProcess = async (job) => {
             console.log(`📄 Starting PDF generation for ${link} (${device}) with plan: ${isProPlan ? 'pro' : 'starter'}`);
             console.log(`   Output directory: ${finalReportFolder}`);
             
-            if (isProPlan) {
-              await generateSeniorAccessibilityReport({
-                inputFile: jsonReportPath,
-                url: link,
-                email_address: email,
-                device: device,
-                imagePaths,
-                outputDir: finalReportFolder,
-                formFactor: device
-              });
-              console.log(`✅ Pro PDF generated for ${link} (${device})`);
-            } else {
-              await generateStarterAccessibilityReport({
-                inputFile: jsonReportPath,
-                url: link,
-                email_address: email,
-                device: device,
-                imagePaths,
-                outputDir: finalReportFolder,
-                formFactor: device
-              });
-              console.log(`✅ Starter PDF generated for ${link} (${device})`);
+            try {
+              // Add timeout to PDF generation (2 minutes max)
+              const pdfPromise = isProPlan 
+                ? generateSeniorAccessibilityReport({
+                    inputFile: jsonReportPath,
+                    url: link,
+                    email_address: email,
+                    device: device,
+                    imagePaths,
+                    outputDir: finalReportFolder,
+                    formFactor: device
+                  })
+                : generateStarterAccessibilityReport({
+                    inputFile: jsonReportPath,
+                    url: link,
+                    email_address: email,
+                    device: device,
+                    imagePaths,
+                    outputDir: finalReportFolder,
+                    formFactor: device
+                  });
+              
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('PDF generation timeout after 2 minutes')), 120000)
+              );
+              
+              await Promise.race([pdfPromise, timeoutPromise]);
+              console.log(`✅ ${isProPlan ? 'Pro' : 'Starter'} PDF generated for ${link} (${device})`);
+            } catch (pdfError) {
+              console.error(`❌ PDF generation failed for ${link} (${device}):`, pdfError.message);
+              console.error(`   Stack:`, pdfError.stack);
+              throw pdfError; // Re-throw to trigger catch block
             }
           } else {
             console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);

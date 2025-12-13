@@ -441,6 +441,17 @@ export class StarterAccessibilityPDFGenerator {
 }
 
 export async function generateStarterAccessibilityReport(options = {}) {
+    console.log(`📄 [StarterPDF] generateStarterAccessibilityReport called`);
+    console.log(`   Options:`, { 
+        hasInputFile: !!options.inputFile,
+        hasOutputFile: !!options.outputFile,
+        url: options.url,
+        email: options.email_address,
+        device: options.device,
+        outputDir: options.outputDir,
+        imagePathsCount: Object.keys(options.imagePaths || {}).length
+    });
+    
     const {
         inputFile = 'report.json',
         outputFile = 'starter-report.pdf',
@@ -454,8 +465,12 @@ export async function generateStarterAccessibilityReport(options = {}) {
         throw new Error('url and email_address are required');
     }
 
+    console.log(`📄 [StarterPDF] Creating generator instance...`);
     const generator = new StarterAccessibilityPDFGenerator({ imagePaths });
+    
+    console.log(`📄 [StarterPDF] Calling generator.generateReport...`);
     const result = await generator.generateReport(inputFile, outputFile, { ...options, outputDir, clientEmail: email_address });
-
+    
+    console.log(`📄 [StarterPDF] Report generated successfully:`, result);
     return result;
 }
