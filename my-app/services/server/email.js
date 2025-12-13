@@ -168,7 +168,9 @@ export async function collectAttachmentsRecursive(rootDir, deviceFilter = null) 
           // Filter by device if specified (check filename for device)
           if (deviceFilter) {
             // Only include reports for the selected device
-            const hasDeviceMatch = full.includes(`-${deviceFilter}.pdf`) || full.includes(`_${deviceFilter}.pdf`);
+            // Match patterns like: -tablet.pdf, -tablet-, _tablet.pdf, _tablet-, etc.
+            const deviceRegex = new RegExp(`[-_]${deviceFilter}([-.]|$)`);
+            const hasDeviceMatch = deviceRegex.test(full);
             if (!hasDeviceMatch) {
               continue; // Skip this file
             }
