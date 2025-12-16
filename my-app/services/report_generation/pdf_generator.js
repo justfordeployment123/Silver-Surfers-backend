@@ -330,22 +330,81 @@ addOverallScoreDisplay(scoreData) {
     }
 }
     addIntroPage(reportData, scoreData) {
-        this.doc.rect(0, 0, this.doc.page.width, 120).fill('#34495E');
-        this.doc.fontSize(32).font('BoldFont').fillColor('white').text('SilverSurfers', this.margin, 30, { width: this.pageWidth, align: 'center' });
-        this.doc.fontSize(24).font('RegularFont').fillColor('white').text('Accessibility Audit Report', this.margin, 70, { width: this.pageWidth, align: 'center' });
-        this.currentY = 150;
+        // Header background with gradient effect (simulate with overlapping rectangles)
+        this.doc.rect(0, 0, this.doc.page.width, 220).fill('#6366F1');
+        this.doc.rect(0, 180, this.doc.page.width, 40).fillOpacity(0.3).fill('#8B5CF6');
+        this.doc.fillOpacity(1);
+        
+        this.doc.fontSize(32).font('BoldFont').fillColor('white').text('SilverSurfers Pro Audit', this.margin, 30, { width: this.pageWidth, align: 'center' });
+        this.doc.fontSize(14).font('RegularFont').fillColor('white').text('Accessibility Audit Report', this.margin, 70, { width: this.pageWidth, align: 'center' });
+        
+        this.currentY = 110;
+
+        // Website analyzed box with rounded corners (simulated)
         if (reportData.finalUrl) {
-            this.doc.rect(this.margin, this.currentY, this.pageWidth, 40).fill('#ECF0F1').stroke('#BDC3C7');
-            this.doc.fontSize(14).font('BoldFont').fillColor('#2C3E50').text('Website Analyzed: ', this.margin + 10, this.currentY + 12);
-            this.doc.font('RegularFont').text(reportData.finalUrl, this.margin + 160, this.currentY + 12);
-            this.currentY += 55;
+            const boxX = (this.doc.page.width - 280) / 2;
+            this.doc.roundedRect(boxX, this.currentY, 280, 50, 8).fill('#7C3AED').fillOpacity(0.9);
+            this.doc.fillOpacity(1);
+            this.doc.fontSize(11).font('RegularFont').fillColor('#E0E7FF').text('Website Analyzed', boxX + 20, this.currentY + 12);
+            this.doc.fontSize(13).font('BoldFont').fillColor('white').text(reportData.finalUrl, boxX + 20, this.currentY + 28, { width: 240 });
+            this.currentY += 85;
+        } else {
+            this.currentY += 85;
         }
-        this.addOverallScoreDisplay(scoreData);
+
+        // Score display box with rounded background
+        const scoreBoxX = (this.doc.page.width - 440) / 2;
+        const scoreBoxY = this.currentY;
+        this.doc.roundedRect(scoreBoxX, scoreBoxY, 440, 120, 12).fill('#E0E7FF').fillOpacity(0.8);
+        this.doc.fillOpacity(1);
+
+        const score = Math.round(scoreData.finalScore);
+        const isPassing = score >= 70;
+        const scoreColor = isPassing ? '#6366F1' : '#EF4444';
+        const statusText = isPassing ? 'PASS' : 'FAIL';
+
+        // Large score circle
+        this.doc.circle(scoreBoxX + 80, scoreBoxY + 60, 45).fill('white');
+        this.doc.fontSize(42).font('BoldFont').fillColor(scoreColor).text(score + '%', scoreBoxX + 35, scoreBoxY + 38, { width: 90, align: 'center' });
+        this.doc.fontSize(12).font('BoldFont').fillColor(scoreColor).text(statusText, scoreBoxX + 35, scoreBoxY + 75, { width: 90, align: 'center' });
+
+        // Score description
+        this.doc.fontSize(15).font('BoldFont').fillColor('#1F2937').text('Overall SilverSurfers Score', scoreBoxX + 180, scoreBoxY + 25);
+        const descText = isPassing 
+            ? 'This website meets SilverSurfers accessibility\nstandards (70% minimum required)'
+            : 'This website did not meet the SilverSurfers\naccessibility standards (70% minimum required)';
+        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(descText, scoreBoxX + 180, scoreBoxY + 50, { width: 240 });
+
+        this.currentY += 150;
+        
+        // Report generated timestamp
         const timestamp = new Date(reportData.fetchTime).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
-        this.addBodyText(`Report Generated: ${timestamp}`, 12, '#7F8C8D');
-        this.currentY += 10;
-        this.addHeading('Our Mission: Digital Inclusion for Older Adults', 18, '#2980B9');
-        this.addBodyText('This comprehensive SilverSurfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.');
+        this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280').text(`Report Generated: ${timestamp}`, this.margin, this.currentY, { align: 'center', width: this.pageWidth });
+        this.currentY += 40;
+
+        // Our Mission section
+        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, 90, 8).fill('#EFF6FF');
+        this.doc.roundedRect(this.margin, this.currentY, 5, 90, 2).fill('#3B82F6');
+        this.doc.fontSize(13).font('BoldFont').fillColor('#1E40AF').text('🎯 Our Mission: Digital Inclusion for Older Adults', this.margin + 20, this.currentY + 15);
+        const missionText = 'This comprehensive SilverSurfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.';
+        this.doc.fontSize(10).font('RegularFont').fillColor('#1E3A8A').text(missionText, this.margin + 20, this.currentY + 38, { width: this.pageWidth - 40, align: 'justify' });
+        this.currentY += 110;
+
+        // Report Sections
+        this.doc.fontSize(14).font('BoldFont').fillColor('#3B82F6').text('📋 Report Sections', this.margin, this.currentY);
+        this.currentY += 25;
+
+        const sections = [
+            { num: 1, title: 'How Your Score Was Calculated' },
+            { num: 2, title: 'Audit Summary by Category' },
+            { num: 3, title: 'Detailed Audit Results' }
+        ];
+
+        sections.forEach((section, index) => {
+            this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937').text(`Section ${section.num}:`, this.margin + 20, this.currentY);
+            this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(section.title, this.margin + 90, this.currentY);
+            this.currentY += 18;
+        });
     }
 
     addScoreCalculationPage(reportData, scoreData) {
@@ -395,7 +454,15 @@ addOverallScoreDisplay(scoreData) {
 
    addSummaryPage(reportData) {
         this.addPage();
-        this.addTitle('Audit Summary by Category', 24);
+        this.addTitle('Section 2: Audit Summary by Category', 24);
+        
+        // Add summary introduction text
+        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(
+            'This section provides a high-level overview of your website\'s accessibility performance across different categories. Each category focuses on specific aspects of senior-friendly design, from visual clarity to cognitive ease.',
+            this.margin, this.currentY, { width: this.pageWidth, align: 'left' }
+        );
+        this.currentY += 35;
+        
         const audits = reportData.audits || {};
         const categories = {};
 
@@ -437,62 +504,99 @@ addOverallScoreDisplay(scoreData) {
     this.addPage();
     const info = AUDIT_INFO[auditId];
     if (!info) return;
-    this.drawColorBar(info.category);
-    this.addTitle(info.title, 22);
-    this.addScoreBar(auditData.score, 'SilverSurfer Score');
     
+    // Title with score badge on the right
+    const score = auditData.score ?? 0;
+    let scoreText = 'Poor';
+    let scoreColor = '#EF4444';
+    if (score === 1) {
+        scoreText = 'Excellent';
+        scoreColor = '#10B981';
+    } else if (score > 0.8) {
+        scoreText = 'Good for Older Adults';
+        scoreColor = '#3B82F6';
+    } else if (score > 0.5) {
+        scoreText = 'Needs Work';
+        scoreColor = '#F59E0B';
+    } else {
+        scoreText = 'Needs Improvement';
+        scoreColor = '#EF4444';
+    }
+    
+    // Draw title
+    this.doc.fontSize(20).font('BoldFont').fillColor('#1F2937').text(info.title, this.margin, this.currentY, { width: this.pageWidth * 0.65 });
+    
+    // Draw score label and badge aligned to the right
+    const scoreY = this.currentY;
+    const rightX = this.margin + this.pageWidth - 180;
+    this.doc.fontSize(9).font('RegularFont').fillColor('#9CA3AF').text('SILVERSURFERS SCORE', rightX, scoreY, { align: 'right', width: 180 });
+    this.doc.fontSize(13).font('BoldFont').fillColor(scoreColor).text(scoreText, rightX, scoreY + 15, { align: 'right', width: 180 });
+    
+    this.currentY += 40;
+    
+    // Horizontal line
+    this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
+    this.currentY += 20;
+    
+    // Description text
     if (auditData.description) {
         const description = auditData.description;
-
-        // 1. Produce the "final text" by stripping ALL markdown links.
         let cleanText = description.replace(/\[(.*?)\]\(.*?\)/g, '$1').trim();
 
-        // --- NEW LOGIC AS REQUESTED STARTS HERE ---
-        // Goal: Add a period if the text doesn't already end with one.
-        // This normalizes the text for the sentence removal logic below.
         if (cleanText.length > 0 && !cleanText.endsWith('.')) {
             cleanText += '.';
         }
-        // --- NEW LOGIC AS REQUESTED ENDS HERE ---
 
-        // 2. Apply the logic to find the last two periods and remove the final sentence.
         const lastDotIndex = cleanText.lastIndexOf('.');
-
         if (lastDotIndex > -1) {
             const secondToLastDotIndex = cleanText.substring(0, lastDotIndex).lastIndexOf('.');
-
             if (secondToLastDotIndex > -1) {
-                // Cut the string off after the second-to-last period.
                 cleanText = cleanText.substring(0, secondToLastDotIndex + 1);
             }
         }
 
-        // The rest of the logic uses the correctly modified `cleanText`.
-        const textWidth = this.pageWidth - 20;
-        // Check if cleanText is not empty before calculating height
-        const textHeight = cleanText.length > 0 ? this.doc.heightOfString(cleanText, { width: textWidth }) : 0;
-        
-        const padding = 20;
-        const boxHeight = textHeight + padding;
-
         if (cleanText.length > 0) {
-            this.doc.rect(this.margin, this.currentY, this.pageWidth, boxHeight).fill('#F8F9FA').stroke('#E9ECEF');
-            this.doc.fontSize(12).font('RegularFont').fillColor('#495057').text(cleanText, this.margin + 10, this.currentY + 10, { width: textWidth });
-            this.currentY += boxHeight + 15;
+            this.doc.fontSize(11).font('RegularFont').fillColor('#6B7280').text(cleanText, this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+            const textHeight = this.doc.heightOfString(cleanText, { width: this.pageWidth, lineGap: 2 });
+            this.currentY += textHeight + 20;
         }
     }
 
-    this.addHeading('Why This Matters for SilverSurfers', 14, '#E67E22');
-    this.addBodyText(info.importance);
-    this.addHeading('Impact on SilverSurfers', 14, '#8E44AD');
-    this.addBodyText(info.why);
+    // Why This Matters section
+    this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Why This Matters for SilverSurfers', this.margin, this.currentY);
+    this.currentY += 18;
+    this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.importance, this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+    const importanceHeight = this.doc.heightOfString(info.importance, { width: this.pageWidth, lineGap: 2 });
+    this.currentY += importanceHeight + 18;
+    
+    // Impact section
+    this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Impact on SilverSurfers', this.margin, this.currentY);
+    this.currentY += 18;
+    this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.why, this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+    const whyHeight = this.doc.heightOfString(info.why, { width: this.pageWidth, lineGap: 2 });
+    this.currentY += whyHeight + 18;
+    
+    // How to Improve section
     if (info.recommendation) {
-        this.addHeading('How to Improve for SilverSurfers', 14, '#27AE60');
-        this.addBodyText(info.recommendation);
+        this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('How to Improve for SilverSurfers', this.margin, this.currentY);
+        this.currentY += 18;
+        this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.recommendation, this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+        const recHeight = this.doc.heightOfString(info.recommendation, { width: this.pageWidth, lineGap: 2 });
+        this.currentY += recHeight + 18;
     }
+    
+    // Detailed Results section with left border
     if (auditData.displayValue) {
-        this.addHeading('Detailed Results', 14, '#2980B9');
-        this.addBodyText(auditData.displayValue);
+        // Draw left border
+        this.doc.rect(this.margin, this.currentY, 4, 60).fill('#3B82F6');
+        
+        // Background box
+        this.doc.rect(this.margin, this.currentY, this.pageWidth, 60).fill('#F9FAFB');
+        
+        // Content
+        this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937').text('Detailed Results', this.margin + 15, this.currentY + 12);
+        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(auditData.displayValue, this.margin + 15, this.currentY + 32, { width: this.pageWidth - 25 });
+        this.currentY += 75;
     }
 }
     
@@ -540,18 +644,25 @@ addOverallScoreDisplay(scoreData) {
         }
     }
     
-    // If we get here, we have valid data to display
-    this.addPage();
-    if (info) {
-        this.drawColorBar(info.category);
-        this.addHeading(`Detailed Findings: ${info.title}`, 16);
+    // Check if we need a new page or can continue on current page
+    const needsNewPage = this.currentY > 600; // If we're far down the page, add new page
+    
+    if (needsNewPage) {
+        this.addPage();
+    } else {
+        this.currentY += 10; // Add some spacing if continuing on same page
     }
+    
+    // Add "Detailed Findings (Sample)" header with blue color
+    this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Detailed Findings (Sample)', this.margin, this.currentY);
+    this.currentY += 25;
     
     const itemsPerPage = 12;
     for (let i = 0; i < items.length; i += itemsPerPage) {
         if (i > 0) {
             this.addPage();
-            this.addHeading(`${info.title} (continued)`, 16);
+            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
+            this.currentY += 25;
         }
         this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
     }
@@ -645,70 +756,84 @@ addOverallScoreDisplay(scoreData) {
     }
     
     const startY = this.currentY;
-    const headerHeight = 35;
-    const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS['Technical Accessibility'];
+    const headerHeight = 30;
     let tableY = startY;
     const auditInfo = AUDIT_INFO[config.auditId];
     
-    // Draw header
-    this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill(colors.bg).stroke(colors.border);
-    this.doc.font('BoldFont').fontSize(11).fillColor(colors.text);
+    // Draw header with light gray background
+    this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
+    this.doc.font('BoldFont').fontSize(10).fillColor('#374151');
     let currentX = this.margin;
     
     config.headers.forEach((header, index) => {
-        if (index > 0) {
-            this.doc.moveTo(currentX, tableY).lineTo(currentX, tableY + headerHeight).strokeColor(colors.border).stroke();
-        }
-        this.doc.text(header, currentX + 8, tableY + 12, { 
-            width: config.widths[index] - 16, 
+        this.doc.text(header, currentX + 10, tableY + 10, { 
+            width: config.widths[index] - 20, 
             height: headerHeight - 10, 
-            align: 'center' 
+            align: 'left' 
         });
         currentX += config.widths[index];
     });
     
     tableY += headerHeight;
-    this.doc.font('RegularFont').fontSize(9);
+    this.doc.font('RegularFont').fontSize(10);
     
-    // Draw rows
+    // Draw rows with alternating white background and bottom borders
     itemsToShow.forEach((item, rowIndex) => {
         const rowData = config.extractors.map(extractor => String(extractor(item) || 'N/A'));
         let maxRowHeight = 0;
         
         rowData.forEach((cellValue, colIndex) => {
-            const cellWidth = config.widths[colIndex] - 16;
+            const cellWidth = config.widths[colIndex] - 20;
             const cellHeight = this.doc.heightOfString(cellValue, { width: cellWidth });
             if (cellHeight > maxRowHeight) {
                 maxRowHeight = cellHeight;
             }
         });
         
-        const rowHeight = Math.max(maxRowHeight + 16, 30);
+        const rowHeight = Math.max(maxRowHeight + 20, 35);
         
         if (tableY + rowHeight > this.doc.page.height - this.doc.page.margins.bottom) {
             this.addPage();
-            this.addHeading(`${auditInfo?.title || 'Detailed Findings'} (continued)`, 16);
+            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
+            this.currentY += 25;
             tableY = this.currentY;
-            this.doc.font('RegularFont').fontSize(9);
+            
+            // Redraw header on new page
+            this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
+            this.doc.font('BoldFont').fontSize(10).fillColor('#374151');
+            currentX = this.margin;
+            config.headers.forEach((header, index) => {
+                this.doc.text(header, currentX + 10, tableY + 10, { 
+                    width: config.widths[index] - 20, 
+                    height: headerHeight - 10, 
+                    align: 'left' 
+                });
+                currentX += config.widths[index];
+            });
+            tableY += headerHeight;
+            this.doc.font('RegularFont').fontSize(10);
         }
         
-        const isEvenRow = rowIndex % 2 === 0;
-        if (isEvenRow) {
-            this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FAFAFA');
-        }
+        // White background for all rows
+        this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FFFFFF');
         
+        // Draw cell content
         currentX = this.margin;
         rowData.forEach((cellValue, colIndex) => {
-            if (colIndex > 0) {
-                this.doc.moveTo(currentX, tableY).lineTo(currentX, tableY + rowHeight).strokeColor('#E0E0E0').stroke();
-            }
-            this.doc.fillColor('#2C3E50').text(cellValue, currentX + 8, tableY + 8, {
-                width: config.widths[colIndex] - 16
+            this.doc.fillColor('#374151').text(cellValue, currentX + 10, tableY + 10, {
+                width: config.widths[colIndex] - 20,
+                lineGap: 2
             });
             currentX += config.widths[colIndex];
         });
         
-        this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).strokeColor('#E0E0E0').stroke();
+        // Draw light bottom border for the row
+        this.doc.moveTo(this.margin, tableY + rowHeight)
+            .lineTo(this.margin + this.pageWidth, tableY + rowHeight)
+            .strokeColor('#E5E7EB')
+            .lineWidth(0.5)
+            .stroke();
+        
         tableY += rowHeight;
     });
     

@@ -2422,6 +2422,56 @@ app.get('/subscription/team/scans', authRequired, async (req, res) => {
   }
 });
 
+// Get team invitation details (no auth required)
+app.get('/subscription/team/invite/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Invitation token is required.' });
+    }
+
+    // Find subscription with a pending invitation
+    // Note: In production, you'd want to store tokens in DB with expiration
+    const subscription = await Subscription.findOne({
+      'teamMembers.status': 'pending'
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'Invalid or expired invitation.' });
+    }
+
+    // Find the specific team member with pending status
+    const pendingMember = subscription.teamMembers.find(member => 
+      member.status === 'pending'
+    );
+
+    if (!pendingMember) {
+      return res.status(404).json({ error: 'Invalid or expired invitation.' });
+    }
+
+    // Get team owner details
+    const owner = await User.findById(subscription.user);
+    if (!owner) {
+      return res.status(404).json({ error: 'Team owner not found.' });
+    }
+
+    const plan = getPlanById(subscription.planId);
+
+    return res.json({
+      invitedEmail: pendingMember.email,
+      teamOwnerEmail: owner.email,
+      teamOwnerName: owner.email,
+      planName: plan?.name || 'Unknown Plan',
+      invitedAt: pendingMember.addedAt
+    });
+
+  } catch (err) {
+    console.error('Get invitation details error:', err);
+    return res.status(500).json({ error: 'Failed to get invitation details.' });
+  }
+});
+
 // Accept team invitation
 app.post('/subscription/team/accept', authRequired, async (req, res) => {
   try {

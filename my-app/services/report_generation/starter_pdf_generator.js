@@ -226,36 +226,84 @@ export class StarterAccessibilityPDFGenerator {
     }
 
     addIntroPage(reportData, scoreData) {
-        // Header background
-        this.doc.rect(0, 0, this.doc.page.width, 120).fill('#6366F1');
+        // Header background with gradient effect (simulate with overlapping rectangles)
+        this.doc.rect(0, 0, this.doc.page.width, 220).fill('#6366F1');
+        this.doc.rect(0, 180, this.doc.page.width, 40).fillOpacity(0.3).fill('#8B5CF6');
+        this.doc.fillOpacity(1);
+        
         this.doc.fontSize(32).font('BoldFont').fillColor('white').text('SilverSurfers Starter Audit', this.margin, 30, { width: this.pageWidth, align: 'center' });
         this.doc.fontSize(14).font('RegularFont').fillColor('white').text('Accessibility Audit Report', this.margin, 70, { width: this.pageWidth, align: 'center' });
         
-        this.currentY = 150;
+        this.currentY = 110;
 
-        // Website analyzed box
-        this.doc.rect(this.margin, this.currentY, this.pageWidth, 40).fill('#E0E7FF').stroke('#818CF8', 2);
-        this.doc.fontSize(12).font('BoldFont').fillColor('#4F46E5').text('Website Analyzed', this.margin + 15, this.currentY + 8);
-        this.doc.fontSize(14).font('RegularFont').fillColor('#1F2937').text(reportData.finalUrl || 'Website', this.margin + 15, this.currentY + 24);
-        this.currentY += 60;
+        // Website analyzed box with rounded corners (simulated)
+        const boxX = (this.doc.page.width - 280) / 2;
+        this.doc.roundedRect(boxX, this.currentY, 280, 50, 8).fill('#7C3AED').fillOpacity(0.9);
+        this.doc.fillOpacity(1);
+        this.doc.fontSize(11).font('RegularFont').fillColor('#E0E7FF').text('Website Analyzed', boxX + 20, this.currentY + 12);
+        this.doc.fontSize(13).font('BoldFont').fillColor('white').text(reportData.finalUrl || 'Website', boxX + 20, this.currentY + 28, { width: 240 });
+        this.currentY += 85;
 
-        // Score display
+        // Score display box with rounded background
+        const scoreBoxX = (this.doc.page.width - 440) / 2;
+        const scoreBoxY = this.currentY;
+        this.doc.roundedRect(scoreBoxX, scoreBoxY, 440, 120, 12).fill('#E0E7FF').fillOpacity(0.8);
+        this.doc.fillOpacity(1);
+
         const score = Math.round(scoreData.finalScore);
         const isPassing = score >= 70;
-        const scoreColor = isPassing ? '#10B981' : '#EF4444';
+        const scoreColor = isPassing ? '#6366F1' : '#EF4444';
         const statusText = isPassing ? 'PASS' : 'FAIL';
 
         // Large score circle
-        this.doc.circle(this.margin + 120, this.currentY + 60, 50).fill(scoreColor);
-        this.doc.fontSize(48).font('BoldFont').fillColor('white').text(score + '%', this.margin + 70, this.currentY + 35, { width: 100, align: 'center' });
-        this.doc.fontSize(14).font('BoldFont').fillColor('white').text(statusText, this.margin + 70, this.currentY + 75, { width: 100, align: 'center' });
+        this.doc.circle(scoreBoxX + 80, scoreBoxY + 60, 45).fill('white');
+        this.doc.fontSize(42).font('BoldFont').fillColor(scoreColor).text(score + '%', scoreBoxX + 35, scoreBoxY + 38, { width: 90, align: 'center' });
+        this.doc.fontSize(12).font('BoldFont').fillColor(scoreColor).text(statusText, scoreBoxX + 35, scoreBoxY + 75, { width: 90, align: 'center' });
 
         // Score description
-        this.doc.fontSize(14).font('BoldFont').fillColor('#1F2937').text('Overall SilverSurfers Score', this.margin + 200, this.currentY + 30);
-        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text('This website meets SilverSurfers accessibility\nstandards for senior-friendly design', this.margin + 200, this.currentY + 50, { width: 280 });
+        this.doc.fontSize(15).font('BoldFont').fillColor('#1F2937').text('Overall SilverSurfers Score', scoreBoxX + 180, scoreBoxY + 25);
+        const descText = isPassing 
+            ? 'This website meets SilverSurfers accessibility\nstandards for senior-friendly design'
+            : 'This website needs improvements to meet\nSilverSurfers accessibility standards';
+        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(descText, scoreBoxX + 180, scoreBoxY + 50, { width: 240 });
 
         this.currentY += 150;
-        this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280').text(`Report Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`);
+        
+        // Report generated timestamp
+        const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+        this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280').text(`Report Generated: ${dateStr}`, this.margin, this.currentY, { align: 'center', width: this.pageWidth });
+        this.currentY += 30;
+
+        // Note about paid subscriptions
+        const noteBoxY = this.currentY;
+        this.doc.roundedRect(this.margin, noteBoxY, this.pageWidth, 30, 6).fill('#FEF3C7');
+        this.doc.fontSize(11).font('BoldFont').fillColor('#92400E').text('📌 Note:', this.margin + 15, noteBoxY + 8);
+        this.doc.fontSize(10).font('RegularFont').fillColor('#78350F').text('Paid subscriptions review each page of the website submitted.', this.margin + 60, noteBoxY + 9);
+        this.currentY += 50;
+
+        // Our Mission section
+        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, 90, 8).fill('#EFF6FF');
+        this.doc.roundedRect(this.margin, this.currentY, 5, 90, 2).fill('#3B82F6');
+        this.doc.fontSize(13).font('BoldFont').fillColor('#1E40AF').text('🎯 Our Mission: Digital Inclusion for Older Adults', this.margin + 20, this.currentY + 15);
+        const missionText = 'This comprehensive SilverSurfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.';
+        this.doc.fontSize(10).font('RegularFont').fillColor('#1E3A8A').text(missionText, this.margin + 20, this.currentY + 38, { width: this.pageWidth - 40, align: 'justify' });
+        this.currentY += 110;
+
+        // Report Sections
+        this.doc.fontSize(14).font('BoldFont').fillColor('#3B82F6').text('📋 Report Sections', this.margin, this.currentY);
+        this.currentY += 25;
+
+        const sections = [
+            { num: 1, title: 'How Your Score Was Calculated' },
+            { num: 2, title: 'Audit Summary by Category' },
+            { num: 3, title: 'Detailed Audit Results' }
+        ];
+
+        sections.forEach((section, index) => {
+            this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937').text(`Section ${section.num}:`, this.margin + 20, this.currentY);
+            this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(section.title, this.margin + 90, this.currentY);
+            this.currentY += 18;
+        });
     }
 
     addScoreCalculationPage(reportData, scoreData) {
