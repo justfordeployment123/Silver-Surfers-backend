@@ -277,20 +277,20 @@ export class StarterAccessibilityPDFGenerator {
         // Note about paid subscriptions
         const noteBoxY = this.currentY;
         this.doc.roundedRect(this.margin, noteBoxY, this.pageWidth, 30, 6).fill('#FEF3C7');
-        this.doc.fontSize(11).font('BoldFont').fillColor('#92400E').text('📌 Note:', this.margin + 15, noteBoxY + 8);
-        this.doc.fontSize(10).font('RegularFont').fillColor('#78350F').text('Paid subscriptions review each page of the website submitted.', this.margin + 60, noteBoxY + 9);
+        this.doc.fontSize(11).font('BoldFont').fillColor('#92400E').text('Note:', this.margin + 15, noteBoxY + 8);
+        this.doc.fontSize(10).font('RegularFont').fillColor('#78350F').text('Paid subscriptions review each page of the website submitted.', this.margin + 50, noteBoxY + 9);
         this.currentY += 50;
 
         // Our Mission section
         this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, 90, 8).fill('#EFF6FF');
         this.doc.roundedRect(this.margin, this.currentY, 5, 90, 2).fill('#3B82F6');
-        this.doc.fontSize(13).font('BoldFont').fillColor('#1E40AF').text('🎯 Our Mission: Digital Inclusion for Older Adults', this.margin + 20, this.currentY + 15);
+        this.doc.fontSize(13).font('BoldFont').fillColor('#1E40AF').text('Our Mission: Digital Inclusion for Older Adults', this.margin + 20, this.currentY + 15);
         const missionText = 'This comprehensive SilverSurfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.';
         this.doc.fontSize(10).font('RegularFont').fillColor('#1E3A8A').text(missionText, this.margin + 20, this.currentY + 38, { width: this.pageWidth - 40, align: 'justify' });
         this.currentY += 110;
 
         // Report Sections
-        this.doc.fontSize(14).font('BoldFont').fillColor('#3B82F6').text('📋 Report Sections', this.margin, this.currentY);
+        this.doc.fontSize(14).font('BoldFont').fillColor('#3B82F6').text('Report Sections', this.margin, this.currentY);
         this.currentY += 25;
 
         const sections = [

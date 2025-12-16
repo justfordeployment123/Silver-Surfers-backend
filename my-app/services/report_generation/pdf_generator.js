@@ -385,13 +385,13 @@ addOverallScoreDisplay(scoreData) {
         // Our Mission section
         this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, 90, 8).fill('#EFF6FF');
         this.doc.roundedRect(this.margin, this.currentY, 5, 90, 2).fill('#3B82F6');
-        this.doc.fontSize(13).font('BoldFont').fillColor('#1E40AF').text('🎯 Our Mission: Digital Inclusion for Older Adults', this.margin + 20, this.currentY + 15);
+        this.doc.fontSize(13).font('BoldFont').fillColor('#1E40AF').text('Our Mission: Digital Inclusion for Older Adults', this.margin + 20, this.currentY + 15);
         const missionText = 'This comprehensive SilverSurfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.';
         this.doc.fontSize(10).font('RegularFont').fillColor('#1E3A8A').text(missionText, this.margin + 20, this.currentY + 38, { width: this.pageWidth - 40, align: 'justify' });
         this.currentY += 110;
 
         // Report Sections
-        this.doc.fontSize(14).font('BoldFont').fillColor('#3B82F6').text('📋 Report Sections', this.margin, this.currentY);
+        this.doc.fontSize(14).font('BoldFont').fillColor('#3B82F6').text('Report Sections', this.margin, this.currentY);
         this.currentY += 25;
 
         const sections = [
@@ -409,18 +409,29 @@ addOverallScoreDisplay(scoreData) {
 
     addScoreCalculationPage(reportData, scoreData) {
         this.addPage();
-        this.addTitle('How Your Score Was Calculated', 24);
-        this.addBodyText('The final score is a weighted average of individual audits. Audits that have a greater impact on the user experience for older adults are given a higher "weight," meaning they contribute more to the final score.');
-        this.currentY += 10;
+        
+        // Section title
+        this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 1: How Your Score Was Calculated', this.margin, this.currentY);
+        this.currentY += 25;
+        
+        // Horizontal line
+        this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
+        this.currentY += 20;
+        
+        // Explanation text
+        this.doc.fontSize(10).font('RegularFont').fillColor('#4B5563').text(
+            'The final score is a weighted average of individual audits. Audits that have a greater impact on the user experience for older adults are given a higher "weight," meaning they contribute more to the final score.',
+            this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 }
+        );
+        this.currentY += 45;
 
         const auditRefs = customConfig.categories['senior-friendly']?.auditRefs || [];
         const auditResults = reportData.audits;
 
-        // MODIFICATION: Filter out N/A audits before creating the table
+        // Filter out N/A audits before creating the table
         const tableItems = auditRefs
             .map(ref => {
                 const result = auditResults[ref.id];
-                // Return null if the audit is not applicable
                 if (!result || result.score === null) {
                     return null;
                 }
@@ -428,40 +439,34 @@ addOverallScoreDisplay(scoreData) {
                 const weightedScore = score * ref.weight;
                 return {
                     name: AUDIT_INFO[ref.id]?.title || ref.id,
-                    score: (score * 100).toFixed(0),
+                    score: (score * 100).toFixed(0) + '%',
                     weight: ref.weight,
                     contribution: weightedScore.toFixed(2),
                 };
             })
-            .filter(item => item !== null); // This removes the null (N/A) items
+            .filter(item => item !== null);
 
-        const tableConfig = {
-            headers: ['Audit Component', 'Score', 'Weight', 'Weighted Contribution'],
-            widths: [295, 50, 50, 120],
-            extractors: [
-                item => item.name,
-                item => item.score,
-                item => item.weight,
-                item => item.contribution,
-            ]
-        };
-
-        this.drawEnhancedTable(tableItems, tableConfig, 'Technical Accessibility');
-
-        this.currentY += 15;
-        this.addHeading(`Final Calculation: ${scoreData.totalWeightedScore.toFixed(2)} (Total Points) / ${scoreData.totalWeight} (Total Weight) = ${scoreData.finalScore.toFixed(0)}`, 14, '#2980B9');
+        // Draw compact table
+        this.drawScoreCalculationTable(tableItems, scoreData);
     }
 
    addSummaryPage(reportData) {
         this.addPage();
-        this.addTitle('Section 2: Audit Summary by Category', 24);
+        
+        // Section title
+        this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 2: Audit Summary by Category', this.margin, this.currentY);
+        this.currentY += 25;
+        
+        // Horizontal line
+        this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
+        this.currentY += 20;
         
         // Add summary introduction text
-        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(
+        this.doc.fontSize(10).font('RegularFont').fillColor('#4B5563').text(
             'This section provides a high-level overview of your website\'s accessibility performance across different categories. Each category focuses on specific aspects of senior-friendly design, from visual clarity to cognitive ease.',
-            this.margin, this.currentY, { width: this.pageWidth, align: 'left' }
+            this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 }
         );
-        this.currentY += 35;
+        this.currentY += 45;
         
         const audits = reportData.audits || {};
         const categories = {};
@@ -470,7 +475,6 @@ addOverallScoreDisplay(scoreData) {
             const info = AUDIT_INFO[auditId];
             const auditData = audits[auditId];
 
-            // MODIFICATION: Check for score !== null
             if (info && auditData.score !== null) {
                 if (!categories[info.category]) {
                     categories[info.category] = [];
@@ -479,23 +483,100 @@ addOverallScoreDisplay(scoreData) {
             }
         });
 
-        const ESTIMATED_SECTION_HEIGHT = 150;
-        Object.keys(categories).forEach(categoryName => {
-            if (this.currentY > (this.doc.page.height - this.doc.page.margins.bottom - ESTIMATED_SECTION_HEIGHT)) {
+        // Draw cards in a 2-column layout
+        this.drawCategoryCards(categories);
+    }
+    
+    drawCategoryCards(categories) {
+        const cardWidth = (this.pageWidth - 15) / 2; // 2 columns with gap
+        const cardGap = 15;
+        const categoryIcons = {
+            'Security for Older Adults': '🔒',
+            'Technical Accessibility': '⚙️',
+            'Performance for Older Adults': '⚡',
+            'Cognitive Accessibility': '🧠',
+            'Vision Accessibility': '👁️',
+            'Motor Accessibility': '👆'
+        };
+        
+        const categoryNames = Object.keys(categories);
+        let cardIndex = 0;
+        
+        categoryNames.forEach((categoryName, index) => {
+            const column = cardIndex % 2;
+            const cardX = this.margin + (column * (cardWidth + cardGap));
+            
+            // Check if we need a new page
+            if (this.currentY > 650) {
                 this.addPage();
+                cardIndex = 0;
             }
-            this.addSectionHeader(categoryName, categoryName);
+            
             const categoryAudits = categories[categoryName];
+            const auditCount = categoryAudits.length;
+            const cardHeight = 60 + (auditCount * 28); // Header + audits
+            
+            // Draw card background
+            this.doc.roundedRect(cardX, this.currentY, cardWidth, cardHeight, 8)
+                .fill('#FFFFFF')
+                .stroke('#E5E7EB');
+            
+            // Category header (without emoji since they don't render properly in PDFKit)
+            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6')
+                .text(categoryName, cardX + 12, this.currentY + 15, { width: cardWidth - 24 });
+            
+            let auditY = this.currentY + 45;
+            
+            // Draw each audit
             categoryAudits.forEach(audit => {
                 const score = audit.data.score;
                 let scoreText = 'Poor';
-                if (score === 1) scoreText = 'Excellent';
-                else if (score > 0.8) scoreText = 'Good';
-                else if (score > 0.5) scoreText = 'Needs Work';
-                this.addBodyText(`• ${audit.info.title}: ${scoreText}`, 11);
+                let bgColor = '#FEE2E2';
+                let textColor = '#991B1B';
+                
+                if (score === 1) {
+                    scoreText = 'Excellent';
+                    bgColor = '#D1FAE5';
+                    textColor = '#065F46';
+                } else if (score > 0.8) {
+                    scoreText = 'Good';
+                    bgColor = '#DBEAFE';
+                    textColor = '#1E40AF';
+                } else if (score > 0.5) {
+                    scoreText = 'Needs Work';
+                    bgColor = '#FEF3C7';
+                    textColor = '#92400E';
+                }
+                
+                // Audit name
+                this.doc.fontSize(9).font('RegularFont').fillColor('#374151')
+                    .text(audit.info.title, cardX + 12, auditY, { width: cardWidth - 90 });
+                
+                // Score badge
+                const badgeWidth = 70;
+                const badgeX = cardX + cardWidth - badgeWidth - 12;
+                this.doc.roundedRect(badgeX, auditY - 2, badgeWidth, 18, 4).fill(bgColor);
+                this.doc.fontSize(8).font('BoldFont').fillColor(textColor)
+                    .text(scoreText, badgeX, auditY + 3, { width: badgeWidth, align: 'center' });
+                
+                auditY += 28;
             });
-            this.currentY += 20;
+            
+            // Move to next position
+            if (column === 1) {
+                this.currentY += cardHeight + 15;
+                cardIndex = 0;
+            } else {
+                cardIndex++;
+            }
         });
+        
+        // If we ended on left column, move down
+        if (cardIndex === 1) {
+            this.currentY += 100; // Approximate height of last card
+        }
+        
+        this.currentY += 20;
     }
 
    addAuditDetailPage(auditId, auditData) {
@@ -562,41 +643,79 @@ addOverallScoreDisplay(scoreData) {
         }
     }
 
-    // Why This Matters section
+    // Why This Matters section - with card background
+    const whyStartY = this.currentY;
     this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Why This Matters for SilverSurfers', this.margin, this.currentY);
     this.currentY += 18;
+    const whyTextStartY = this.currentY;
     this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.importance, this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
     const importanceHeight = this.doc.heightOfString(info.importance, { width: this.pageWidth, lineGap: 2 });
     this.currentY += importanceHeight + 18;
     
-    // Impact section
+    // Draw background card for Why This Matters
+    const whyCardHeight = this.currentY - whyStartY + 5;
+    this.doc.rect(this.margin - 5, whyStartY - 5, this.pageWidth + 10, whyCardHeight)
+        .fillOpacity(0.3).fill('#EFF6FF').fillOpacity(1);
+    
+    // Redraw text on top of background
+    this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Why This Matters for SilverSurfers', this.margin, whyStartY);
+    this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.importance, this.margin, whyTextStartY, { width: this.pageWidth, lineGap: 2 });
+    this.currentY += 10;
+    
+    // Impact section - with card background
+    const impactStartY = this.currentY;
     this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Impact on SilverSurfers', this.margin, this.currentY);
     this.currentY += 18;
+    const impactTextStartY = this.currentY;
     this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.why, this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
     const whyHeight = this.doc.heightOfString(info.why, { width: this.pageWidth, lineGap: 2 });
     this.currentY += whyHeight + 18;
     
-    // How to Improve section
+    // Draw background card for Impact
+    const impactCardHeight = this.currentY - impactStartY + 5;
+    this.doc.rect(this.margin - 5, impactStartY - 5, this.pageWidth + 10, impactCardHeight)
+        .fillOpacity(0.3).fill('#EFF6FF').fillOpacity(1);
+    
+    // Redraw text on top of background
+    this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Impact on SilverSurfers', this.margin, impactStartY);
+    this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.why, this.margin, impactTextStartY, { width: this.pageWidth, lineGap: 2 });
+    this.currentY += 10;
+    
+    // How to Improve section - with card background
     if (info.recommendation) {
+        const howToStartY = this.currentY;
         this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('How to Improve for SilverSurfers', this.margin, this.currentY);
         this.currentY += 18;
+        const howToTextStartY = this.currentY;
         this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.recommendation, this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
         const recHeight = this.doc.heightOfString(info.recommendation, { width: this.pageWidth, lineGap: 2 });
         this.currentY += recHeight + 18;
+        
+        // Draw background card for How to Improve
+        const howToCardHeight = this.currentY - howToStartY + 5;
+        this.doc.rect(this.margin - 5, howToStartY - 5, this.pageWidth + 10, howToCardHeight)
+            .fillOpacity(0.3).fill('#EFF6FF').fillOpacity(1);
+        
+        // Redraw text on top of background
+        this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('How to Improve for SilverSurfers', this.margin, howToStartY);
+        this.doc.fontSize(11).font('RegularFont').fillColor('#374151').text(info.recommendation, this.margin, howToTextStartY, { width: this.pageWidth, lineGap: 2 });
+        this.currentY += 10;
     }
     
-    // Detailed Results section with left border
+    // Detailed Results section with left border and card background
     if (auditData.displayValue) {
+        const detailedStartY = this.currentY;
+        
         // Draw left border
-        this.doc.rect(this.margin, this.currentY, 4, 60).fill('#3B82F6');
+        this.doc.rect(this.margin - 5, detailedStartY, 4, 70).fill('#3B82F6');
         
         // Background box
-        this.doc.rect(this.margin, this.currentY, this.pageWidth, 60).fill('#F9FAFB');
+        this.doc.rect(this.margin - 5, detailedStartY, this.pageWidth + 10, 70).fill('#F9FAFB');
         
         // Content
-        this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937').text('Detailed Results', this.margin + 15, this.currentY + 12);
-        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(auditData.displayValue, this.margin + 15, this.currentY + 32, { width: this.pageWidth - 25 });
-        this.currentY += 75;
+        this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937').text('Detailed Results', this.margin + 10, detailedStartY + 12);
+        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(auditData.displayValue, this.margin + 10, detailedStartY + 32, { width: this.pageWidth - 20 });
+        this.currentY += 85;
     }
 }
     
@@ -730,6 +849,88 @@ addOverallScoreDisplay(scoreData) {
     extractNodeLabel(node) {
         if (!node) return null;
         return node.nodeLabel || node.snippet || null;
+    }
+    
+    drawScoreCalculationTable(items, scoreData) {
+        if (!items || items.length === 0) return;
+        
+        const startY = this.currentY;
+        const headerHeight = 28;
+        const rowHeight = 22;
+        const colWidths = [295, 60, 60, 100]; // Audit Component, Score, Weight, Weighted
+        
+        // Draw header with purple background
+        this.doc.rect(this.margin, startY, this.pageWidth, headerHeight).fill('#6366F1');
+        this.doc.font('BoldFont').fontSize(10).fillColor('#FFFFFF');
+        
+        const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
+        let currentX = this.margin;
+        
+        headers.forEach((header, index) => {
+            const align = index === 0 ? 'left' : 'center';
+            const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+            this.doc.text(header, xPos, startY + 9, { 
+                width: colWidths[index] - 20,
+                align: align
+            });
+            currentX += colWidths[index];
+        });
+        
+        let tableY = startY + headerHeight;
+        this.doc.font('RegularFont').fontSize(9);
+        
+        // Draw rows
+        items.forEach((item, rowIndex) => {
+            // White background
+            this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FFFFFF');
+            
+            currentX = this.margin;
+            
+            // Audit Component (left-aligned)
+            this.doc.fillColor('#374151').text(item.name, currentX + 10, tableY + 6, {
+                width: colWidths[0] - 20,
+                height: rowHeight - 6
+            });
+            currentX += colWidths[0];
+            
+            // Score (center-aligned)
+            const scoreWidth = this.doc.widthOfString(item.score);
+            this.doc.text(item.score, currentX + (colWidths[1] / 2) - (scoreWidth / 2), tableY + 6);
+            currentX += colWidths[1];
+            
+            // Weight (center-aligned)
+            const weightWidth = this.doc.widthOfString(String(item.weight));
+            this.doc.text(String(item.weight), currentX + (colWidths[2] / 2) - (weightWidth / 2), tableY + 6);
+            currentX += colWidths[2];
+            
+            // Weighted (center-aligned)
+            const contribWidth = this.doc.widthOfString(item.contribution);
+            this.doc.text(item.contribution, currentX + (colWidths[3] / 2) - (contribWidth / 2), tableY + 6);
+            
+            // Draw light bottom border
+            this.doc.moveTo(this.margin, tableY + rowHeight)
+                .lineTo(this.margin + this.pageWidth, tableY + rowHeight)
+                .strokeColor('#E5E7EB')
+                .lineWidth(0.5)
+                .stroke();
+            
+            tableY += rowHeight;
+        });
+        
+        // Draw final calculation box with yellow background
+        this.currentY = tableY + 5;
+        const calcBoxHeight = 30;
+        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, calcBoxHeight, 4).fill('#FEF3C7');
+        
+        const finalCalcText = `Final Calculation: ${scoreData.totalWeightedScore.toFixed(2)} (Total Points) / ${scoreData.totalWeight} (Total Weight) = ${Math.round(scoreData.finalScore)}%`;
+        this.doc.fontSize(10).font('BoldFont').fillColor('#92400E').text(
+            finalCalcText,
+            this.margin + 15,
+            this.currentY + 9,
+            { width: this.pageWidth - 30, align: 'center' }
+        );
+        
+        this.currentY += calcBoxHeight + 20;
     }
     
     drawEnhancedTable(items, config, category) {
