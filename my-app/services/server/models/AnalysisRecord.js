@@ -10,6 +10,7 @@ const analysisRecordSchema = new mongoose.Schema({
   stripeSessionId: { type: String, index: true },
   planId: { type: String, default: null },
   device: { type: String, default: null },
+  score: { type: Number, default: null }, // Accessibility score percentage (0-100)
   status: { type: String, enum: ['queued','processing','completed','failed'], default: 'queued' },
   emailStatus: { type: String, enum: ['pending','sending','sent','failed'], default: 'pending' },
   reportDirectory: { type: String },

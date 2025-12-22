@@ -178,8 +178,15 @@ export const runFullAuditProcess = async (job) => {
                 setTimeout(() => reject(new Error('PDF generation timeout after 2 minutes')), 120000)
               );
               
-              await Promise.race([pdfPromise, timeoutPromise]);
+              const pdfResult = await Promise.race([pdfPromise, timeoutPromise]);
               console.log(`✅ ${isProPlan ? 'Pro' : 'Starter'} PDF generated for ${link} (${device})`);
+              
+              // Store the score in the database if available
+              if (pdfResult && pdfResult.score !== undefined && record) {
+                record.score = parseFloat(pdfResult.score);
+                await record.save().catch((err) => console.error('Failed to save score:', err));
+                console.log(`📊 Score ${pdfResult.score}% saved to database for ${link} (${device})`);
+              }
             } catch (pdfError) {
               console.error(`❌ PDF generation failed for ${link} (${device}):`, pdfError.message);
               console.error(`   Stack:`, pdfError.stack);
