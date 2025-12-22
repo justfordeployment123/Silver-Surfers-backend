@@ -329,13 +329,15 @@ addOverallScoreDisplay(scoreData) {
         this.currentY += 20;
     }
 }
-    addIntroPage(reportData, scoreData) {
+    addIntroPage(reportData, scoreData, planType = 'pro') {
         // Header background with gradient effect (simulate with overlapping rectangles)
         this.doc.rect(0, 0, this.doc.page.width, 220).fill('#6366F1');
         this.doc.rect(0, 180, this.doc.page.width, 40).fillOpacity(0.3).fill('#8B5CF6');
         this.doc.fillOpacity(1);
-        
-        this.doc.fontSize(32).font('BoldFont').fillColor('white').text('SilverSurfers Pro Audit', this.margin, 30, { width: this.pageWidth, align: 'center' });
+        let heading = 'SilverSurfers Pro Audit';
+        if (planType === 'starter') heading = 'SilverSurfers Starter Audit';
+        if (planType === 'onetime') heading = 'SilverSurfers One-Time Audit';
+        this.doc.fontSize(32).font('BoldFont').fillColor('white').text(heading, this.margin, 30, { width: this.pageWidth, align: 'center' });
         this.doc.fontSize(14).font('RegularFont').fillColor('white').text('Accessibility Audit Report', this.margin, 70, { width: this.pageWidth, align: 'center' });
         
         this.currentY = 110;
@@ -1084,7 +1086,7 @@ addOverallScoreDisplay(scoreData) {
             console.log('Generating senior-friendly accessibility report...');
             console.log(`Overall Score Calculated: ${scoreData.finalScore.toFixed(0)}`);
 
-            this.addIntroPage(reportData, scoreData);
+            this.addIntroPage(reportData, scoreData, options.planType || 'pro');
             this.addScoreCalculationPage(reportData, scoreData);
             this.addSummaryPage(reportData);
 
@@ -1173,7 +1175,7 @@ export async function generateSeniorAccessibilityReport(options = {}) {
     const baseUrl = getBaseUrl(url);
 
     const generator = new ElderlyAccessibilityPDFGenerator({ imagePaths });
-    const result = await generator.generateReport(inputFile, outputFile, { ...options, outputDir, clientEmail: email_address, baseUrl });
+    const result = await generator.generateReport(inputFile, outputFile, { ...options, outputDir, clientEmail: email_address, baseUrl, planType: options.planType });
 
     // Directory logic remains the same
     function sanitize(str) {

@@ -123,15 +123,13 @@ export const runFullAuditProcess = async (job) => {
     console.log(`Found ${linksToAudit.length} links for full audit.`);
 
     // Determine which devices to audit based on plan
-    const isProPlan = effectivePlanId === 'pro';
     let devicesToAudit;
-    if (isProPlan) {
+    if (effectivePlanId === 'pro') {
       devicesToAudit = ['desktop', 'mobile', 'tablet'];
       console.log('🚀 Pro plan: Auditing all devices - desktop, mobile, tablet');
     } else {
-      // Treat anything that is not pro as starter/one-time: single device, default desktop
       devicesToAudit = selectedDevice ? [selectedDevice] : ['desktop'];
-      console.log(`📱 Non-pro plan (${effectivePlanId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
+      console.log(`📱 Non-pro/onetime plan (${effectivePlanId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
     }
 
     for (const link of linksToAudit) {
@@ -2548,77 +2546,65 @@ app.post('/subscription/team/accept', authRequired, async (req, res) => {
       // Remove user from all existing team memberships before accepting new invitation
       console.log(`🧹 Removing user from all existing team memberships...`);
       
-      for (const membership of allTeamMemberships) {
-        // Remove user from this subscription's team members
-        membership.teamMembers = membership.teamMembers.filter(
-          member => member.email.toLowerCase() !== user.email.toLowerCase()
-        );
-        
-        // Update owner's team list
-        await User.findByIdAndUpdate(membership.user, {
-          $pull: {
-            'subscription.teamMembers': {
-              email: user.email.toLowerCase()
+      for (const device of devicesToAudit) {
+        console.log(`--- Starting full ${device} audit for: ${link} ---`);
+        let jsonReportPath = null;
+        let imagePaths = {};
+
+        try {
+          const auditResult = await runLighthouseAudit({ url: link, device, format: 'json' });
+          if (auditResult.success) {
+            jsonReportPath = auditResult.reportPath;
+            console.log(`📸 Starting image generation for ${link} (${device})...`);
+            imagePaths = await createAllHighlightedImages(jsonReportPath, jobFolder);
+            console.log(`✅ Image generation completed for ${link} (${device})`);
+
+            // Always use unified report generator, pass planType
+            console.log(`📄 Starting PDF generation for ${link} (${device}) with plan: ${effectivePlanId}`);
+            console.log(`   Output directory: ${finalReportFolder}`);
+            try {
+              // Add timeout to PDF generation (2 minutes max)
+              const pdfPromise = generateSeniorAccessibilityReport({
+                inputFile: jsonReportPath,
+                url: link,
+                email_address: email,
+                device: device,
+                imagePaths,
+                outputDir: finalReportFolder,
+                formFactor: device,
+                planType: effectivePlanId
+              });
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('PDF generation timeout after 2 minutes')), 120000)
+              );
+              const pdfResult = await Promise.race([pdfPromise, timeoutPromise]);
+              console.log(`✅ PDF generated for ${link} (${device}) [Plan: ${effectivePlanId}]`);
+              // Store the score in the database if available
+              if (pdfResult && pdfResult.score !== undefined && record) {
+                record.score = parseFloat(pdfResult.score);
+                await record.save().catch((err) => console.error('Failed to save score:', err));
+                console.log(`📊 Score ${pdfResult.score}% saved to database for ${link} (${device})`);
+              }
+            } catch (pdfError) {
+              console.error(`❌ PDF generation failed for ${link} (${device}):`, pdfError.message);
+              console.error(`   Stack:`, pdfError.stack);
+              throw pdfError; // Re-throw to trigger catch block
+            }
+          } else {
+            console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);
+          }
+        } catch (pageError) {
+          console.error(`An unexpected error occurred while auditing ${link} (${device}):`, pageError.message);
+          console.error(`Stack trace:`, pageError.stack);
+        } finally {
+          if (jsonReportPath) await fs.unlink(jsonReportPath).catch((e) => console.error(e.message));
+          if (imagePaths && typeof imagePaths === 'object') {
+            for (const imgPath of Object.values(imagePaths)) {
+              if (imgPath) await fs.unlink(imgPath).catch((e) => console.error(e.message));
             }
           }
-        });
-        
-        await membership.save();
-        console.log(`🧹 Removed user from subscription ${membership._id}`);
+        }
       }
-      
-      console.log(`✅ User removed from all existing team memberships, proceeding with new invitation...`);
-    }
-
-    // Find subscription with this user as pending team member
-    console.log(`🔍 Looking for pending invitation for: ${user.email}`);
-    
-    const subscription = await Subscription.findOne({
-      'teamMembers.email': user.email.toLowerCase(),
-      'teamMembers.status': 'pending'
-    });
-
-    console.log(`🔍 Pending invitation found:`, subscription ? {
-      subscriptionId: subscription._id,
-      ownerId: subscription.user,
-      planId: subscription.planId,
-      teamMembers: subscription.teamMembers.map(m => ({ email: m.email, status: m.status }))
-    } : 'None');
-
-    if (!subscription) {
-      return res.status(404).json({ error: 'No pending invitation found.' });
-    }
-
-    // Update team member status to active
-    const memberIndex = subscription.teamMembers.findIndex(member => 
-      member.email.toLowerCase() === user.email.toLowerCase()
-    );
-
-    if (memberIndex === -1) {
-      return res.status(404).json({ error: 'Team member not found.' });
-    }
-
-    subscription.teamMembers[memberIndex].status = 'active';
-    subscription.teamMembers[memberIndex].user = userId;
-    await subscription.save();
-
-    // Update user's team status
-    await User.findByIdAndUpdate(userId, {
-      'subscription.isTeamMember': true,
-      'subscription.teamOwner': subscription.user
-    });
-
-    // Update owner's team list
-    await User.findByIdAndUpdate(subscription.user, {
-      $set: {
-        'subscription.teamMembers.$[elem].status': 'active',
-        'subscription.teamMembers.$[elem].joinedAt': new Date()
-      }
-    }, {
-      arrayFilters: [{ 'elem.email': user.email.toLowerCase() }]
-    });
-
-    // Send notification to owner
     try {
       const owner = await User.findById(subscription.user);
       const plan = getPlanById(subscription.planId);
