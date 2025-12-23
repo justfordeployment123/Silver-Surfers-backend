@@ -899,7 +899,7 @@ export async function sendOneTimePurchaseEmail(to, planName) {
           <div style="margin:24px 0;padding:16px;background:#ecfdf5;border-radius:8px;text-align:center;">
             <p style="margin:0 0 12px 0;color:#065f46;font-weight:600;">Ready to start your audit?</p>
             <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout" 
-               style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg, ${brandOrange} 0%, #ef4444 100%);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
+               style="display:inline-block;padding:12px 24px;background-color:${brandOrange};background: ${brandOrange}; background: linear-gradient(135deg, ${brandOrange} 0%, #ef4444 100%);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
               Start Your Audit Now
             </a>
           </div>
