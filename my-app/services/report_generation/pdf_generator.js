@@ -901,37 +901,44 @@ addOverallScoreDisplay(scoreData) {
         items.forEach((item, rowIndex) => {
             // White background
             this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FFFFFF');
-            
             currentX = this.margin;
-            
-            // Audit Component (left-aligned)
+            // Audit Component (left-aligned, wrap)
             this.doc.fillColor('#374151').text(item.name, currentX + 10, tableY + 6, {
                 width: colWidths[0] - 20,
-                height: rowHeight - 6
+                height: rowHeight - 6,
+                align: 'left',
+                lineGap: 2
             });
             currentX += colWidths[0];
-            
-            // Score (center-aligned)
-            const scoreWidth = this.doc.widthOfString(item.score);
-            this.doc.text(item.score, currentX + (colWidths[1] / 2) - (scoreWidth / 2), tableY + 6);
+            // Score (center-aligned, wrap)
+            this.doc.text(item.score, currentX + 10, tableY + 6, {
+                width: colWidths[1] - 20,
+                height: rowHeight - 6,
+                align: 'center',
+                lineGap: 2
+            });
             currentX += colWidths[1];
-            
-            // Weight (center-aligned)
-            const weightWidth = this.doc.widthOfString(String(item.weight));
-            this.doc.text(String(item.weight), currentX + (colWidths[2] / 2) - (weightWidth / 2), tableY + 6);
+            // Weight (center-aligned, wrap)
+            this.doc.text(String(item.weight), currentX + 10, tableY + 6, {
+                width: colWidths[2] - 20,
+                height: rowHeight - 6,
+                align: 'center',
+                lineGap: 2
+            });
             currentX += colWidths[2];
-            
-            // Weighted (center-aligned)
-            const contribWidth = this.doc.widthOfString(item.contribution);
-            this.doc.text(item.contribution, currentX + (colWidths[3] / 2) - (contribWidth / 2), tableY + 6);
-            
+            // Weighted (center-aligned, wrap)
+            this.doc.text(item.contribution, currentX + 10, tableY + 6, {
+                width: colWidths[3] - 20,
+                height: rowHeight - 6,
+                align: 'center',
+                lineGap: 2
+            });
             // Draw light bottom border
             this.doc.moveTo(this.margin, tableY + rowHeight)
                 .lineTo(this.margin + this.pageWidth, tableY + rowHeight)
                 .strokeColor('#E5E7EB')
                 .lineWidth(0.5)
                 .stroke();
-            
             tableY += rowHeight;
         });
         
