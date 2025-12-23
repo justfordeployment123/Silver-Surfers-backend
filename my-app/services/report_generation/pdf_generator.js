@@ -345,11 +345,20 @@ addOverallScoreDisplay(scoreData) {
         // Website analyzed box with rounded corners (simulated)
         if (reportData.finalUrl) {
             const boxX = (this.doc.page.width - 280) / 2;
+            const urlText = reportData.finalUrl;
+            const urlFontSize = 13;
+            const urlBoxWidth = 240;
             this.doc.roundedRect(boxX, this.currentY, 280, 50, 8).fill('#7C3AED').fillOpacity(0.9);
             this.doc.fillOpacity(1);
             this.doc.fontSize(11).font('RegularFont').fillColor('#E0E7FF').text('Website Analyzed', boxX + 20, this.currentY + 12);
-            this.doc.fontSize(13).font('BoldFont').fillColor('white').text(reportData.finalUrl, boxX + 20, this.currentY + 28, { width: 240 });
-            this.currentY += 85;
+            this.doc.fontSize(urlFontSize).font('BoldFont').fillColor('white');
+            // Calculate height needed for URL (wrap to 2 lines max)
+            const urlHeight = this.doc.heightOfString(urlText, { width: urlBoxWidth, align: 'left' });
+            this.doc.text(urlText, boxX + 20, this.currentY + 28, { width: urlBoxWidth, align: 'left' });
+            // Adjust box height if needed
+            const minBoxHeight = 50;
+            const extraHeight = urlHeight > 20 ? urlHeight - 20 : 0;
+            this.currentY += minBoxHeight + extraHeight + 15;
         } else {
             this.currentY += 85;
         }
@@ -361,12 +370,19 @@ addOverallScoreDisplay(scoreData) {
         this.doc.fillOpacity(1);
 
         const score = Math.round(scoreData.finalScore);
-        const isPassing = score >= 70;
-        const scoreColor = isPassing ? '#6366F1' : '#EF4444';
-        const statusText = isPassing ? 'PASS' : 'FAIL';
-
-        // Large score circle
-        this.doc.circle(scoreBoxX + 80, scoreBoxY + 60, 45).fill('white');
+        let scoreColor = '#EF4444'; // red
+        let statusText = 'FAIL';
+        if (score >= 70) {
+            scoreColor = '#22C55E'; // green
+            statusText = 'PASS';
+        } else if (score >= 50) {
+            scoreColor = '#FACC15'; // yellow
+            statusText = 'WARNING';
+        }
+        // Large score circle with colored border
+        this.doc.save();
+        this.doc.circle(scoreBoxX + 80, scoreBoxY + 60, 45).fill('white').stroke(scoreColor).lineWidth(6).stroke();
+        this.doc.restore();
         this.doc.fontSize(42).font('BoldFont').fillColor(scoreColor).text(score + '%', scoreBoxX + 35, scoreBoxY + 38, { width: 90, align: 'center' });
         this.doc.fontSize(12).font('BoldFont').fillColor(scoreColor).text(statusText, scoreBoxX + 35, scoreBoxY + 75, { width: 90, align: 'center' });
 
@@ -1104,17 +1120,21 @@ addOverallScoreDisplay(scoreData) {
 
             console.log(`Processing ${supportedAudits.length} audits across ${Object.keys(categories).length} categories...`);
 
+            // Add Section 3 heading before audit details
+            this.addPage();
+            this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 3: Detailed Audit Results', this.margin, this.currentY);
+            this.currentY += 25;
+            this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
+            this.currentY += 20;
             for (const categoryName of Object.keys(categories)) {
                 console.log(`  Processing ${categoryName}...`);
                 for (const auditId of categories[categoryName]) {
                     const auditData = audits[auditId];
-
                     // MODIFICATION: If the audit is not applicable, skip creating its detail pages
                     if (auditData.score === null) {
                         console.log(`    - Skipping N/A audit: ${auditId}`);
                         continue; // Go to the next audit
                     }
-
                     console.log(`    - ${auditId}...`);
                     this.addAuditDetailPage(auditId, auditData);
                     this.addImagePage(auditId);
