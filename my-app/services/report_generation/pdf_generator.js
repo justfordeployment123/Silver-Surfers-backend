@@ -342,6 +342,10 @@ addOverallScoreDisplay(scoreData) {
         
         this.currentY = 110;
 
+        // Calculate isPassing based on score
+        const score = Math.round(scoreData.finalScore);
+        const isPassing = score >= 70;
+
         // Website analyzed box with rounded corners (simulated)
         if (reportData.finalUrl) {
             const boxX = (this.doc.page.width - 280) / 2;
@@ -1144,7 +1148,8 @@ addOverallScoreDisplay(scoreData) {
                     }
                     console.log(`    - ${auditId}...`);
                     this.addAuditDetailPage(auditId, auditData);
-                    this.addImagePage(auditId);
+                    // Screenshot page removed for cleaner reports
+                    // this.addImagePage(auditId);
                     this.addTablePages(auditId, auditData);
                 }
             }
