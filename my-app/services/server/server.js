@@ -2495,43 +2495,29 @@ app.post('/subscription/team/accept', authRequired, async (req, res) => {
       });
     }
 
-    // Check if user is already a member of another team
-    console.log(`🔍 Checking team membership for user: ${user.email} (ID: ${userId})`);
-    
-    // Debug: Check ALL team memberships for this user
-    const allTeamMemberships = await Subscription.find({
-      'teamMembers.email': user.email.toLowerCase()
-    });
-    
-    console.log(`🔍 ALL team memberships for ${user.email}:`, allTeamMemberships.map(sub => ({
-      subscriptionId: sub._id,
-      ownerId: sub.user,
-      planId: sub.planId,
-      subscriptionStatus: sub.status,
-      teamMembers: sub.teamMembers.map(m => ({ email: m.email, status: m.status, addedAt: m.addedAt }))
-    })));
-    
-    const existingTeamMembership = await Subscription.findOne({
+    // Find the subscription with a pending invitation for this user
+    const subscription = await Subscription.findOne({
       'teamMembers.email': user.email.toLowerCase(),
-      'teamMembers.status': 'active',
-      user: { $ne: userId } // Not their own subscription
+      'teamMembers.status': 'pending'
     });
-
-    console.log(`🔍 Existing ACTIVE team membership found:`, existingTeamMembership ? {
-      subscriptionId: existingTeamMembership._id,
-      ownerId: existingTeamMembership.user,
-      planId: existingTeamMembership.planId,
-      teamMembers: existingTeamMembership.teamMembers.map(m => ({ email: m.email, status: m.status }))
-    } : 'None');
-
-    if (existingTeamMembership) {
-      const existingTeamOwner = await User.findById(existingTeamMembership.user);
-      const existingTeamPlan = getPlanById(existingTeamMembership.planId);
-      console.log(`❌ Found existing active membership - cleaning up before accepting new invitation`);
-      // Remove user from all existing team memberships before accepting new invitation
-      console.log(`🧹 Removing user from all existing team memberships...`);
-      // ...existing code for removing user from teams...
+    if (!subscription) {
+      return res.status(404).json({ error: 'No pending invitation found for this user.' });
     }
+
+    // Update the team member's status to 'active' and set joinedAt
+    const memberIndex = subscription.teamMembers.findIndex(m => m.email.toLowerCase() === user.email.toLowerCase() && m.status === 'pending');
+    if (memberIndex === -1) {
+      return res.status(404).json({ error: 'Pending team member not found.' });
+    }
+    subscription.teamMembers[memberIndex].status = 'active';
+    subscription.teamMembers[memberIndex].joinedAt = new Date();
+    subscription.teamMembers[memberIndex].user = user._id;
+    await subscription.save();
+
+    // Update the user's team membership fields
+    user.subscription.isTeamMember = true;
+    user.subscription.teamOwner = subscription.user;
+    await user.save();
 
     try {
       const owner = await User.findById(subscription.user);

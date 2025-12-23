@@ -801,7 +801,7 @@ addOverallScoreDisplay(scoreData) {
     // Add "Detailed Findings (Sample)" header with blue color
     this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Detailed Findings (Sample)', this.margin, this.currentY);
     this.currentY += 25;
-    
+
     const itemsPerPage = 12;
     for (let i = 0; i < items.length; i += itemsPerPage) {
         if (i > 0) {
