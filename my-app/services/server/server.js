@@ -146,39 +146,26 @@ export const runFullAuditProcess = async (job) => {
             imagePaths = await createAllHighlightedImages(jsonReportPath, jobFolder);
             console.log(`✅ Image generation completed for ${link} (${device})`);
 
-            // Use Starter report generator for Starter and One-Time plans, Pro report for Pro plan
-            console.log(`📄 Starting PDF generation for ${link} (${device}) with plan: ${isProPlan ? 'pro' : 'starter'}`);
+            // Always use unified report generator, pass planType
+            console.log(`📄 Starting PDF generation for ${link} (${device}) with plan: ${effectivePlanId}`);
             console.log(`   Output directory: ${finalReportFolder}`);
-            
             try {
               // Add timeout to PDF generation (2 minutes max)
-              const pdfPromise = isProPlan 
-                ? generateSeniorAccessibilityReport({
-                    inputFile: jsonReportPath,
-                    url: link,
-                    email_address: email,
-                    device: device,
-                    imagePaths,
-                    outputDir: finalReportFolder,
-                    formFactor: device
-                  })
-                : generateStarterAccessibilityReport({
-                    inputFile: jsonReportPath,
-                    url: link,
-                    email_address: email,
-                    device: device,
-                    imagePaths,
-                    outputDir: finalReportFolder,
-                    formFactor: device
-                  });
-              
+              const pdfPromise = generateSeniorAccessibilityReport({
+                inputFile: jsonReportPath,
+                url: link,
+                email_address: email,
+                device: device,
+                imagePaths,
+                outputDir: finalReportFolder,
+                formFactor: device,
+                planType: effectivePlanId
+              });
               const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('PDF generation timeout after 2 minutes')), 120000)
               );
-              
               const pdfResult = await Promise.race([pdfPromise, timeoutPromise]);
-              console.log(`✅ ${isProPlan ? 'Pro' : 'Starter'} PDF generated for ${link} (${device})`);
-              
+              console.log(`✅ PDF generated for ${link} (${device}) [Plan: ${effectivePlanId}]`);
               // Store the score in the database if available
               if (pdfResult && pdfResult.score !== undefined && record) {
                 record.score = parseFloat(pdfResult.score);
@@ -228,8 +215,7 @@ export const runFullAuditProcess = async (job) => {
     if (record) { record.emailStatus = 'sending'; await record.save().catch(()=>{}); }
     
     // For Starter plan, filter to only send reports for the selected device
-    const deviceFilterForEmail = isProPlan ? null : (selectedDevice || 'desktop');
-    
+    const deviceFilterForEmail = effectivePlanId === 'pro' ? null : (selectedDevice || 'desktop');
     console.log(`📧 Preparing to send email to ${email} with device filter: ${deviceFilterForEmail || 'none (all devices)'}`);
     console.log(`📂 Report folder: ${finalReportFolder}`);
     
