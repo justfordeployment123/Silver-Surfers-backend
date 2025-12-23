@@ -1005,11 +1005,18 @@ addOverallScoreDisplay(scoreData) {
     });
     
     tableY += headerHeight;
-    this.doc.font('RegularFont').fontSize(10);
+    this.doc.font('RegularFont').fontSize(9);
     
     // Draw rows with alternating white background and bottom borders
     itemsToShow.forEach((item, rowIndex) => {
-        const rowData = config.extractors.map(extractor => String(extractor(item) || 'N/A'));
+        const rowData = config.extractors.map(extractor => {
+            let value = String(extractor(item) || 'N/A');
+            // Truncate very long strings during calculation
+            if (value.length > 200) {
+                value = value.substring(0, 197) + '...';
+            }
+            return value;
+        });
         let maxRowHeight = 0;
         
         rowData.forEach((cellValue, colIndex) => {
@@ -1021,8 +1028,10 @@ addOverallScoreDisplay(scoreData) {
         });
         
         const rowHeight = Math.max(maxRowHeight + 20, 35);
+        // Cap maximum row height to prevent excessive spacing
+        const finalRowHeight = Math.min(rowHeight, 120);
         
-        if (tableY + rowHeight > this.doc.page.height - this.doc.page.margins.bottom) {
+        if (tableY + finalRowHeight > this.doc.page.height - this.doc.page.margins.bottom) {
             this.addPage();
             this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
             this.currentY += 25;
@@ -1041,30 +1050,38 @@ addOverallScoreDisplay(scoreData) {
                 currentX += config.widths[index];
             });
             tableY += headerHeight;
-            this.doc.font('RegularFont').fontSize(10);
+            this.doc.font('RegularFont').fontSize(9);
         }
         
         // White background for all rows
-        this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FFFFFF');
+        this.doc.rect(this.margin, tableY, this.pageWidth, finalRowHeight).fill('#FFFFFF');
         
-        // Draw cell content
+        // Draw cell content with proper height constraint
         currentX = this.margin;
         rowData.forEach((cellValue, colIndex) => {
-            this.doc.fillColor('#374151').text(cellValue, currentX + 10, tableY + 10, {
+            // Truncate very long strings to prevent overflow
+            let displayValue = cellValue;
+            if (cellValue.length > 200) {
+                displayValue = cellValue.substring(0, 197) + '...';
+            }
+            
+            this.doc.fillColor('#374151').text(displayValue, currentX + 10, tableY + 10, {
                 width: config.widths[colIndex] - 20,
-                lineGap: 2
+                height: finalRowHeight - 20,
+                lineGap: 2,
+                align: 'left'
             });
             currentX += config.widths[colIndex];
         });
         
         // Draw light bottom border for the row
-        this.doc.moveTo(this.margin, tableY + rowHeight)
-            .lineTo(this.margin + this.pageWidth, tableY + rowHeight)
+        this.doc.moveTo(this.margin, tableY + finalRowHeight)
+            .lineTo(this.margin + this.pageWidth, tableY + finalRowHeight)
             .strokeColor('#E5E7EB')
             .lineWidth(0.5)
             .stroke();
         
-        tableY += rowHeight;
+        tableY += finalRowHeight;
     });
     
     this.currentY = tableY + 20;
