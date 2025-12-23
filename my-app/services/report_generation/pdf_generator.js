@@ -373,7 +373,7 @@ addOverallScoreDisplay(scoreData) {
         this.doc.roundedRect(scoreBoxX, scoreBoxY, 440, 120, 12).fill('#E0E7FF').fillOpacity(0.8);
         this.doc.fillOpacity(1);
 
-        const score = Math.round(scoreData.finalScore);
+        // score already declared above
         let scoreColor = '#EF4444'; // red
         let statusText = 'FAIL';
         if (score >= 70) {
