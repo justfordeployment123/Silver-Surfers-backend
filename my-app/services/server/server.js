@@ -221,19 +221,27 @@ export const runFullAuditProcess = async (job) => {
     
     let sendResult;
     try {
+      // Set plan-specific email body
+      let emailBody = 'Attached are all your senior accessibility audit results. Thank you for using SilverSurfers!';
+      if (effectivePlanId === 'starter') {
+        emailBody = 'Attached are all of the older adult accessibility audit results for your Starter Subscription. Thank you for using SilverSurfers!';
+      } else if (effectivePlanId === 'pro') {
+        emailBody = 'Attached are all of the older adult accessibility audit results for your Pro Subscription. Thank you for using SilverSurfers!';
+      }
+
       // Add timeout to email sending (5 minutes max)
       const emailPromise = sendAuditReportEmail({
         to: email,
         subject: 'Your SilverSurfers Audit Results',
-        text: 'Attached are all your senior accessibility audit results. Thank you for using SilverSurfers!',
+        text: emailBody,
         folderPath: finalReportFolder,
         deviceFilter: deviceFilterForEmail,
       });
-      
+
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Email sending timed out after 5 minutes')), 300000)
       );
-      
+
       sendResult = await Promise.race([emailPromise, timeoutPromise]);
       console.log(`✉️ Email send result:`, JSON.stringify(sendResult, null, 2));
     } catch (emailError) {
