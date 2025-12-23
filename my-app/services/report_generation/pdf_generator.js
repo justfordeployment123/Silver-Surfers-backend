@@ -352,17 +352,21 @@ addOverallScoreDisplay(scoreData) {
             const urlText = reportData.finalUrl;
             const urlFontSize = 13;
             const urlBoxWidth = 240;
-            this.doc.roundedRect(boxX, this.currentY, 280, 50, 8).fill('#7C3AED').fillOpacity(0.9);
-            this.doc.fillOpacity(1);
-            this.doc.fontSize(11).font('RegularFont').fillColor('#E0E7FF').text('Website Analyzed', boxX + 20, this.currentY + 12);
-            this.doc.fontSize(urlFontSize).font('BoldFont').fillColor('white');
-            // Calculate height needed for URL (wrap to 2 lines max)
+            this.doc.fontSize(urlFontSize).font('BoldFont');
+            // Calculate height needed for URL (wrap to multiple lines if needed)
             const urlHeight = this.doc.heightOfString(urlText, { width: urlBoxWidth, align: 'left' });
-            this.doc.text(urlText, boxX + 20, this.currentY + 28, { width: urlBoxWidth, align: 'left' });
-            // Adjust box height if needed
             const minBoxHeight = 50;
-            const extraHeight = urlHeight > 20 ? urlHeight - 20 : 0;
-            this.currentY += minBoxHeight + extraHeight + 15;
+            const boxHeight = Math.max(minBoxHeight, urlHeight + 32); // 32 for label and padding
+            // Draw box
+            this.doc.roundedRect(boxX, this.currentY, 280, boxHeight, 8).fill('#7C3AED').fillOpacity(0.9);
+            this.doc.fillOpacity(1);
+            // Draw label
+            this.doc.fontSize(11).font('RegularFont').fillColor('#E0E7FF').text('Website Analyzed', boxX + 20, this.currentY + 12);
+            // Draw URL, vertically centered
+            this.doc.fontSize(urlFontSize).font('BoldFont').fillColor('white');
+            const urlY = this.currentY + 28 + Math.max(0, (boxHeight - minBoxHeight) / 2 - 8); // center if taller
+            this.doc.text(urlText, boxX + 20, urlY, { width: urlBoxWidth, align: 'left' });
+            this.currentY += boxHeight + 15;
         } else {
             this.currentY += 85;
         }
