@@ -1158,6 +1158,11 @@ addOverallScoreDisplay(scoreData) {
             this.currentY += 25;
             this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
             this.currentY += 20;
+            // If there are no audit details to show, add the requested message
+            if (supportedAudits.length === 0) {
+                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+                this.currentY += 40;
+            }
             for (const categoryName of Object.keys(categories)) {
                 console.log(`  Processing ${categoryName}...`);
                 for (const auditId of categories[categoryName]) {
