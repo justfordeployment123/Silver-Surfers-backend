@@ -1161,6 +1161,9 @@ addOverallScoreDisplay(scoreData) {
             this.currentY += 25;
             this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
             this.currentY += 20;
+            // Always show the requested message directly under the heading
+            this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+            this.currentY += 40;
             let detailPagesGenerated = false;
             for (const categoryName of Object.keys(categories)) {
                 for (const auditId of categories[categoryName]) {
