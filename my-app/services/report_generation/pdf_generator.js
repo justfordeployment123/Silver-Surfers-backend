@@ -335,8 +335,11 @@ addOverallScoreDisplay(scoreData) {
         this.doc.rect(0, 180, this.doc.page.width, 40).fillOpacity(0.3).fill('#8B5CF6');
         this.doc.fillOpacity(1);
         let heading = 'SilverSurfers Pro Audit';
-        if (planType === 'starter') heading = 'SilverSurfers Starter Audit';
-        if (planType === 'onetime') heading = 'SilverSurfers One-Time Audit';
+        if (planType && typeof planType === 'string') {
+            if (planType.toLowerCase().includes('starter')) heading = 'SilverSurfers Starter Audit';
+            else if (planType.toLowerCase().includes('onetime')) heading = 'SilverSurfers One-Time Audit';
+            else if (planType.toLowerCase().includes('pro')) heading = 'SilverSurfers Pro Audit';
+        }
         this.doc.fontSize(32).font('BoldFont').fillColor('white').text(heading, this.margin, 30, { width: this.pageWidth, align: 'center' });
         this.doc.fontSize(14).font('RegularFont').fillColor('white').text('Accessibility Audit Report', this.margin, 70, { width: this.pageWidth, align: 'center' });
         
@@ -752,7 +755,7 @@ addOverallScoreDisplay(scoreData) {
         }
         this.addPage();
         const info = AUDIT_INFO[auditId];
-        if (info) {
+        if info) {
             this.drawColorBar(info.category);
             this.addHeading(`Visual Analysis: ${info.title}`, 18, '#2C3E50');
         }
@@ -1158,26 +1161,24 @@ addOverallScoreDisplay(scoreData) {
             this.currentY += 25;
             this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
             this.currentY += 20;
-            // If there are no audit details to show, add the requested message
-            if (supportedAudits.length === 0) {
-                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
-                this.currentY += 40;
-            }
+            let detailPagesGenerated = false;
             for (const categoryName of Object.keys(categories)) {
                 console.log(`  Processing ${categoryName}...`);
                 for (const auditId of categories[categoryName]) {
                     const auditData = audits[auditId];
-                    // MODIFICATION: If the audit is not applicable, skip creating its detail pages
                     if (auditData.score === null) {
                         console.log(`    - Skipping N/A audit: ${auditId}`);
-                        continue; // Go to the next audit
+                        continue;
                     }
+                    detailPagesGenerated = true;
                     console.log(`    - ${auditId}...`);
                     this.addAuditDetailPage(auditId, auditData);
-                    // Screenshot page removed for cleaner reports
-                    // this.addImagePage(auditId);
                     this.addTablePages(auditId, auditData);
                 }
+            }
+            if (!detailPagesGenerated) {
+                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+                this.currentY += 40;
             }
             this.doc.end();
 
