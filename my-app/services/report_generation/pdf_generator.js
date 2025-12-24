@@ -1163,13 +1163,15 @@ addOverallScoreDisplay(scoreData) {
             this.currentY += 20;
             let detailPagesGenerated = false;
             for (const categoryName of Object.keys(categories)) {
-                console.log(`  Processing ${categoryName}...`);
                 for (const auditId of categories[categoryName]) {
                     const auditData = audits[auditId];
                     if (auditData.score === null) {
                         console.log(`    - Skipping N/A audit: ${auditId}`);
                         continue;
                     }
+                    // Check if audit has any details to show
+                    const hasDetails = auditData.details && Array.isArray(auditData.details.items) && auditData.details.items.length > 0;
+                    if (!hasDetails) continue;
                     detailPagesGenerated = true;
                     console.log(`    - ${auditId}...`);
                     this.addAuditDetailPage(auditId, auditData);
@@ -1177,16 +1179,12 @@ addOverallScoreDisplay(scoreData) {
                 }
             }
             if (!detailPagesGenerated) {
-                // Ensure message is not off the page
                 if (this.currentY > this.doc.page.height - 100) {
                     this.addPage();
                     this.currentY = 60;
                 }
-                // Draw a debug border for visibility
-                this.doc.rect(this.margin, this.currentY, this.pageWidth, 40).strokeColor('#FF0000').lineWidth(1).stroke();
-                this.doc.fontSize(14).font('BoldFont').fillColor('#FF0000').text('DEBUG: Section 3 message area', this.margin, this.currentY + 2, { width: this.pageWidth, align: 'center' });
-                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY + 20, { width: this.pageWidth, align: 'center' });
-                this.currentY += 60;
+                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+                this.currentY += 40;
             }
             this.doc.end();
 
