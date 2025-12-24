@@ -755,7 +755,7 @@ addOverallScoreDisplay(scoreData) {
         }
         this.addPage();
         const info = AUDIT_INFO[auditId];
-        if info) {
+        if (info) {
             this.drawColorBar(info.category);
             this.addHeading(`Visual Analysis: ${info.title}`, 18, '#2C3E50');
         }
