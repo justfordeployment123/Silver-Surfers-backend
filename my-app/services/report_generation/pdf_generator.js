@@ -1166,16 +1166,14 @@ addOverallScoreDisplay(scoreData) {
                 for (const auditId of categories[categoryName]) {
                     const auditData = audits[auditId];
                     if (auditData.score === null) {
-                        console.log(`    - Skipping N/A audit: ${auditId}`);
                         continue;
                     }
-                    // Check if audit has any details to show
-                    const hasDetails = auditData.details && Array.isArray(auditData.details.items) && auditData.details.items.length > 0;
-                    if (!hasDetails) continue;
-                    detailPagesGenerated = true;
-                    console.log(`    - ${auditId}...`);
-                    this.addAuditDetailPage(auditId, auditData);
-                    this.addTablePages(auditId, auditData);
+                    // Only count as generated if there are visible details/items
+                    if (auditData.details && Array.isArray(auditData.details.items) && auditData.details.items.length > 0) {
+                        detailPagesGenerated = true;
+                        this.addAuditDetailPage(auditId, auditData);
+                        this.addTablePages(auditId, auditData);
+                    }
                 }
             }
             if (!detailPagesGenerated) {
