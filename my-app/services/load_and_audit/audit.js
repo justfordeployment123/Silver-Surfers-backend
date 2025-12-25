@@ -303,7 +303,26 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
             if (device === 'mobile') {
                 await page.emulate(KnownDevices['Pixel 5']);
             } else if (device === 'tablet') {
-                await page.emulate(KnownDevices['iPad Pro 11']);
+                // Try iPad Pro 11, then fallback to iPad 7th Gen, then Galaxy Tab S4 if previous fails
+                let emulated = false;
+                const tabletDevices = [
+                    'iPad Pro 11',
+                    'iPad 7th Gen',
+                    'Galaxy Tab S4'
+                ];
+                for (const devName of tabletDevices) {
+                    try {
+                        await page.emulate(KnownDevices[devName]);
+                        console.log(`[Tablet Emulation] Successfully emulated: ${devName}`);
+                        emulated = true;
+                        break;
+                    } catch (emErr) {
+                        console.warn(`[Tablet Emulation] Failed to emulate ${devName}:`, emErr.message);
+                    }
+                }
+                if (!emulated) {
+                    throw new Error('All tablet device emulations failed');
+                }
             } else {
                 await page.setUserAgent(strategyConfig.userAgent);
                 const viewport = strategyConfig.viewport || { width: 1280, height: 800 };

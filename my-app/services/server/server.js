@@ -910,7 +910,7 @@ async function handleSubscriptionUpdated(subscription) {
 
 async function handleSubscriptionDeleted(subscription) {
   console.log('Subscription deleted:', subscription.id);
-  
+
   await Subscription.findOneAndUpdate(
     { stripeSubscriptionId: subscription.id },
     {
@@ -920,12 +920,39 @@ async function handleSubscriptionDeleted(subscription) {
   );
 
   // Update user subscription status
-  await User.findOneAndUpdate(
+  const user = await User.findOneAndUpdate(
     { stripeCustomerId: subscription.customer },
     {
       'subscription.status': 'canceled'
-    }
+    },
+    { new: true }
   );
+
+  // Get plan information for email
+  let planName = 'Unknown Plan';
+  try {
+    const priceId = subscription?.items?.data?.[0]?.price?.id;
+    if (priceId) {
+      const plan = getPlanByPriceId(priceId);
+      if (plan?.name) planName = plan.name;
+    }
+  } catch (e) {
+    console.warn('Could not determine plan name for cancellation email:', e);
+  }
+
+  // Send cancellation email if user exists and has email
+  if (user && user.email) {
+    try {
+      const cancelAtPeriodEnd = subscription.cancel_at_period_end || false;
+      const currentPeriodEnd = subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null;
+      await sendSubscriptionCancellationEmail(user.email, planName, cancelAtPeriodEnd, currentPeriodEnd);
+      console.log(`📧 Subscription cancellation email sent to ${user.email} for ${planName}`);
+    } catch (emailErr) {
+      console.error('Failed to send cancellation email:', emailErr);
+    }
+  } else {
+    console.warn('No user or user email found for subscription cancellation email.');
+  }
 }
 
 async function handlePaymentSucceeded(invoice) {
