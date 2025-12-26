@@ -1369,6 +1369,13 @@ app.post('/create-checkout-session', authRequired, async (req, res) => {
 
     // Handle one-time payment vs subscription
     if (plan.type === 'one-time') {
+      // Check if user has remaining one-time audits
+      if (user.oneTimeScans > 0) {
+        return res.status(200).json({
+          url: `${successUrlBase}/checkout`
+        });
+      }
+
       // Create one-time payment session
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
