@@ -905,6 +905,18 @@ async function handleSubscriptionUpdated(subscription) {
         // Don't fail the webhook if email fails
       }
     }
+
+    // Send cancellation email if subscription is set to cancel at period end
+    if (subscription.cancel_at_period_end && updatedUser) {
+      try {
+        const planName = plan?.name || 'Unknown Plan';
+        await sendSubscriptionCancellationEmail(updatedUser.email, planName);
+        console.log(`📧 Subscription cancellation email sent to ${updatedUser.email}`);
+      } catch (emailErr) {
+        console.error('Failed to send cancellation email:', emailErr);
+        // Don't fail the webhook if email fails
+      }
+    }
   }
 }
 
