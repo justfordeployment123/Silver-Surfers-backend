@@ -910,7 +910,8 @@ async function handleSubscriptionUpdated(subscription) {
     if (subscription.cancel_at_period_end && updatedUser) {
       try {
         const planName = plan?.name || 'Unknown Plan';
-        await sendSubscriptionCancellationEmail(updatedUser.email, planName);
+        const currentPeriodEnd = subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null;
+        await sendSubscriptionCancellationEmail(updatedUser.email, planName, subscription.cancel_at_period_end, currentPeriodEnd);
         console.log(`📧 Subscription cancellation email sent to ${updatedUser.email}`);
       } catch (emailErr) {
         console.error('Failed to send cancellation email:', emailErr);
@@ -1847,11 +1848,12 @@ app.post('/subscription/cancel', authRequired, async (req, res) => {
 
       // Send cancellation email
       try {
+        const currentPeriodEnd = subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null;
         await sendSubscriptionCancellationEmail(
           userEmail, 
           planName, 
           true, 
-          subscription.currentPeriodEnd
+          currentPeriodEnd
         );
         console.log(`📧 Subscription cancellation email sent to ${userEmail}`);
       } catch (emailErr) {
