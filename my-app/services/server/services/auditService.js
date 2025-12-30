@@ -8,7 +8,7 @@ import { generateLiteAccessibilityReport } from '../../report_generation/pdf-gen
 import { createAllHighlightedImages } from '../../drawing_boxes/draw_all.js';
 import { sendAuditReportEmail, collectAttachmentsRecursive, sendMailWithFallback } from '../email.js';
 import { checkScoreThreshold } from '../pass_or_fail.js';
-import { generateSummaryFile } from '../report_generation/summaryGenerator.js';
+import { generateSummaryFile } from '../../report_generation/summaryGenerator.js';
 import AnalysisRecord from '../models/AnalysisRecord.js';
 import QuickScan from '../models/QuickScan.js';
 import Subscription from '../models/Subscription.js';
