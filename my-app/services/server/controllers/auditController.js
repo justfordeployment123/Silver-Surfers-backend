@@ -75,6 +75,19 @@ export async function startAudit(req, res) {
       });
     }
 
+    // Validate device selection for one-time scans
+    if (!selectedDevice) {
+      return res.status(400).json({ 
+        error: 'Device selection is required for one-time scans. Please select desktop, mobile, or tablet.' 
+      });
+    }
+    const validDevices = ['desktop', 'mobile', 'tablet'];
+    if (!validDevices.includes(selectedDevice)) {
+      return res.status(400).json({ 
+        error: `Invalid device selection: ${selectedDevice}. Must be one of: ${validDevices.join(', ')}` 
+      });
+    }
+
     try {
       await User.findByIdAndUpdate(userId, {
         $inc: { oneTimeScans: -1 }

@@ -4,8 +4,12 @@ import Subscription from '../models/Subscription.js';
 import AnalysisRecord from '../models/AnalysisRecord.js';
 import QuickScan from '../models/QuickScan.js';
 import { getPlanById } from '../subscriptionPlans.js';
+import { buildCandidateUrls, tryFetch } from '../services/urlService.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2024-06-20' });
+
+// Maximum number of URLs that can be submitted in bulk
+const MAX_BULK_SUBMISSIONS = 50;
 
 // This will be injected from server.js
 let fullAuditQueue, quickScanQueue;
@@ -520,6 +524,171 @@ export async function recoverQueue(req, res) {
   } catch (err) {
     console.error('Queue recovery error:', err?.message || err);
     res.status(500).json({ error: 'Failed to recover queue' });
+  }
+}
+
+export async function bulkQuickScans(req, res) {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    if (!quickScanQueue) {
+      return res.status(503).json({ error: 'Quick scan queue not initialized' });
+    }
+
+    const { urls, email, firstName, lastName } = req.body || {};
+
+    // Validate input
+    if (!urls || !Array.isArray(urls)) {
+      return res.status(400).json({ error: 'URLs array is required' });
+    }
+
+    if (urls.length === 0) {
+      return res.status(400).json({ error: 'At least one URL is required' });
+    }
+
+    if (urls.length > MAX_BULK_SUBMISSIONS) {
+      return res.status(400).json({ 
+        error: `Maximum ${MAX_BULK_SUBMISSIONS} URLs allowed per bulk submission. You provided ${urls.length}.` 
+      });
+    }
+
+    // Use admin email if not provided
+    const adminEmail = email || req.user.email || 'admin@silversurfers.ai';
+    const adminFirstName = firstName || 'Admin';
+    const adminLastName = lastName || 'User';
+
+    console.log(`📦 Admin bulk quick scan submission: ${urls.length} URLs for ${adminEmail}`);
+
+    const results = {
+      total: urls.length,
+      successful: [],
+      failed: [],
+      skipped: []
+    };
+
+    // Process each URL
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      const urlIndex = i + 1;
+
+      try {
+        // Validate and normalize URL
+        const { candidateUrls } = buildCandidateUrls(url);
+        if (!candidateUrls.length) {
+          results.failed.push({
+            url,
+            index: urlIndex,
+            error: 'Invalid URL format'
+          });
+          continue;
+        }
+
+        let normalizedUrl = null;
+        for (const candidate of candidateUrls) {
+          const r = await tryFetch(candidate, 8000);
+          if (r.ok) {
+            normalizedUrl = r.finalUrl || candidate;
+            break;
+          }
+        }
+
+        if (!normalizedUrl) {
+          results.failed.push({
+            url,
+            index: urlIndex,
+            error: 'URL not reachable'
+          });
+          continue;
+        }
+
+        // Check if a quick scan for this URL already exists (within last 24 hours)
+        const existingScan = await QuickScan.findOne({
+          url: normalizedUrl,
+          email: adminEmail.toLowerCase(),
+          scanDate: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        }).sort({ scanDate: -1 });
+
+        if (existingScan && existingScan.status === 'completed') {
+          results.skipped.push({
+            url: normalizedUrl,
+            index: urlIndex,
+            reason: 'Recent scan exists',
+            existingScanId: existingScan._id
+          });
+          continue;
+        }
+
+        // Create quick scan record
+        const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}-${i}`;
+        
+        const quickScanRecord = await QuickScan.create({
+          url: normalizedUrl,
+          email: adminEmail.toLowerCase(),
+          firstName: adminFirstName,
+          lastName: adminLastName,
+          status: 'queued',
+          scanDate: new Date()
+        });
+
+        // Queue the job
+        const job = await quickScanQueue.addJob({
+          email: adminEmail,
+          url: normalizedUrl,
+          firstName: adminFirstName,
+          lastName: adminLastName,
+          userId: null,
+          taskId,
+          jobType: 'quick-scan',
+          subscriptionId: null,
+          priority: 2,
+          quickScanId: quickScanRecord._id
+        });
+
+        results.successful.push({
+          url: normalizedUrl,
+          index: urlIndex,
+          taskId: job.taskId,
+          jobId: job._id,
+          quickScanId: quickScanRecord._id
+        });
+
+        console.log(`✅ Queued quick scan ${urlIndex}/${urls.length}: ${normalizedUrl}`);
+
+      } catch (error) {
+        console.error(`❌ Failed to queue URL ${urlIndex} (${url}):`, error.message);
+        results.failed.push({
+          url,
+          index: urlIndex,
+          error: error.message || 'Unknown error'
+        });
+      }
+    }
+
+    const summary = {
+      total: results.total,
+      successful: results.successful.length,
+      failed: results.failed.length,
+      skipped: results.skipped.length
+    };
+
+    console.log(`📊 Bulk submission complete: ${summary.successful} successful, ${summary.failed} failed, ${summary.skipped} skipped`);
+
+    res.status(200).json({
+      success: true,
+      message: `Bulk submission processed: ${summary.successful} queued, ${summary.failed} failed, ${summary.skipped} skipped`,
+      summary,
+      results,
+      timestamp: new Date()
+    });
+
+  } catch (error) {
+    console.error('Bulk quick scans error:', error);
+    res.status(500).json({ 
+      error: 'Failed to process bulk quick scans',
+      details: error.message 
+    });
   }
 }
 

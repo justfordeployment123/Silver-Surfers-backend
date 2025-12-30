@@ -8,6 +8,7 @@ import { generateLiteAccessibilityReport } from '../../report_generation/pdf-gen
 import { createAllHighlightedImages } from '../../drawing_boxes/draw_all.js';
 import { sendAuditReportEmail, collectAttachmentsRecursive, sendMailWithFallback } from '../email.js';
 import { checkScoreThreshold } from '../pass_or_fail.js';
+import { generateSummaryFile } from '../report_generation/summaryGenerator.js';
 import AnalysisRecord from '../models/AnalysisRecord.js';
 import QuickScan from '../models/QuickScan.js';
 import Subscription from '../models/Subscription.js';
@@ -37,8 +38,10 @@ export const runFullAuditProcess = async (job) => {
       console.warn('Plan lookup failed for subscriptionId', subscriptionId, e?.message || e);
     }
   }
+  // If planId is explicitly 'oneTime', keep it as oneTime
+  // Otherwise, if no plan found, default to 'starter' for backward compatibility
   if (!effectivePlanId) {
-    effectivePlanId = 'starter'; // Default to starter behavior if missing
+    effectivePlanId = planId === 'oneTime' ? 'oneTime' : 'starter';
   }
 
   console.log(`Processing job for ${fullName} (${email}) to audit ${url} [Plan: ${effectivePlanId}]`);
@@ -100,10 +103,26 @@ export const runFullAuditProcess = async (job) => {
     if (effectivePlanId === 'pro') {
       devicesToAudit = ['desktop', 'mobile', 'tablet'];
       console.log('🚀 Pro plan: Auditing all devices - desktop, mobile, tablet');
+    } else if (effectivePlanId === 'oneTime') {
+      // One-time scans: require device selection (desktop, mobile, or tablet)
+      if (!selectedDevice) {
+        throw new Error('Device selection is required for one-time scans. Please select desktop, mobile, or tablet.');
+      }
+      // Validate device selection
+      const validDevices = ['desktop', 'mobile', 'tablet'];
+      if (!validDevices.includes(selectedDevice)) {
+        throw new Error(`Invalid device selection: ${selectedDevice}. Must be one of: ${validDevices.join(', ')}`);
+      }
+      devicesToAudit = [selectedDevice];
+      console.log(`📱 One-time scan: Auditing device - ${selectedDevice}`);
     } else {
+      // Starter plan: default to desktop if no device selected
       devicesToAudit = selectedDevice ? [selectedDevice] : ['desktop'];
-      console.log(`📱 Non-pro/onetime plan (${effectivePlanId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
+      console.log(`📱 Starter plan (${effectivePlanId || 'default'}): Auditing device - ${devicesToAudit[0]}`);
     }
+
+    // Track all page results for summary generation
+    const pageResults = [];
 
     for (const link of linksToAudit) {
       for (const device of devicesToAudit) {
@@ -139,6 +158,27 @@ export const runFullAuditProcess = async (job) => {
               );
               const pdfResult = await Promise.race([pdfPromise, timeoutPromise]);
               console.log(`✅ PDF generated for ${link} (${device}) [Plan: ${effectivePlanId}]`);
+              
+              // Track page result for summary
+              if (pdfResult && pdfResult.score !== undefined) {
+                // Extract filename from reportPath if fileName is not available
+                let filename = pdfResult.fileName;
+                if (!filename && pdfResult.reportPath) {
+                  const path = await import('path');
+                  filename = path.basename(pdfResult.reportPath);
+                }
+                
+                if (filename) {
+                  pageResults.push({
+                    filename: filename,
+                    url: link,
+                    device: device,
+                    score: pdfResult.score,
+                    reportPath: pdfResult.reportPath
+                  });
+                }
+              }
+              
               // Store the score in the database if available
               if (pdfResult && pdfResult.score !== undefined && record) {
                 record.score = parseFloat(pdfResult.score);
@@ -164,6 +204,20 @@ export const runFullAuditProcess = async (job) => {
             }
           }
         }
+      }
+    }
+
+    // Generate summary file with all pages and scores (only for full audits, not quick scans)
+    if (pageResults.length > 0) {
+      try {
+        console.log(`📊 Generating summary file for ${pageResults.length} pages...`);
+        const threshold = 70; // Default threshold
+        const summaryResult = await generateSummaryFile(pageResults, finalReportFolder, threshold);
+        console.log(`✅ Summary file generated: ${summaryResult.csvFileName}`);
+        console.log(`   Stats: ${summaryResult.stats.total} total, ${summaryResult.stats.passed} passed, ${summaryResult.stats.warnings} warnings`);
+      } catch (summaryError) {
+        console.error(`⚠️ Failed to generate summary file:`, summaryError.message);
+        // Don't fail the entire audit if summary generation fails
       }
     }
 
@@ -200,6 +254,8 @@ export const runFullAuditProcess = async (job) => {
         emailBody = 'Attached are all of the older adult accessibility audit results for your Starter Subscription. Thank you for using SilverSurfers!';
       } else if (effectivePlanId === 'pro') {
         emailBody = 'Attached are all of the older adult accessibility audit results for your Pro Subscription. Thank you for using SilverSurfers!';
+      } else if (effectivePlanId === 'oneTime') {
+        emailBody = 'Attached are all of the older adult accessibility audit results for your One-Time Report. Thank you for using SilverSurfers!';
       }
 
       // Add timeout to email sending (5 minutes max)
