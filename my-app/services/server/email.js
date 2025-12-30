@@ -687,6 +687,8 @@ export async function sendSubscriptionCancellationEmail(to, planName, cancelAtPe
     });
   };
 
+  console.log(`Debug: currentPeriodEnd value is`, currentPeriodEnd);
+
   const html = `
     <div style="font-family: Arial,sans-serif;background:#f7f7fb;padding:24px;">
       <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
