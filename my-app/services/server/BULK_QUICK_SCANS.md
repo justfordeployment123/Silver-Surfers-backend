@@ -152,3 +152,5 @@ console.log(result);
 - All scans are processed serially (one after another) on the backend
 - Each scan will send an email to the specified email address when completed
 
+
+

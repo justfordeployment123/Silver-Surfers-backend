@@ -53,3 +53,5 @@ router.get('/faqs', async (req, res) => {
 
 export default router;
 
+
+

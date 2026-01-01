@@ -7,6 +7,29 @@ import { KnownDevices } from 'puppeteer';
 import stealthPlugin from 'puppeteer-extra-plugin-stealth';
 import customConfig from './custom-config.js';
 
+// Enhanced anti-detection: Randomize fingerprints
+function generateRandomFingerprint() {
+    const userAgents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    ];
+
+    const viewports = [
+        { width: 1920, height: 1080 },
+        { width: 1366, height: 768 },
+        { width: 1536, height: 864 },
+        { width: 1440, height: 900 },
+    ];
+
+    return {
+        userAgent: userAgents[Math.floor(Math.random() * userAgents.length)],
+        viewport: viewports[Math.floor(Math.random() * viewports.length)],
+    };
+}
+
 // --- SOLUTION 1: Adjust timeouts to be reasonable guardrails, not standard waiting times. ---
 const ANTI_BOT_STRATEGIES = {
      basic: {
@@ -280,9 +303,26 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
         });
 
         const auditPromise = (async () => {
+            const fingerprint = generateRandomFingerprint();
+            
+            // Enhanced launch options with better anti-detection
             const launchOptions = {
                 headless: 'new',
-                args: strategyConfig.args,
+                args: [
+                    ...strategyConfig.args,
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-site-isolation-trials',
+                    '--disable-features=BlockInsecurePrivateNetworkRequests',
+                    '--force-color-profile=srgb',
+                    '--metrics-recording-only',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-background-networking',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--hide-scrollbars',
+                    '--mute-audio',
+                ],
+                ignoreDefaultArgs: ['--enable-automation'],
                 timeout: 30000,
                 protocolTimeout: 60000,
                 waitForInitialPage: true
@@ -296,8 +336,47 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
 
             const page = await browser.newPage();
 
+            // Enhanced anti-detection scripts
+            await page.evaluateOnNewDocument(() => {
+                // Remove webdriver property
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                });
+
+                // Add chrome object
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+
+                // Override permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+
+                // Override plugins
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+
+                // Override languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+
+                // Remove automation indicators
+                delete navigator.__proto__.webdriver;
+            });
+
+            // Set headers with randomized fingerprint
+            const headers = strategyConfig.extraHeaders || {};
             if (strategyConfig.extraHeaders) {
-                await page.setExtraHTTPHeaders(strategyConfig.extraHeaders);
+                await page.setExtraHTTPHeaders(headers);
             }
 
             if (device === 'mobile') {
@@ -324,9 +403,9 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                     throw new Error('All tablet device emulations failed');
                 }
             } else {
-                await page.setUserAgent(strategyConfig.userAgent);
-                const viewport = strategyConfig.viewport || { width: 1280, height: 800 };
-                await page.setViewport(viewport);
+                // Use randomized fingerprint for desktop
+                await page.setUserAgent(fingerprint.userAgent);
+                await page.setViewport(fingerprint.viewport);
             }
 
             console.time(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page Navigation`);

@@ -14,3 +14,5 @@ router.post('/subscription/team/accept', authRequired, teamController.acceptTeam
 
 export default router;
 
+
+

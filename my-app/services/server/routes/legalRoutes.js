@@ -17,3 +17,5 @@ router.post('/admin/legal/:id/publish', authRequired, adminOnly, legalController
 
 export default router;
 
+
+
