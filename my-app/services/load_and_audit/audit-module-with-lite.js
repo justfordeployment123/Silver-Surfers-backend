@@ -266,27 +266,52 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                         // Read the HTML content
                         const htmlContent = await fs.readFile(absolutePath, 'utf-8');
                         
-                        // Use setContent to load HTML directly (avoids file:// origin issues)
-                        await page.setContent(htmlContent, {
+                        // Set up request interception to serve our HTML content
+                        // This prevents actual navigation (which would trigger 403) while loading our content
+                        await page.setRequestInterception(true);
+                        let mainNavigationServed = false;
+                        
+                        // Store HTML content in closure for the request handler
+                        const interceptedHtml = htmlContent;
+                        const targetUrl = url;
+                        
+                        page.on('request', (request) => {
+                            const requestUrl = request.url();
+                            
+                            // Intercept navigation requests to the target URL (both initial and Lighthouse's navigation)
+                            if (request.isNavigationRequest() && 
+                                (requestUrl === targetUrl || requestUrl.startsWith(targetUrl.split('?')[0]))) {
+                                if (!mainNavigationServed) {
+                                    mainNavigationServed = true;
+                                    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Intercepting initial navigation to ${requestUrl} (serving pre-loaded HTML)`);
+                                } else {
+                                    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Intercepting Lighthouse navigation to ${requestUrl} (serving pre-loaded HTML)`);
+                                }
+                                // Serve our HTML content instead of making a real request
+                                request.respond({
+                                    status: 200,
+                                    contentType: 'text/html; charset=utf-8',
+                                    headers: {
+                                        'Content-Type': 'text/html; charset=utf-8',
+                                    },
+                                    body: interceptedHtml
+                                });
+                            } else {
+                                // Allow all other requests (images, CSS, JS, etc.) to continue normally
+                                request.continue();
+                            }
+                        });
+                        
+                        // Navigate to the URL - the request will be intercepted and served from our HTML
+                        response = await page.goto(url, {
                             waitUntil: 'domcontentloaded',
                             timeout: 60000
                         });
                         
-                        // Set the URL using evaluate to avoid navigation (which would trigger 403)
-                        await page.evaluate((targetUrl) => {
-                            // Update the location without navigating
-                            window.history.replaceState({}, '', targetUrl);
-                            // Update document.location properties
-                            Object.defineProperty(window, 'location', {
-                                value: new URL(targetUrl),
-                                writable: true
-                            });
-                        }, url);
+                        // Wait a bit for page to settle
+                        await page.waitForTimeout(1000);
                         
-                        // Create a mock response object since we didn't actually navigate
-                        response = { status: () => 200 };
-                        
-                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] ✅ HTML loaded from file, URL set to: ${url}`);
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] ✅ HTML loaded via request interception, page URL: ${page.url()}`);
                     } catch (fileError) {
                         console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] ⚠️ HTML file access failed: ${fileError.message}`);
                         console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Falling back to navigation...`);
@@ -495,16 +520,8 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
             }
         }
         
-        // Clean up HTML file if it was created by Playwright
-        if (htmlFilePath) {
-            try {
-                const fs = await import('fs/promises');
-                await fs.unlink(htmlFilePath).catch(() => {}); // Ignore errors if file already deleted
-                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Cleaned up HTML file: ${htmlFilePath}`);
-            } catch (cleanupError) {
-                // Ignore cleanup errors
-            }
-        }
+        // Don't clean up HTML file here - it's shared across attempts
+        // Cleanup will happen in runLighthouseAudit after all attempts
     }
 }
 
@@ -720,6 +737,17 @@ export async function runLighthouseAudit(options) {
     console.error(`=== FINAL FAILURE: All strategies exhausted for ${fullUrl} ===`);
     console.error('Strategies tried:', strategies.join(', '));
     console.error('Total attempts:', allErrors.length);
+    
+    // Clean up HTML file if it was created by Playwright
+    if (htmlFilePath) {
+        try {
+            const fs = await import('fs/promises');
+            await fs.unlink(htmlFilePath).catch(() => {}); // Ignore errors if file already deleted
+            console.log(`🧹 Cleaned up HTML file: ${htmlFilePath}`);
+        } catch (cleanupError) {
+            // Ignore cleanup errors
+        }
+    }
     
     return finalError;
 }
