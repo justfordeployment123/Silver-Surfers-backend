@@ -6,6 +6,7 @@ import lighthouse from 'lighthouse';
 import puppeteer from 'puppeteer-extra';
 import { KnownDevices } from 'puppeteer';
 import stealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { chromium } from 'playwright';
 import customConfig from './custom-config.js';
 import customConfigLite from './custom-config-lite.js';
 
@@ -210,13 +211,31 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                     if (!window.chrome) {
                         window.chrome = {
                             runtime: {},
+                            loadTimes: function() {},
+                            csi: function() {},
+                            app: {}
                         };
+                    }
+                    
+                    // Override getBattery if it exists
+                    if (navigator.getBattery) {
+                        navigator.getBattery = () => Promise.resolve({
+                            charging: true,
+                            chargingTime: 0,
+                            dischargingTime: Infinity,
+                            level: 1
+                        });
                     }
                 });
 
-                // Apply strategy-specific settings
-                if (strategyConfig.extraHeaders) {
-                    await page.setExtraHTTPHeaders(strategyConfig.extraHeaders);
+                // Apply strategy-specific settings with enhanced headers
+                const enhancedHeaders = {
+                    ...strategyConfig.extraHeaders,
+                    'Referer': 'https://www.google.com/',
+                    'Origin': new URL(url).origin,
+                };
+                if (enhancedHeaders) {
+                    await page.setExtraHTTPHeaders(enhancedHeaders);
                 }
 
                 if (device === 'mobile') {
@@ -234,9 +253,17 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                 const randomDelay = Math.random() * 2000 + 1000; // 1-3 seconds
                 await new Promise(resolve => setTimeout(resolve, randomDelay));
                 
+                // Simulate mouse movement before navigation
+                await page.mouse.move(Math.random() * 100, Math.random() * 100);
+                
                 const response = await page.goto(url, {
                     waitUntil: 'domcontentloaded',
                     timeout: 60000
+                });
+                
+                // Simulate human-like scrolling after page loads
+                await page.evaluate(() => {
+                    window.scrollTo(0, Math.random() * 500);
                 });
 
                 if (!response) {
@@ -414,6 +441,96 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
 }
 
 /**
+ * Try with Playwright first (better anti-detection), then fallback to Puppeteer
+ */
+async function tryWithPlaywrightFirst(url, options) {
+    const { device, format, isLiteVersion } = options;
+    
+    try {
+        console.log(`🎭 Attempting with Playwright (better anti-detection)...`);
+        
+        const browser = await chromium.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--disable-site-isolation-trials',
+            ],
+        });
+
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            viewport: device === 'mobile' ? { width: 375, height: 667 } : { width: 1920, height: 1080 },
+            locale: 'en-US',
+            timezoneId: 'America/New_York',
+            permissions: [],
+            extraHTTPHeaders: {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br, zstd',
+                'Cache-Control': 'max-age=0',
+                'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+                'Sec-Ch-Ua-Mobile': device === 'mobile' ? '?1' : '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1',
+                'Referer': 'https://www.google.com/',
+            },
+        });
+
+        // Add anti-detection scripts
+        await context.addInitScript(() => {
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined,
+            });
+            window.chrome = {
+                runtime: {},
+                loadTimes: function() {},
+                csi: function() {},
+                app: {}
+            };
+        });
+
+        const page = await context.newPage();
+        
+        // Simulate human-like behavior
+        const response = await page.goto(url, {
+            waitUntil: 'networkidle',
+            timeout: 60000,
+        });
+
+        if (response && response.status() === 403) {
+            console.log(`⚠️ Playwright also got 403, but continuing...`);
+            // Wait a bit and check if content loaded
+            await page.waitForTimeout(3000);
+            const content = await page.content();
+            if (content.length < 1000) {
+                throw new Error('Playwright: Insufficient content despite 403');
+            }
+        }
+
+        // Get the final URL after any redirects
+        const finalUrl = page.url();
+        
+        // Close Playwright browser
+        await browser.close();
+        
+        console.log(`✅ Playwright successfully navigated to: ${finalUrl}`);
+        return { success: true, finalUrl };
+        
+    } catch (error) {
+        console.log(`❌ Playwright failed: ${error.message}`);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Runs a Lighthouse audit with multiple anti-bot strategies
  * @param {object} options - The audit options
  * @param {string} options.url - The URL to audit
@@ -437,11 +554,16 @@ export async function runLighthouseAudit(options) {
     }
 
     const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+    
+    // First, try with Playwright to see if we can bypass 403
+    const playwrightResult = await tryWithPlaywrightFirst(fullUrl, { device, format, isLiteVersion });
+    const urlToUse = playwrightResult.success ? playwrightResult.finalUrl : fullUrl;
+    
     const strategies = ['basic', 'stealth', 'aggressive'];
     const maxAttemptsPerStrategy = 3;
     const allErrors = [];
 
-    console.log(`\n=== Starting ${version} audit for ${fullUrl} ===`);
+    console.log(`\n=== Starting ${version} audit for ${urlToUse} ===`);
     console.log(`Strategies to try: ${strategies.join(' → ')}`);
 
     // Try each strategy
@@ -453,7 +575,7 @@ export async function runLighthouseAudit(options) {
         // Try each strategy up to 3 times
         for (let attempt = 1; attempt <= maxAttemptsPerStrategy; attempt++) {
             try {
-                const result = await performAuditWithStrategy(fullUrl, {
+                const result = await performAuditWithStrategy(urlToUse, {
                     device,
                     format,
                     isLiteVersion

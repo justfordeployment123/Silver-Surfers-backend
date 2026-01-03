@@ -123,3 +123,4 @@ node -e "import('./my-app/services/load_and_audit/audit.js').then(m => m.runLigh
 - **Memory issues**: Reduce concurrent scans
 - **Still detected**: Try using Playwright adapter or add proxy support
 
+
