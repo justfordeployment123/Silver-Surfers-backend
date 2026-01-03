@@ -249,24 +249,34 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                 // Check if we have HTML file from Playwright (bypass navigation)
                 let response = null;
                 const fs = await import('fs/promises');
+                const path = await import('path');
                 
                 if (htmlFilePath) {
                     try {
-                        // Check if file exists
-                        await fs.access(htmlFilePath);
-                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Loading HTML from Playwright file (bypassing navigation)...`);
-                        const fileUrl = `file://${htmlFilePath}`;
+                        // Resolve to absolute path
+                        const absolutePath = path.isAbsolute(htmlFilePath) ? htmlFilePath : path.resolve(htmlFilePath);
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Checking for HTML file at: ${absolutePath}`);
+                        
+                        // Check if file exists with better error info
+                        await fs.access(absolutePath);
+                        const stats = await fs.stat(absolutePath);
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] HTML file found (${stats.size} bytes), loading...`);
+                        
+                        // Use file:// protocol for local files
+                        const fileUrl = `file://${absolutePath}`;
                         response = await page.goto(fileUrl, {
                             waitUntil: 'domcontentloaded',
                             timeout: 60000
                         });
+                        
                         // Set the original URL for Lighthouse (so it knows what URL we're auditing)
                         await page.evaluate((originalUrl) => {
                             window.history.replaceState({}, '', originalUrl);
                         }, url);
-                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] HTML loaded from file, URL set to: ${url}`);
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] ✅ HTML loaded from file, URL set to: ${url}`);
                     } catch (fileError) {
-                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] HTML file not found, falling back to navigation...`);
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] ⚠️ HTML file access failed: ${fileError.message}`);
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Falling back to navigation...`);
                         // Fall through to normal navigation
                     }
                 }
@@ -565,16 +575,23 @@ async function tryWithPlaywrightFirst(url, options) {
         const fs = await import('fs/promises');
         const path = await import('path');
         const tempDir = process.env.TEMP_DIR || '/tmp';
+        
+        // Ensure temp directory exists
+        await fs.mkdir(tempDir, { recursive: true });
+        
         const htmlFileName = `playwright_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.html`;
-        const htmlFilePath = path.join(tempDir, htmlFileName);
+        const htmlFilePath = path.resolve(path.join(tempDir, htmlFileName));
         
         await fs.writeFile(htmlFilePath, htmlContent, 'utf-8');
+        
+        // Verify file was written
+        const stats = await fs.stat(htmlFilePath);
+        console.log(`📄 HTML saved to: ${htmlFilePath} (${stats.size} bytes)`);
         
         // Close Playwright browser
         await browser.close();
         
         console.log(`✅ Playwright successfully navigated to: ${finalUrl}`);
-        console.log(`📄 HTML saved to: ${htmlFilePath}`);
         return { success: true, finalUrl, htmlFilePath };
         
     } catch (error) {
