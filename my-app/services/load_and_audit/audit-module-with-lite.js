@@ -1,6 +1,7 @@
 // audit-module-with-lite-enhanced.js
 
 import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import { URL } from 'url';
 import lighthouse from 'lighthouse';
 import puppeteer from 'puppeteer-extra';
@@ -266,24 +267,26 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                         const htmlContent = await fs.readFile(absolutePath, 'utf-8');
                         
                         // Use setContent to load HTML directly (avoids file:// origin issues)
-                        // Then navigate to the original URL to set the proper origin
                         await page.setContent(htmlContent, {
                             waitUntil: 'domcontentloaded',
                             timeout: 60000
                         });
                         
-                        // Now navigate to the original URL to set the proper origin for Lighthouse
-                        // This will use the already-loaded content and just update the URL
-                        response = await page.goto(url, {
-                            waitUntil: 'domcontentloaded',
-                            timeout: 10000  // Short timeout since content is already loaded
-                        }).catch(() => {
-                            // If navigation fails, that's okay - content is already loaded
-                            // Create a mock response object
-                            return { status: () => 200 };
-                        });
+                        // Set the URL using evaluate to avoid navigation (which would trigger 403)
+                        await page.evaluate((targetUrl) => {
+                            // Update the location without navigating
+                            window.history.replaceState({}, '', targetUrl);
+                            // Update document.location properties
+                            Object.defineProperty(window, 'location', {
+                                value: new URL(targetUrl),
+                                writable: true
+                            });
+                        }, url);
                         
-                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] ✅ HTML loaded from file, page ready for Lighthouse`);
+                        // Create a mock response object since we didn't actually navigate
+                        response = { status: () => 200 };
+                        
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] ✅ HTML loaded from file, URL set to: ${url}`);
                     } catch (fileError) {
                         console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] ⚠️ HTML file access failed: ${fileError.message}`);
                         console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Falling back to navigation...`);
@@ -314,35 +317,40 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                     });
                 }
 
-                if (!response) {
-                    throw new Error('No response received from page navigation');
-                }
-
-                // More permissive status code handling - accept redirects and some 4xx codes
-                if (response.status() >= 500) {
-                    throw new Error(`HTTP ${response.status()}: Server error`);
-                }
-                
-                if (response.status() === 403) {
-                    // For 403, try to wait and see if it's just a temporary block
-                    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Got 403, waiting to see if page loads...`);
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    
-                    // Try to get page content to see if it actually loaded
-                    try {
-                        const content = await page.content();
-                        if (content.length < 1000) {
-                            throw new Error(`HTTP ${response.status()}: Failed to load page - insufficient content`);
-                        }
-                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page content loaded despite 403 status`);
-                    } catch (contentError) {
-                        throw new Error(`HTTP ${response.status()}: Failed to load page - ${contentError.message}`);
+                // Skip status checking if we loaded from HTML file (content is already loaded)
+                if (!htmlFilePath) {
+                    if (!response) {
+                        throw new Error('No response received from page navigation');
                     }
-                } else if (response.status() >= 400 && response.status() < 500) {
-                    throw new Error(`HTTP ${response.status()}: Failed to load page`);
-                }
 
-                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page loaded successfully (Status: ${response.status()})`);
+                    // More permissive status code handling - accept redirects and some 4xx codes
+                    if (response.status() >= 500) {
+                        throw new Error(`HTTP ${response.status()}: Server error`);
+                    }
+                    
+                    if (response.status() === 403) {
+                        // For 403, try to wait and see if it's just a temporary block
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Got 403, waiting to see if page loads...`);
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        
+                        // Try to get page content to see if it actually loaded
+                        try {
+                            const content = await page.content();
+                            if (content.length < 1000) {
+                                throw new Error(`HTTP ${response.status()}: Failed to load page - insufficient content`);
+                            }
+                            console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page content loaded despite 403 status`);
+                        } catch (contentError) {
+                            throw new Error(`HTTP ${response.status()}: Failed to load page - ${contentError.message}`);
+                        }
+                    } else if (response.status() >= 400 && response.status() < 500) {
+                        throw new Error(`HTTP ${response.status()}: Failed to load page`);
+                    }
+
+                    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page loaded successfully (Status: ${response.status()})`);
+                } else {
+                    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Page content loaded from file, skipping status check`);
+                }
 
                 // Strategy-specific wait time with additional random delay
                 const totalWaitTime = strategyConfig.waitTime + Math.random() * 2000;
@@ -424,7 +432,8 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                 const versionSuffix = isLiteVersion ? '-lite' : '';
                 const reportPath = `report-${hostname}-${timestamp}${versionSuffix}.${format}`;
 
-                fs.writeFileSync(reportPath, report);
+                const fsPromises = await import('fs/promises');
+                await fsPromises.writeFile(reportPath, report, 'utf-8');
                 console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Lighthouse ${version} report saved to ${reportPath}`);
 
                 // Validate lite version score
