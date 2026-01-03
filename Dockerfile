@@ -6,7 +6,8 @@ ENV NODE_ENV=production \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_CACHE_DIR=/usr/src/app/.cache/puppeteer \
     CHROME_PATH=/usr/bin/chromium \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    PLAYWRIGHT_BROWSERS_PATH=/usr/src/app/.cache/playwright
 
 WORKDIR /usr/src/app
 
@@ -59,8 +60,10 @@ RUN npm ci --omit=dev || npm install --omit=dev
 # Copy the rest of the source
 COPY . .
 
-# Ensure cache dir exists and is writable
-RUN mkdir -p $PUPPETEER_CACHE_DIR && chown -R node:node /usr/src/app
+# Ensure cache dirs exist, install Playwright browsers, then set ownership
+RUN mkdir -p $PUPPETEER_CACHE_DIR $PLAYWRIGHT_BROWSERS_PATH && \
+    npx playwright install chromium && \
+    chown -R node:node /usr/src/app
 
 USER node
 
