@@ -152,7 +152,7 @@ const ANTI_BOT_STRATEGIES = {
 };
 
 async function performAuditWithStrategy(url, options, strategy, attemptNumber = 1) {
-    const { device, format, isLiteVersion = false } = options;
+    const { device, format, isLiteVersion = false, htmlFilePath = null } = options;
     const version = isLiteVersion ? 'Lite' : 'Full';
     const strategyConfig = ANTI_BOT_STRATEGIES[strategy];
 
@@ -246,25 +246,53 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                     await page.setViewport(viewport);
                 }
 
-                // Navigate with strategy-specific timeout and human-like behavior
-                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Navigating to ${url}...`);
+                // Check if we have HTML file from Playwright (bypass navigation)
+                let response = null;
+                const fs = await import('fs/promises');
                 
-                // Add random delay before navigation (human-like behavior)
-                const randomDelay = Math.random() * 2000 + 1000; // 1-3 seconds
-                await new Promise(resolve => setTimeout(resolve, randomDelay));
+                if (htmlFilePath) {
+                    try {
+                        // Check if file exists
+                        await fs.access(htmlFilePath);
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Loading HTML from Playwright file (bypassing navigation)...`);
+                        const fileUrl = `file://${htmlFilePath}`;
+                        response = await page.goto(fileUrl, {
+                            waitUntil: 'domcontentloaded',
+                            timeout: 60000
+                        });
+                        // Set the original URL for Lighthouse (so it knows what URL we're auditing)
+                        await page.evaluate((originalUrl) => {
+                            window.history.replaceState({}, '', originalUrl);
+                        }, url);
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] HTML loaded from file, URL set to: ${url}`);
+                    } catch (fileError) {
+                        console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] HTML file not found, falling back to navigation...`);
+                        // Fall through to normal navigation
+                    }
+                }
                 
-                // Simulate mouse movement before navigation
-                await page.mouse.move(Math.random() * 100, Math.random() * 100);
-                
-                const response = await page.goto(url, {
-                    waitUntil: 'domcontentloaded',
-                    timeout: 60000
-                });
-                
-                // Simulate human-like scrolling after page loads
-                await page.evaluate(() => {
-                    window.scrollTo(0, Math.random() * 500);
-                });
+                // If no HTML file or file load failed, navigate normally
+                if (!response) {
+                    // Navigate with strategy-specific timeout and human-like behavior
+                    console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Navigating to ${url}...`);
+                    
+                    // Add random delay before navigation (human-like behavior)
+                    const randomDelay = Math.random() * 2000 + 1000; // 1-3 seconds
+                    await new Promise(resolve => setTimeout(resolve, randomDelay));
+                    
+                    // Simulate mouse movement before navigation
+                    await page.mouse.move(Math.random() * 100, Math.random() * 100);
+                    
+                    response = await page.goto(url, {
+                        waitUntil: 'domcontentloaded',
+                        timeout: 60000
+                    });
+                    
+                    // Simulate human-like scrolling after page loads
+                    await page.evaluate(() => {
+                        window.scrollTo(0, Math.random() * 500);
+                    });
+                }
 
                 if (!response) {
                     throw new Error('No response received from page navigation');
@@ -333,9 +361,9 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                 console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Starting Lighthouse audit...`);
 
                 const configToUse = isLiteVersion ? customConfigLite : customConfig;
-                // Use the page's current URL and pass the page object to avoid fresh navigation
-                const currentUrl = page.url();
-                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Running Lighthouse on current page URL: ${currentUrl}`);
+                // Use the original URL for Lighthouse (not file:// URL if we loaded from file)
+                const currentUrl = htmlFilePath ? url : page.url();
+                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Running Lighthouse on URL: ${currentUrl}`);
                 
                 let lighthouseResult;
                 try {
@@ -437,6 +465,17 @@ async function performAuditWithStrategy(url, options, strategy, attemptNumber = 
                 }
             }
         }
+        
+        // Clean up HTML file if it was created by Playwright
+        if (htmlFilePath) {
+            try {
+                const fs = await import('fs/promises');
+                await fs.unlink(htmlFilePath).catch(() => {}); // Ignore errors if file already deleted
+                console.log(`[Attempt ${attemptNumber}] [${strategyConfig.name}] Cleaned up HTML file: ${htmlFilePath}`);
+            } catch (cleanupError) {
+                // Ignore cleanup errors
+            }
+        }
     }
 }
 
@@ -511,6 +550,7 @@ async function tryWithPlaywrightFirst(url, options) {
             await page.waitForTimeout(3000);
             const content = await page.content();
             if (content.length < 1000) {
+                await browser.close();
                 throw new Error('Playwright: Insufficient content despite 403');
             }
         }
@@ -518,11 +558,24 @@ async function tryWithPlaywrightFirst(url, options) {
         // Get the final URL after any redirects
         const finalUrl = page.url();
         
+        // Get HTML content and save to file
+        const htmlContent = await page.content();
+        
+        // Save HTML to temporary file so Puppeteer can load it
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        const tempDir = process.env.TEMP_DIR || '/tmp';
+        const htmlFileName = `playwright_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.html`;
+        const htmlFilePath = path.join(tempDir, htmlFileName);
+        
+        await fs.writeFile(htmlFilePath, htmlContent, 'utf-8');
+        
         // Close Playwright browser
         await browser.close();
         
         console.log(`✅ Playwright successfully navigated to: ${finalUrl}`);
-        return { success: true, finalUrl };
+        console.log(`📄 HTML saved to: ${htmlFilePath}`);
+        return { success: true, finalUrl, htmlFilePath };
         
     } catch (error) {
         console.log(`❌ Playwright failed: ${error.message}`);
@@ -558,6 +611,7 @@ export async function runLighthouseAudit(options) {
     // First, try with Playwright to see if we can bypass 403
     const playwrightResult = await tryWithPlaywrightFirst(fullUrl, { device, format, isLiteVersion });
     const urlToUse = playwrightResult.success ? playwrightResult.finalUrl : fullUrl;
+    const htmlFilePath = playwrightResult.success ? playwrightResult.htmlFilePath : null;
     
     const strategies = ['basic', 'stealth', 'aggressive'];
     const maxAttemptsPerStrategy = 3;
@@ -578,7 +632,8 @@ export async function runLighthouseAudit(options) {
                 const result = await performAuditWithStrategy(urlToUse, {
                     device,
                     format,
-                    isLiteVersion
+                    isLiteVersion,
+                    htmlFilePath: htmlFilePath  // Pass HTML file path if available
                 }, strategy, attempt);
 
                 console.log(`=== SUCCESS: ${version} audit completed with ${strategy} strategy on attempt ${attempt} ===\n`);
