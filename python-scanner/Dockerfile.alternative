@@ -1,15 +1,21 @@
-# Python Scanner Service Dockerfile
+# Alternative Dockerfile - if main one fails
+# This version installs packages more carefully
+
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies required for Camoufox and browser automation
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
     ca-certificates \
     fonts-liberation \
+    gcc \
+    g++ \
+    libxml2-dev \
+    libxslt1-dev \
+    python3-dev \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -46,51 +52,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements
 COPY requirements.txt .
 
-# Install build dependencies for some packages (lxml, etc.)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    libxml2-dev \
-    libxslt1-dev \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
-# Upgrade pip first
+# Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install all dependencies from requirements.txt
-# camoufox[geoip]>=0.4.1 will install the latest compatible version (0.4.1 or higher)
-RUN pip install --no-cache-dir -r requirements.txt
+# Install packages from requirements.txt
+# Use --no-deps for camoufox if it has issues, then install deps manually
+RUN pip install --no-cache-dir -r requirements.txt || \
+    (pip install --no-cache-dir \
+        fastapi==0.104.1 \
+        uvicorn==0.24.0 \
+        beautifulsoup4==4.12.2 \
+        lxml==4.9.3 \
+        requests==2.31.0 \
+        python-multipart==0.0.6 \
+        pydantic==2.5.0 && \
+     pip install --no-cache-dir camoufox==0.4.0)
 
-# Download Camoufox browser (run after installation)
-# This may fail in build, but will work at runtime
-RUN python3 -m camoufox fetch 2>&1 || \
-    camoufox fetch 2>&1 || \
-    echo "Note: Camoufox browser will be downloaded at runtime if needed"
+# Try to fetch Camoufox browser (non-blocking)
+RUN python3 -m camoufox fetch 2>&1 || true
 
-# Copy application code
 COPY scanner_service.py .
 
-# Create temp directory for reports
 RUN mkdir -p /tmp && chmod 777 /tmp
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     TEMP_DIR=/tmp \
     PORT=8001 \
     HOST=0.0.0.0
 
-# Expose port
 EXPOSE 8001
 
-# Health check (using curl instead of requests to avoid dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8001/health || exit 1
 
-# Run the application
 CMD ["uvicorn", "scanner_service:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1", "--limit-concurrency", "10", "--timeout-keep-alive", "300"]
 

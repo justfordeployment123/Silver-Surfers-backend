@@ -373,7 +373,9 @@ async def perform_audit(request: AuditRequest):
         # Use Camoufox for advanced anti-detection
         # Camoufox automatically handles fingerprinting, headers, and anti-detection
         # Camoufox uses a context manager (sync) but returns async Playwright pages
-        with Camoufox(headless=True, viewport=viewport) as browser:
+        # Ensure Camoufox browser is available (download if needed)
+        try:
+            with Camoufox(headless=True, viewport=viewport) as browser:
             # Camoufox returns a Playwright-compatible page (async)
             page = await browser.new_page()
             

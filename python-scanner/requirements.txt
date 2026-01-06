@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn==0.24.0
-camoufox[geoip]==0.4.0
+camoufox[geoip]>=0.4.1
 beautifulsoup4==4.12.2
 lxml==4.9.3
 requests==2.31.0
