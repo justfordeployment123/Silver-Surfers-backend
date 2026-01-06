@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  python-scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: silversurfers-python-scanner
+    ports:
+      - "${PORT:-8001}:8001"
+    environment:
+      - PORT=${PORT:-8001}
+      - HOST=${HOST:-0.0.0.0}
+      - TEMP_DIR=${TEMP_DIR:-/tmp}
+      - PYTHON_SCANNER_URL=${PYTHON_SCANNER_URL:-http://localhost:8001}
+      - PYTHONUNBUFFERED=1
+      - LIMIT_CONCURRENCY=${LIMIT_CONCURRENCY:-10}
+      - TIMEOUT_KEEP_ALIVE=${TIMEOUT_KEEP_ALIVE:-300}
+    volumes:
+      # Mount temp directory for report persistence (optional)
+      - ./tmp:/tmp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8001/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - silversurfers-network
+
+networks:
+  silversurfers-network:
+    driver: bridge
+

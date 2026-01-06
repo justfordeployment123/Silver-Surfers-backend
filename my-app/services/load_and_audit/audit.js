@@ -561,69 +561,31 @@ export async function runLighthouseAudit(options) {
     }
 
     const fullUrl = url.startsWith('http') ? url : `https://${url}`;
-    const strategies = ['aggressive', 'stealth', 'basic'];
-    const maxAttemptsPerStrategy = 3;
-    const allErrors = [];
 
-    console.log(`\n=== Starting audit for ${fullUrl} ===`);
-    console.log(`Strategies to try: ${strategies.join(' → ')}`);
-
-    for (const strategy of strategies) {
-        console.log(`\n--- Trying ${ANTI_BOT_STRATEGIES[strategy].name} Strategy ---`);
-        
-        const strategyErrors = [];
-        
-        for (let attempt = 1; attempt <= maxAttemptsPerStrategy; attempt++) {
-            try {
-                const result = await performAuditWithStrategy(fullUrl, {
-                    device,
-                    format
-                }, strategy, attempt);
-
-                console.log(`=== SUCCESS: Audit completed with ${strategy} strategy on attempt ${attempt} ===\n`);
-                return result;
-
-            } catch (error) {
-                const errorInfo = {
-                    strategy: strategy,
-                    attempt: attempt,
-                    error: error.message,
-                    timestamp: new Date().toISOString()
-                };
-                strategyErrors.push(errorInfo);
-                allErrors.push(errorInfo);
-
-                console.error(`[${strategy}] Attempt ${attempt} failed: ${error.message}`);
-
-                if (attempt < maxAttemptsPerStrategy) {
-                    const waitTime = 2000 * attempt; // 2s, 4s
-                    console.log(`[${strategy}] Waiting ${waitTime}ms before retry...`);
-                    await new Promise(resolve => setTimeout(resolve, waitTime));
-                }
-            }
-        }
-
-        console.log(`--- ${ANTI_BOT_STRATEGIES[strategy].name} Strategy failed after ${maxAttemptsPerStrategy} attempts ---`);
-    }
-
-    const finalError = {
-        success: false,
-        error: `All strategies failed after ${strategies.length * maxAttemptsPerStrategy} total attempts`,
-        errorCode: 'ALL_STRATEGIES_FAILED',
-        message: `Audit failed: website has strong anti-bot protections`,
+    console.log(`\n=== Starting Full audit for ${fullUrl} (Python/Camoufox) ===`);
+    
+    // Use Python scanner directly (no Node.js strategies)
+    const { tryPythonScanner } = await import('./python-scanner-client.js');
+    const result = await tryPythonScanner({
         url: fullUrl,
         device: device,
-        strategiesTried: strategies,
-        totalAttempts: allErrors.length,
-        allErrors: allErrors,
-        timestamp: new Date().toISOString(),
-        retryable: false,
-        recommendation: 'This website has very strong anti-bot protections. Manual testing may be required.'
-    };
-
-    console.error(`=== FINAL FAILURE: All strategies exhausted for ${fullUrl} ===`);
-    console.error('Strategies tried:', strategies.join(', '));
-    console.error('Total attempts:', allErrors.length);
+        format: format,
+        isLiteVersion: false
+    });
     
-    return finalError;
+    if (result.success) {
+        console.log(`✅ Full audit completed successfully using Python/Camoufox`);
+        return result;
+    } else {
+        console.error(`❌ Full audit failed: ${result.error}`);
+        return {
+            success: false,
+            error: result.error || 'Python scanner failed',
+            errorCode: result.errorCode || 'PYTHON_SCANNER_FAILED',
+            message: `Full audit failed: ${result.error}`,
+            url: fullUrl,
+            device: device,
+            timestamp: new Date().toISOString()
+        };
+    }
 }

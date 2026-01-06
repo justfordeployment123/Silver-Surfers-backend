@@ -57,13 +57,13 @@ await (async () => {
     
     // Create queue instances
     fullAuditQueue = new PersistentQueue('FullAudit', runFullAuditProcess, {
-      concurrency: 2,
+      concurrency: 5,  // Allow 5 parallel scans
       maxRetries: 3,
       retryDelay: 10000
     });
 
     quickScanQueue = new PersistentQueue('QuickScan', runQuickScanProcess, {
-      concurrency: 3,
+      concurrency: 5,  // Allow 5 parallel scans
       maxRetries: 3,
       retryDelay: 5000
     });
