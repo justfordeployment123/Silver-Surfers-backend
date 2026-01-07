@@ -118,10 +118,13 @@ class PersistentQueue {
       }
 
       // Start processing the job
+      // Note: job.status is already set to 'processing' by getNextJob's atomic update
       this.processingJobs.add(job._id);
       
       try {
-        await job.startProcessing(process.env.NODE_ENV || 'development');
+        // Update processing node info (status and startedAt already set by getNextJob)
+        job.processingNode = process.env.NODE_ENV || 'development';
+        await job.save();
         console.log(`🔄 Processing job ${job.taskId} in ${this.queueName}`);
         
         // Execute the job - Pass all relevant job data including custom fields

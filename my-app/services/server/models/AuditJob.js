@@ -173,7 +173,26 @@ auditJobSchema.statics.getNextJob = async function(jobType = null) {
     query.jobType = jobType;
   }
   
-  return this.findOne(query).sort({ priority: -1, queuedAt: 1 });
+  // Use findOneAndUpdate to atomically claim the job and prevent duplicate processing
+  // This ensures only one worker can claim a job at a time
+  const job = await this.findOneAndUpdate(
+    query,
+    {
+      $set: {
+        status: 'processing',
+        startedAt: new Date()
+      },
+      $inc: {
+        attempts: 1
+      }
+    },
+    {
+      sort: { priority: -1, queuedAt: 1 },
+      new: true // Return the updated document
+    }
+  );
+  
+  return job;
 };
 
 auditJobSchema.statics.getPendingJobs = function() {
