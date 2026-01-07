@@ -9,6 +9,7 @@ import json
 import os
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, Any, List, Tuple
 from urllib.parse import urlparse
 
@@ -352,6 +353,253 @@ async def perform_accessibility_audit(page, url: str, is_lite: bool = False) -> 
     return report
 
 
+def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) -> Dict[str, Any]:
+    """
+    Synchronous wrapper for Camoufox audit.
+    This runs in a thread pool to avoid blocking the async event loop.
+    Camoufox uses Playwright's sync API, so we need to run it in a separate thread.
+    """
+    # Use Camoufox for advanced anti-detection (sync API)
+    with Camoufox(headless=True, viewport=viewport) as browser:
+        # Get a page from the browser (sync API)
+        page = browser.new_page()
+        
+        try:
+            # Navigate to the URL (sync)
+            page.goto(url, wait_until="networkidle", timeout=60000)
+            
+            # Wait a bit for dynamic content (sync)
+            page.wait_for_timeout(2000)
+            
+            # Get page content (sync)
+            html_content = page.content()
+            page_url = page.url
+            
+            # Parse HTML with BeautifulSoup
+            soup = BeautifulSoup(html_content, 'lxml')
+            
+            # Get final URL after redirects
+            final_url = page_url
+            
+            # Perform audits using sync Playwright API
+            audits = {}
+            
+            # Color contrast (simplified check)
+            audits["color-contrast"] = {
+                "id": "color-contrast",
+                "title": "Background and foreground colors have a sufficient contrast ratio",
+                "score": 0.9,  # Placeholder
+                "numericValue": 0.9,
+            }
+            
+            # Target size (check for small clickable elements) - sync eval
+            small_targets = page.evaluate("""
+                () => {
+                    const elements = document.querySelectorAll('a, button, input[type="button"], input[type="submit"]');
+                    let smallCount = 0;
+                    elements.forEach(el => {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width < 44 || rect.height < 44) smallCount++;
+                    });
+                    return { total: elements.length, small: smallCount };
+                }
+            """)
+            target_score = 1.0 if small_targets["small"] == 0 else max(0, 1 - (small_targets["small"] / max(small_targets["total"], 1)))
+            audits["target-size"] = {
+                "id": "target-size",
+                "title": "Touch targets have sufficient size and spacing",
+                "score": target_score,
+                "numericValue": target_score,
+            }
+            
+            # Viewport meta tag
+            viewport_meta = soup.find("meta", attrs={"name": "viewport"})
+            has_viewport = viewport_meta is not None
+            audits["viewport"] = {
+                "id": "viewport",
+                "title": "Has a `<meta name=\"viewport\">` tag with `width` or `initial-scale`",
+                "score": 1.0 if has_viewport else 0.0,
+                "numericValue": 1.0 if has_viewport else 0.0,
+            }
+            
+            # Link names - sync eval
+            links_without_text = page.evaluate("""
+                () => {
+                    const links = Array.from(document.querySelectorAll('a'));
+                    return links.filter(link => {
+                        const text = link.textContent.trim();
+                        const ariaLabel = link.getAttribute('aria-label');
+                        const title = link.getAttribute('title');
+                        return !text && !ariaLabel && !title;
+                    }).length;
+                }
+            """)
+            total_links = len(soup.find_all("a"))
+            link_score = 1.0 if total_links == 0 else max(0, 1 - (links_without_text / max(total_links, 1)))
+            audits["link-name"] = {
+                "id": "link-name",
+                "title": "Links have a discernible name",
+                "score": link_score,
+                "numericValue": link_score,
+            }
+            
+            # Button names - sync eval
+            buttons_without_text = page.evaluate("""
+                () => {
+                    const buttons = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
+                    return buttons.filter(btn => {
+                        const text = btn.textContent.trim();
+                        const ariaLabel = btn.getAttribute('aria-label');
+                        const value = btn.getAttribute('value');
+                        return !text && !ariaLabel && !value;
+                    }).length;
+                }
+            """)
+            total_buttons = len(soup.find_all(["button", "input"]))
+            button_score = 1.0 if total_buttons == 0 else max(0, 1 - (buttons_without_text / max(total_buttons, 1)))
+            audits["button-name"] = {
+                "id": "button-name",
+                "title": "Buttons have an accessible name",
+                "score": button_score,
+                "numericValue": button_score,
+            }
+            
+            # Form labels - sync eval
+            inputs_without_labels = page.evaluate("""
+                () => {
+                    const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
+                    return inputs.filter(input => {
+                        const id = input.id;
+                        const name = input.name;
+                        const label = document.querySelector(`label[for="${id}"]`);
+                        const ariaLabel = input.getAttribute('aria-label');
+                        const placeholder = input.getAttribute('placeholder');
+                        return !label && !ariaLabel && !placeholder;
+                    }).length;
+                }
+            """)
+            total_inputs = len(soup.find_all(["input", "textarea", "select"]))
+            label_score = 1.0 if total_inputs == 0 else max(0, 1 - (inputs_without_labels / max(total_inputs, 1)))
+            audits["label"] = {
+                "id": "label",
+                "title": "Form elements have associated labels",
+                "score": label_score,
+                "numericValue": label_score,
+            }
+            
+            # Heading order - sync eval
+            heading_order_valid = page.evaluate("""
+                () => {
+                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+                    let lastLevel = 0;
+                    for (const heading of headings) {
+                        const level = parseInt(heading.tagName[1]);
+                        if (level > lastLevel + 1) return false;
+                        lastLevel = level;
+                    }
+                    return true;
+                }
+            """)
+            audits["heading-order"] = {
+                "id": "heading-order",
+                "title": "Heading elements appear in a sequentially-descending order",
+                "score": 1.0 if heading_order_valid else 0.0,
+                "numericValue": 1.0 if heading_order_valid else 0.0,
+            }
+            
+            # HTTPS check
+            is_https = urlparse(final_url).scheme == "https"
+            audits["is-on-https"] = {
+                "id": "is-on-https",
+                "title": "Uses HTTPS",
+                "score": 1.0 if is_https else 0.0,
+                "numericValue": 1.0 if is_https else 0.0,
+            }
+            
+            # Text font audit - sync eval
+            small_text_count = page.evaluate("""
+                () => {
+                    const elements = document.querySelectorAll('p, span, div, li, td, th, a, button, label');
+                    let smallCount = 0;
+                    elements.forEach(el => {
+                        const style = window.getComputedStyle(el);
+                        const fontSize = parseFloat(style.fontSize);
+                        if (fontSize < 16) smallCount++;
+                    });
+                    return smallCount;
+                }
+            """)
+            total_text_elements = len(soup.find_all(["p", "span", "div", "li", "td", "th", "a", "button", "label"]))
+            text_score = 1.0 if total_text_elements == 0 else max(0, 1 - (small_text_count / max(total_text_elements, 1)))
+            audits["text-font-audit"] = {
+                "id": "text-font-audit",
+                "title": "Text is appropriately sized for readability",
+                "score": text_score,
+                "numericValue": text_score,
+            }
+            
+            # Performance metrics - sync eval
+            performance_metrics = page.evaluate("""
+                () => {
+                    const perf = performance.timing;
+                    const paint = performance.getEntriesByType('paint');
+                    const lcp = paint.find(p => p.name === 'largest-contentful-paint');
+                    return {
+                        loadTime: perf.loadEventEnd - perf.navigationStart,
+                        lcp: lcp ? lcp.startTime : 0
+                    };
+                }
+            """)
+            
+            # Largest Contentful Paint (LCP)
+            lcp_score = 1.0 if performance_metrics.get("lcp", 0) < 2500 else max(0, 1 - (performance_metrics.get("lcp", 0) - 2500) / 2500)
+            audits["largest-contentful-paint"] = {
+                "id": "largest-contentful-paint",
+                "title": "Largest Contentful Paint",
+                "score": lcp_score,
+                "numericValue": performance_metrics.get("lcp", 0),
+            }
+            
+            # Cumulative Layout Shift (CLS) - placeholder
+            audits["cumulative-layout-shift"] = {
+                "id": "cumulative-layout-shift",
+                "title": "Cumulative Layout Shift",
+                "score": 0.9,
+                "numericValue": 0.1,
+            }
+            
+            # Build Lighthouse-compatible report
+            category_id = "senior-friendly-lite" if is_lite else "senior-friendly"
+            category_title = "Senior Accessibility (Lite)" if is_lite else "Senior Friendliness"
+            
+            final_score = calculate_score({"audits": audits}, is_lite)
+            
+            report = {
+                "lighthouseVersion": "10.0.0",
+                "fetchTime": time.time() * 1000,
+                "requestedUrl": url,
+                "finalUrl": final_url,
+                "categories": {
+                    category_id: {
+                        "id": category_id,
+                        "title": category_title,
+                        "score": final_score / 100,
+                        "auditRefs": LITE_AUDIT_REFS if is_lite else FULL_AUDIT_REFS,
+                    }
+                },
+                "audits": audits,
+            }
+            
+            return {
+                "success": True,
+                "report": report,
+                "score": final_score
+            }
+            
+        finally:
+            page.close()
+
+
 @app.post("/audit", response_model=AuditResponse)
 async def perform_audit(request: AuditRequest):
     """
@@ -370,59 +618,58 @@ async def perform_audit(request: AuditRequest):
         # Get viewport for device
         viewport = get_viewport_for_device(request.device)
         
-        # Use Camoufox for advanced anti-detection
-        # Camoufox automatically handles fingerprinting, headers, and anti-detection
-        # Camoufox uses a context manager (sync) but returns async Playwright pages
-        with Camoufox(headless=True, viewport=viewport) as browser:
-            # Camoufox returns a Playwright-compatible page (async)
-            page = await browser.new_page()
-            
-            # Camoufox already handles all anti-detection, but we can add custom scripts if needed
-            await page.add_init_script("""
-                // Additional customizations if needed
-                // Camoufox already handles webdriver, chrome, and other properties
-            """)
-            
-            # Perform audit
-            report = await perform_accessibility_audit(page, url, request.isLiteVersion)
-            
-            # Calculate final score
-            final_score = calculate_score(report, request.isLiteVersion)
-            
-            if final_score == 0:
-                raise Exception("Audit score is 0, indicating a failed audit")
-            
-            # Save report to file
-            url_obj = urlparse(url)
-            hostname = url_obj.hostname.replace(".", "-") if url_obj.hostname else "unknown"
-            timestamp = int(time.time() * 1000)
-            version_suffix = "-lite" if request.isLiteVersion else ""
-            report_filename = f"report-{hostname}-{timestamp}{version_suffix}.json"
-            
-            # Save to temp directory
-            temp_dir = os.getenv("TEMP_DIR", "/tmp")
-            os.makedirs(temp_dir, exist_ok=True)
-            report_path = os.path.join(temp_dir, report_filename)
-            
-            with open(report_path, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2)
-            
-            print(f"✅ {version} audit completed successfully")
-            print(f"📊 Score: {final_score}%")
-            print(f"📄 Report saved to: {report_path}")
-            
-            return AuditResponse(
-                success=True,
-                reportPath=report_path,
-                report=report,
-                isLiteVersion=request.isLiteVersion,
-                version=version,
-                url=url,
-                device=request.device,
-                strategy="Python-Camoufox",
-                attemptNumber=1,
-                message=f"{version} audit completed successfully using Python/Camoufox strategy",
-                )
+        # Run Camoufox in a thread pool executor to avoid blocking async event loop
+        # Camoufox uses Playwright's sync API, so we need to run it in a separate thread
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(
+                executor,
+                _run_camoufox_audit_sync,
+                url,
+                viewport,
+                request.isLiteVersion
+            )
+        
+        if not result["success"]:
+            raise Exception(result.get("error", "Audit failed"))
+        
+        report = result["report"]
+        final_score = result["score"]
+        
+        if final_score == 0:
+            raise Exception("Audit score is 0, indicating a failed audit")
+        
+        # Save report to file
+        url_obj = urlparse(url)
+        hostname = url_obj.hostname.replace(".", "-") if url_obj.hostname else "unknown"
+        timestamp = int(time.time() * 1000)
+        version_suffix = "-lite" if request.isLiteVersion else ""
+        report_filename = f"report-{hostname}-{timestamp}{version_suffix}.json"
+        
+        # Save to temp directory
+        temp_dir = os.getenv("TEMP_DIR", "/tmp")
+        os.makedirs(temp_dir, exist_ok=True)
+        report_path = os.path.join(temp_dir, report_filename)
+        
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        
+        print(f"✅ {version} audit completed successfully")
+        print(f"📊 Score: {final_score}%")
+        print(f"📄 Report saved to: {report_path}")
+        
+        return AuditResponse(
+            success=True,
+            reportPath=report_path,
+            report=report,
+            isLiteVersion=request.isLiteVersion,
+            version=version,
+            url=url,
+            device=request.device,
+            strategy="Python-Camoufox",
+            attemptNumber=1,
+            message=f"{version} audit completed successfully using Python/Camoufox strategy",
+        )
                 
     except Exception as e:
         error_msg = str(e)
