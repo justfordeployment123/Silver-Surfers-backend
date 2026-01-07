@@ -86,9 +86,25 @@ async function uploadToDrive(filePath, fileName, folderPath, email) {
     // Import fs for creating read stream
     const fsSync = await import('fs');
     
+    // Verify file exists before creating read stream
+    try {
+      await fs.access(filePath);
+    } catch (accessError) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    // Create read stream with error handling
+    const readStream = fsSync.createReadStream(filePath);
+    
+    // Handle stream errors to prevent unhandled error events
+    readStream.on('error', (streamError) => {
+      console.error(`Read stream error for ${filePath}:`, streamError.message);
+      // Error will be caught by the outer try-catch
+    });
+    
     const media = {
       mimeType: 'application/pdf',
-      body: fsSync.createReadStream(filePath)  // Use stream instead of buffer
+      body: readStream
     };
 
     const fileMetadata = {
@@ -157,39 +173,52 @@ async function uploadToDrive(filePath, fileName, folderPath, email) {
 export async function collectAttachmentsRecursive(rootDir, deviceFilter = null) {
   const results = [];
   async function walk(dir) {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const de of entries) {
-      const full = path.join(dir, de.name);
-      if (de.isDirectory()) {
-        await walk(full);
-      } else if (de.isFile()) {
-        // Only attach PDFs by default to keep emails smaller
-        if (full.toLowerCase().endsWith('.pdf')) {
-          // Filter by device if specified (check filename for device)
-          if (deviceFilter) {
-            // Only include reports for the selected device
-            // Match patterns like: -tablet.pdf, -tablet-, _tablet.pdf, _tablet-, etc.
-            const deviceRegex = new RegExp(`[-_]${deviceFilter}([-.]|$)`);
-            const hasDeviceMatch = deviceRegex.test(full);
-            if (!hasDeviceMatch) {
-              continue; // Skip this file
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const de of entries) {
+        const full = path.join(dir, de.name);
+        if (de.isDirectory()) {
+          await walk(full);
+        } else if (de.isFile()) {
+          // Only attach PDFs by default to keep emails smaller
+          if (full.toLowerCase().endsWith('.pdf')) {
+            // Filter by device if specified (check filename for device)
+            if (deviceFilter) {
+              // Only include reports for the selected device
+              // Match patterns like: -tablet.pdf, -tablet-, _tablet.pdf, _tablet-, etc.
+              const deviceRegex = new RegExp(`[-_]${deviceFilter}([-.]|$)`);
+              const hasDeviceMatch = deviceRegex.test(full);
+              if (!hasDeviceMatch) {
+                continue; // Skip this file
+              }
+            }
+            // Verify file exists and is accessible before adding to results
+            try {
+              await fs.access(full);
+              const fileSize = await getFileSize(full);
+              results.push({ 
+                filename: path.relative(rootDir, full), 
+                path: full,
+                size: fileSize,
+                sizeMB: (fileSize / (1024 * 1024)).toFixed(2)
+              });
+            } catch (accessError) {
+              // File doesn't exist or can't be accessed - skip it silently
+              console.warn(`⚠️ Skipping file that doesn't exist or is inaccessible: ${full}`);
+              continue;
             }
           }
-          const fileSize = await getFileSize(full);
-          results.push({ 
-            filename: path.relative(rootDir, full), 
-            path: full,
-            size: fileSize,
-            sizeMB: (fileSize / (1024 * 1024)).toFixed(2)
-          });
         }
       }
+    } catch (dirError) {
+      // Directory doesn't exist or can't be read - log and continue
+      console.warn(`⚠️ Cannot read directory ${dir}:`, dirError.message);
     }
   }
   try {
     await walk(rootDir);
   } catch (e) {
-    console.error('Error walking attachments folder:', e.message);
+    console.warn(`⚠️ Error walking directory ${rootDir}:`, e.message);
   }
   return results;
 }
@@ -228,6 +257,15 @@ export async function sendAuditReportEmail({ to, subject, text, folderPath, isQu
   
   for (const file of files) {
     try {
+      // Double-check file exists before attempting upload
+      try {
+        await fs.access(file.path);
+      } catch (accessError) {
+        console.warn(`⚠️ File no longer exists, skipping: ${file.filename}`);
+        s3Errors.push(`${file.filename}: File was deleted before upload`);
+        continue;
+      }
+      
       const uploadResult = await uploadToDrive(file.path, file.filename, folderPath, to);
       uploadedFiles.push({
         filename: file.filename,
@@ -238,8 +276,14 @@ export async function sendAuditReportEmail({ to, subject, text, folderPath, isQu
       });
       console.log(`✅ Uploaded ${file.filename} (${file.sizeMB}MB) to Google Drive`);
     } catch (uploadError) {
-      console.error(`❌ Failed to upload ${file.filename}:`, uploadError.message);
-      s3Errors.push(`${file.filename}: ${uploadError.message}`);
+      // Handle ENOENT (file not found) errors gracefully
+      if (uploadError.code === 'ENOENT') {
+        console.warn(`⚠️ File not found during upload, skipping: ${file.filename}`);
+        s3Errors.push(`${file.filename}: File was deleted before upload`);
+      } else {
+        console.error(`❌ Failed to upload ${file.filename}:`, uploadError.message);
+        s3Errors.push(`${file.filename}: ${uploadError.message}`);
+      }
     }
   }
 
