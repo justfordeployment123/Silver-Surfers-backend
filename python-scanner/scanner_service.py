@@ -360,9 +360,13 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
     Camoufox uses Playwright's sync API, so we need to run it in a separate thread.
     """
     # Use Camoufox for advanced anti-detection (sync API)
-    with Camoufox(headless=True, viewport=viewport) as browser:
+    # Note: viewport is set on the page, not in the browser constructor
+    with Camoufox(headless=True) as browser:
         # Get a page from the browser (sync API)
         page = browser.new_page()
+        
+        # Set viewport for the page
+        page.set_viewport_size(width=viewport["width"], height=viewport["height"])
         
         try:
             # Navigate to the URL (sync)
