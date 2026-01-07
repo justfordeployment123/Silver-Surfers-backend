@@ -94,10 +94,10 @@ export async function processColorContrastAudit(jsonReportPath, outputImagePath)
     // 2. Use async file read instead of sync
     const lighthouseReport = JSON.parse(await fs.readFile(jsonReportPath, 'utf8'));
 
+    // Screenshots are not required - skip image generation if not available
     const screenshotData = lighthouseReport.fullPageScreenshot?.screenshot?.data;
     if (!screenshotData) {
-        console.error('❌ Error: Report does not contain a full-page screenshot.'); 
-        return null;
+        return null; // Silently skip if no screenshot
     }
     const screenshotBuffer = Buffer.from(screenshotData.split(',').pop(), 'base64');
 

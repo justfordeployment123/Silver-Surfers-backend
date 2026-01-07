@@ -369,8 +369,9 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
         page.set_viewport_size(viewport)
         
         try:
-            # Navigate to the URL (sync) - increased timeout for slow sites
-            page.goto(url, wait_until="networkidle", timeout=120000)  # 2 minutes timeout
+            # Navigate to the URL (sync) - use "load" instead of "networkidle" for better reliability
+            # "networkidle" can timeout on sites with continuous network activity
+            page.goto(url, wait_until="load", timeout=120000)  # 2 minutes timeout
             
             # Wait a bit for dynamic content (sync)
             page.wait_for_timeout(2000)

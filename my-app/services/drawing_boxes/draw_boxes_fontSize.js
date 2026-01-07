@@ -133,10 +133,10 @@ export async function processTextFontAudit(jsonReportPath, outputImagePath) {
         return null;
     }
 
+    // Screenshots are not required - skip image generation if not available
     const screenshotData = lighthouseReport.fullPageScreenshot?.screenshot?.data;
     if (!screenshotData) {
-        console.error('❌ Error: Report does not contain a full-page screenshot.');
-        return null;
+        return null; // Silently skip if no screenshot
     }
     
     // 3. Work with the screenshot in memory instead of creating a temp file

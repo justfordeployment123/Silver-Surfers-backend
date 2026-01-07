@@ -113,10 +113,10 @@ export async function processTargetSizeAudit(jsonReportPath, outputImagePath) {
     const reportContent = await fsPromises.readFile(jsonReportPath, 'utf8');
     const lighthouseReport = JSON.parse(reportContent);
 
+    // Screenshots are not required - skip image generation if not available
     const screenshotData = lighthouseReport.fullPageScreenshot?.screenshot?.data;
     if (!screenshotData) {
-        console.error('❌ Error: Report does not contain a full-page screenshot.'); 
-        return null; // Return null if no image can be generated
+        return null; // Silently skip if no screenshot
     }
     const screenshotBuffer = Buffer.from(screenshotData.split(',').pop(), 'base64');
 
