@@ -442,8 +442,9 @@ async def perform_audit(request: AuditRequest):
 
 
 @app.get("/health")
+@app.head("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint - supports both GET and HEAD for health checks"""
     return {"status": "healthy", "service": "python-scanner"}
 
 
