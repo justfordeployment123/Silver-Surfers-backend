@@ -365,8 +365,8 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
         # Get a page from the browser (sync API)
         page = browser.new_page()
         
-        # Set viewport for the page
-        page.set_viewport_size(width=viewport["width"], height=viewport["height"])
+        # Set viewport for the page (Playwright sync API uses positional args or dict)
+        page.set_viewport_size(viewport["width"], viewport["height"])
         
         try:
             # Navigate to the URL (sync)
