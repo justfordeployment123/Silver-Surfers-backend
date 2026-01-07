@@ -648,10 +648,10 @@ addOverallScoreDisplay(scoreData) {
     this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
     this.currentY += 20;
     
-    // Description text
-    if (auditData.description) {
-        const description = auditData.description;
-        let cleanText = description.replace(/\[(.*?)\]\(.*?\)/g, '$1').trim();
+    // Description text - use auditData.description if available, otherwise use title
+    let descriptionText = auditData.description || auditData.title || info.title;
+    if (descriptionText) {
+        let cleanText = descriptionText.replace(/\[(.*?)\]\(.*?\)/g, '$1').trim();
 
         if (cleanText.length > 0 && !cleanText.endsWith('.')) {
             cleanText += '.';
@@ -1171,21 +1171,15 @@ addOverallScoreDisplay(scoreData) {
                     if (auditData.score === null) {
                         continue;
                     }
-                    // Only count as generated if there are visible details/items
+                    // Generate detail pages for all audits with scores
+                    // Python scanner may not have details.items, but we still want to show the audit details
+                    detailPagesGenerated = true;
+                    this.addAuditDetailPage(auditId, auditData);
+                    // Only add table pages if details.items exist (for Lighthouse reports)
                     if (auditData.details && Array.isArray(auditData.details.items) && auditData.details.items.length > 0) {
-                        detailPagesGenerated = true;
-                        this.addAuditDetailPage(auditId, auditData);
                         this.addTablePages(auditId, auditData);
                     }
                 }
-            }
-            if (!detailPagesGenerated) {
-                if (this.currentY > this.doc.page.height - 100) {
-                    this.addPage();
-                    this.currentY = 60;
-                }
-                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
-                this.currentY += 40;
             }
             this.doc.end();
 

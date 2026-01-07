@@ -393,6 +393,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["color-contrast"] = {
                 "id": "color-contrast",
                 "title": "Background and foreground colors have a sufficient contrast ratio",
+                "description": "This audit checks whether text and background colors have sufficient contrast for readability. Adequate contrast is essential for older adults with vision changes.",
                 "score": 0.9,  # Placeholder
                 "numericValue": 0.9,
             }
@@ -413,6 +414,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["target-size"] = {
                 "id": "target-size",
                 "title": "Touch targets have sufficient size and spacing",
+                "description": f"This audit checks if interactive elements (buttons, links) are large enough for easy clicking. Found {small_targets['small']} small targets out of {small_targets['total']} total interactive elements.",
                 "score": target_score,
                 "numericValue": target_score,
             }
@@ -423,6 +425,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["viewport"] = {
                 "id": "viewport",
                 "title": "Has a `<meta name=\"viewport\">` tag with `width` or `initial-scale`",
+                "description": "This audit checks if the page has a proper viewport meta tag for mobile devices. A viewport tag ensures the page displays correctly on tablets and phones.",
                 "score": 1.0 if has_viewport else 0.0,
                 "numericValue": 1.0 if has_viewport else 0.0,
             }
@@ -444,6 +447,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["link-name"] = {
                 "id": "link-name",
                 "title": "Links have a discernible name",
+                "description": f"This audit checks if all links have descriptive text. Found {links_without_text} links without text out of {total_links} total links.",
                 "score": link_score,
                 "numericValue": link_score,
             }
@@ -465,6 +469,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["button-name"] = {
                 "id": "button-name",
                 "title": "Buttons have an accessible name",
+                "description": f"This audit checks if all buttons have descriptive labels. Found {buttons_without_text} buttons without text out of {total_buttons} total buttons.",
                 "score": button_score,
                 "numericValue": button_score,
             }
@@ -488,6 +493,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["label"] = {
                 "id": "label",
                 "title": "Form elements have associated labels",
+                "description": f"This audit checks if all form inputs have associated labels. Found {inputs_without_labels} inputs without labels out of {total_inputs} total inputs.",
                 "score": label_score,
                 "numericValue": label_score,
             }
@@ -508,6 +514,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["heading-order"] = {
                 "id": "heading-order",
                 "title": "Heading elements appear in a sequentially-descending order",
+                "description": "This audit checks if headings follow a logical order (H1, then H2, then H3, etc.). Proper heading structure helps screen readers and improves content organization.",
                 "score": 1.0 if heading_order_valid else 0.0,
                 "numericValue": 1.0 if heading_order_valid else 0.0,
             }
@@ -517,6 +524,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["is-on-https"] = {
                 "id": "is-on-https",
                 "title": "Uses HTTPS",
+                "description": "This audit checks if the page is served over HTTPS. HTTPS encrypts data and provides security for users.",
                 "score": 1.0 if is_https else 0.0,
                 "numericValue": 1.0 if is_https else 0.0,
             }
@@ -539,6 +547,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["text-font-audit"] = {
                 "id": "text-font-audit",
                 "title": "Text is appropriately sized for readability",
+                "description": f"This audit checks if text is large enough for readability. Found {small_text_count} text elements with font size less than 16px out of {total_text_elements} total text elements.",
                 "score": text_score,
                 "numericValue": text_score,
             }
@@ -561,6 +570,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["largest-contentful-paint"] = {
                 "id": "largest-contentful-paint",
                 "title": "Largest Contentful Paint",
+                "description": f"This audit measures how long it takes for the main content to load. LCP time: {performance_metrics.get('lcp', 0):.0f}ms. Good if under 2500ms.",
                 "score": lcp_score,
                 "numericValue": performance_metrics.get("lcp", 0),
             }
@@ -569,6 +579,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
             audits["cumulative-layout-shift"] = {
                 "id": "cumulative-layout-shift",
                 "title": "Cumulative Layout Shift",
+                "description": "This audit measures visual stability. A low CLS score means the page layout is stable and doesn't shift unexpectedly, which is important for older adults.",
                 "score": 0.9,
                 "numericValue": 0.1,
             }

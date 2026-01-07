@@ -439,7 +439,7 @@ export async function runLighthouseAudit(options) {
     const fullUrl = url.startsWith('http') ? url : `https://${url}`;
 
     console.log(`\n=== Starting ${version} audit for ${fullUrl} (Python/Camoufox) ===`);
-    
+
     // Use Python scanner directly (no Node.js strategies)
     const { tryPythonScanner } = await import('./python-scanner-client.js');
     const result = await tryPythonScanner({
@@ -448,21 +448,21 @@ export async function runLighthouseAudit(options) {
         format: format,
         isLiteVersion: isLiteVersion
     });
-    
+
     if (result.success) {
         console.log(`✅ ${version} audit completed successfully using Python/Camoufox`);
-        return result;
+                return result;
     } else {
         console.error(`❌ ${version} audit failed: ${result.error}`);
         return {
-            success: false,
+        success: false,
             error: result.error || 'Python scanner failed',
             errorCode: result.errorCode || 'PYTHON_SCANNER_FAILED',
             message: `${version} audit failed: ${result.error}`,
-            url: fullUrl,
-            device: device,
-            isLiteVersion: isLiteVersion,
-            version: version,
+        url: fullUrl,
+        device: device,
+        isLiteVersion: isLiteVersion,
+        version: version,
             timestamp: new Date().toISOString()
         };
     }
