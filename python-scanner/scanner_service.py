@@ -369,8 +369,8 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
         page.set_viewport_size(viewport)
         
         try:
-            # Navigate to the URL (sync)
-            page.goto(url, wait_until="networkidle", timeout=60000)
+            # Navigate to the URL (sync) - increased timeout for slow sites
+            page.goto(url, wait_until="networkidle", timeout=120000)  # 2 minutes timeout
             
             # Wait a bit for dynamic content (sync)
             page.wait_for_timeout(2000)
@@ -591,7 +591,7 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
                         "auditRefs": LITE_AUDIT_REFS if is_lite else FULL_AUDIT_REFS,
                     }
                 },
-                "audits": audits,
+                "audits": audits
             }
             
             return {
