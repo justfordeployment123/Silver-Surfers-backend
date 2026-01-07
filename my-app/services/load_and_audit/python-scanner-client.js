@@ -38,10 +38,27 @@ export async function tryPythonScanner(options) {
             console.log(`✅ Python scanner succeeded for: ${url}`);
             console.log(`📊 Score: ${response.data.report?.categories?.[isLiteVersion ? 'senior-friendly-lite' : 'senior-friendly']?.score * 100 || 'N/A'}%`);
             
+            // Save report to local temp file since Python container's /tmp is not accessible
+            const fs = await import('fs/promises');
+            const path = await import('path');
+            const os = await import('os');
+            
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname.replace(/\./g, '-');
+            const timestamp = Date.now();
+            const versionSuffix = isLiteVersion ? '-lite' : '';
+            const reportFilename = `report-${hostname}-${timestamp}${versionSuffix}.json`;
+            const localReportPath = path.join(os.tmpdir(), reportFilename);
+            
+            // Write report JSON to local temp file
+            await fs.writeFile(localReportPath, JSON.stringify(response.data.report, null, 2), 'utf-8');
+            console.log(`📄 Report saved to local temp file: ${localReportPath}`);
+            
             // Convert Python response to Node.js format
             return {
                 success: true,
-                reportPath: response.data.reportPath,
+                reportPath: localReportPath, // Use local path instead of Python container path
+                report: response.data.report, // Also include report data in response
                 isLiteVersion: response.data.isLiteVersion,
                 version: response.data.version,
                 url: response.data.url,
