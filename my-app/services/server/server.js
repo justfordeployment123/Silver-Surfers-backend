@@ -30,7 +30,6 @@ const app = express();
 // Middleware
 app.use(securityHeaders);
 app.use(corsMiddleware);
-app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 // Mount routes
