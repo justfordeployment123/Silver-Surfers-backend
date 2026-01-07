@@ -373,56 +373,55 @@ async def perform_audit(request: AuditRequest):
         # Use Camoufox for advanced anti-detection
         # Camoufox automatically handles fingerprinting, headers, and anti-detection
         # Camoufox uses a context manager (sync) but returns async Playwright pages
-        try:
-            with Camoufox(headless=True, viewport=viewport) as browser:
-                # Camoufox returns a Playwright-compatible page (async)
-                page = await browser.new_page()
-                
-                # Camoufox already handles all anti-detection, but we can add custom scripts if needed
-                await page.add_init_script("""
-                    // Additional customizations if needed
-                    // Camoufox already handles webdriver, chrome, and other properties
-                """)
-                
-                # Perform audit
-                report = await perform_accessibility_audit(page, url, request.isLiteVersion)
-                
-                # Calculate final score
-                final_score = calculate_score(report, request.isLiteVersion)
-                
-                if final_score == 0:
-                    raise Exception("Audit score is 0, indicating a failed audit")
-                
-                # Save report to file
-                url_obj = urlparse(url)
-                hostname = url_obj.hostname.replace(".", "-") if url_obj.hostname else "unknown"
-                timestamp = int(time.time() * 1000)
-                version_suffix = "-lite" if request.isLiteVersion else ""
-                report_filename = f"report-{hostname}-{timestamp}{version_suffix}.json"
-                
-                # Save to temp directory
-                temp_dir = os.getenv("TEMP_DIR", "/tmp")
-                os.makedirs(temp_dir, exist_ok=True)
-                report_path = os.path.join(temp_dir, report_filename)
-                
-                with open(report_path, "w", encoding="utf-8") as f:
-                    json.dump(report, f, indent=2)
-                
-                print(f"✅ {version} audit completed successfully")
-                print(f"📊 Score: {final_score}%")
-                print(f"📄 Report saved to: {report_path}")
-                
-                return AuditResponse(
-                    success=True,
-                    reportPath=report_path,
-                    report=report,
-                    isLiteVersion=request.isLiteVersion,
-                    version=version,
-                    url=url,
-                    device=request.device,
-                    strategy="Python-Camoufox",
-                    attemptNumber=1,
-                    message=f"{version} audit completed successfully using Python/Camoufox strategy",
+        with Camoufox(headless=True, viewport=viewport) as browser:
+            # Camoufox returns a Playwright-compatible page (async)
+            page = await browser.new_page()
+            
+            # Camoufox already handles all anti-detection, but we can add custom scripts if needed
+            await page.add_init_script("""
+                // Additional customizations if needed
+                // Camoufox already handles webdriver, chrome, and other properties
+            """)
+            
+            # Perform audit
+            report = await perform_accessibility_audit(page, url, request.isLiteVersion)
+            
+            # Calculate final score
+            final_score = calculate_score(report, request.isLiteVersion)
+            
+            if final_score == 0:
+                raise Exception("Audit score is 0, indicating a failed audit")
+            
+            # Save report to file
+            url_obj = urlparse(url)
+            hostname = url_obj.hostname.replace(".", "-") if url_obj.hostname else "unknown"
+            timestamp = int(time.time() * 1000)
+            version_suffix = "-lite" if request.isLiteVersion else ""
+            report_filename = f"report-{hostname}-{timestamp}{version_suffix}.json"
+            
+            # Save to temp directory
+            temp_dir = os.getenv("TEMP_DIR", "/tmp")
+            os.makedirs(temp_dir, exist_ok=True)
+            report_path = os.path.join(temp_dir, report_filename)
+            
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=2)
+            
+            print(f"✅ {version} audit completed successfully")
+            print(f"📊 Score: {final_score}%")
+            print(f"📄 Report saved to: {report_path}")
+            
+            return AuditResponse(
+                success=True,
+                reportPath=report_path,
+                report=report,
+                isLiteVersion=request.isLiteVersion,
+                version=version,
+                url=url,
+                device=request.device,
+                strategy="Python-Camoufox",
+                attemptNumber=1,
+                message=f"{version} audit completed successfully using Python/Camoufox strategy",
                 )
                 
     except Exception as e:
