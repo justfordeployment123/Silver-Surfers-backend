@@ -174,12 +174,12 @@ function calculateSeniorFriendlinessScore(report) {
         const { id, weight } = auditRef;
         const result = auditResults[id];
 
-        // MODIFICATION: Check if the audit result exists and is not 'not applicable'
-        if (result && result.score !== null) {
-            const score = result.score ?? 0;
-            totalWeightedScore += score * weight;
-            totalWeight += weight;
-        }
+        // CRITICAL FIX: Match old backend behavior - ALWAYS include weight, even for missing/null audits
+        // Old backend's audit.js: score = result ? (result.score ?? 0) : 0; then always adds weight
+        // This ensures total weight matches old backend (107 instead of 79)
+        const score = result && result.score !== null ? (result.score ?? 0) : 0;
+        totalWeightedScore += score * weight;
+        totalWeight += weight;  // ALWAYS add weight, even if audit is missing
     }
 
     if (totalWeight === 0) {

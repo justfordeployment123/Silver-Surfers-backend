@@ -816,16 +816,18 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                 "numericValue": 0.1,
             }
             
-            # Missing audits - set to null so they don't affect score but are included in report
-            # These are implemented in the old Lighthouse backend but not yet in Python scanner
+            # Missing audits - set to 0 (not None) so they're included in weight calculation
+            # CRITICAL: Must use 0, not None, to match old backend behavior
+            # The old backend returns 0 for missing audits, which are included in total weight
+            # If we use None, pdf_generator.js filters them out, reducing total weight
             if not is_lite:
                 # Layout brittle audit (checks for fixed-height containers)
                 audits["layout-brittle-audit"] = {
                     "id": "layout-brittle-audit",
                     "title": "Containers allow for text spacing adjustments",
                     "description": "This audit checks if containers have fixed heights that may prevent text spacing adjustments (WCAG 1.4.12).",
-                    "score": None,  # Not yet implemented
-                    "numericValue": None,
+                    "score": 0.0,  # Set to 0 (not None) so it's included in weight calculation
+                    "numericValue": 0.0,
                 }
                 
                 # Flesch-Kincaid readability audit
@@ -833,8 +835,8 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                     "id": "flesch-kincaid-audit",
                     "title": "Flesch-Kincaid Reading Ease (Older Adult-Adjusted)",
                     "description": "This audit calculates the Flesch-Kincaid reading ease score with category-based adjustments for older adult users.",
-                    "score": None,  # Not yet implemented - requires text analysis
-                    "numericValue": None,
+                    "score": 0.0,  # Set to 0 (not None) so it's included in weight calculation
+                    "numericValue": 0.0,
                 }
                 
                 # Total Blocking Time (TBT) - performance metric
@@ -842,8 +844,8 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                     "id": "total-blocking-time",
                     "title": "Total Blocking Time",
                     "description": "This audit measures the total amount of time that a page is blocked from responding to user input. Lower is better.",
-                    "score": None,  # Not yet implemented - requires performance API
-                    "numericValue": None,
+                    "score": 0.0,  # Set to 0 (not None) so it's included in weight calculation
+                    "numericValue": 0.0,
                 }
                 
                 # Interactive color audit (link color distinction)
@@ -851,8 +853,8 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                     "id": "interactive-color-audit",
                     "title": "Links are visually distinct from surrounding text",
                     "description": "This audit checks if links have a noticeable color difference from surrounding text (Delta E > 10).",
-                    "score": None,  # Not yet implemented - requires color analysis
-                    "numericValue": None,
+                    "score": 0.0,  # Set to 0 (not None) so it's included in weight calculation
+                    "numericValue": 0.0,
                 }
                 
                 # DOM size audit
@@ -867,19 +869,13 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                 }
                 
                 # Errors in console - check for JavaScript errors
-                console_errors = page.evaluate("""
-                    () => {
-                        // This would need to be captured during page load
-                        // For now, return placeholder
-                        return { count: 0, errors: [] };
-                    }
-                """)
+                # Set to 0 (not None) so it's included in weight calculation
                 audits["errors-in-console"] = {
                     "id": "errors-in-console",
                     "title": "No JavaScript errors in console",
                     "description": "This audit checks if there are JavaScript errors in the browser console that could affect functionality.",
-                    "score": None,  # Not yet implemented - requires console monitoring
-                    "numericValue": None,
+                    "score": 0.0,  # Set to 0 (not None) so it's included in weight calculation
+                    "numericValue": 0.0,
                 }
                 
                 # Geolocation on start - check if page requests geolocation immediately
