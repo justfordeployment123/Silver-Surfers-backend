@@ -49,6 +49,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements first for better caching
 COPY requirements.txt .
 
+# Install Node.js and npm for Lighthouse
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install build dependencies for some packages (lxml, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -72,8 +79,16 @@ RUN python3 -m camoufox fetch 2>&1 || \
     camoufox fetch 2>&1 || \
     echo "Note: Camoufox browser will be downloaded at runtime if needed"
 
+# Install Lighthouse and dependencies globally
+RUN npm install -g lighthouse@latest chrome-launcher@latest
+
 # Copy application code
 COPY scanner_service.py .
+COPY lighthouse_integration.py .
+COPY lighthouse_runner.js .
+
+# Copy Lighthouse configs and custom audits/gatherers
+COPY lighthouse-configs/ /app/lighthouse-configs/
 
 # Create temp directory for reports
 RUN mkdir -p /tmp && chmod 777 /tmp

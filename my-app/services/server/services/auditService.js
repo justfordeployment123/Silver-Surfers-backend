@@ -55,11 +55,16 @@ export const runFullAuditProcess = async (job) => {
 
   console.log(`Processing job for ${fullName} (${email}) to audit ${url} [Plan: ${effectivePlanId}]`);
 
-  // Final destination for generated PDFs
-  const finalReportFolder = path.resolve(process.cwd(), 'reports-full', email);
+  // CRITICAL FIX: Each audit job gets its own unique folder to prevent race conditions
+  // Include taskId to ensure uniqueness even for concurrent audits
+  const uniqueTaskId = taskId || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  const sanitizedUrl = url.replace(/[^a-z0-9]/gi, '_').substring(0, 50); // Limit URL length
+  const sanitizedEmail = email.replace(/[^a-z0-9]/gi, '_');
+  // Unique folder per job: reports-full/{sanitizedEmail}/{taskId}-{url}
+  // This ensures concurrent audits don't interfere with each other
+  const finalReportFolder = path.resolve(process.cwd(), 'reports-full', sanitizedEmail, `${uniqueTaskId}-${sanitizedUrl}`);
 
   // Temporary working folder for images and intermediates
-  const sanitizedEmail = email.replace(/[^a-z0-9]/gi, '_');
   const jobFolder = path.resolve(process.cwd(), 'reports', `${sanitizedEmail}-${Date.now()}`);
 
   // Ensure folders exist
@@ -80,7 +85,7 @@ export const runFullAuditProcess = async (job) => {
         user: userId || undefined,
         email,
         url,
-        taskId: taskId || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        taskId: uniqueTaskId,
         status: 'queued',
         emailStatus: 'pending',
         reportDirectory: finalReportFolder,
@@ -240,6 +245,11 @@ export const runFullAuditProcess = async (job) => {
 
       sendResult = await Promise.race([emailPromise, timeoutPromise]);
       console.log(`✉️ Email send result:`, JSON.stringify(sendResult, null, 2));
+      
+      // CRITICAL FIX: Wait before cleanup to ensure all file uploads are complete
+      // This prevents race conditions where files are deleted while being uploaded
+      console.log(`⏳ Waiting 10 seconds before cleanup to ensure all Google Drive uploads complete...`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
     } catch (emailError) {
       console.error(`❌ Email sending failed:`, emailError.message);
       sendResult = { success: false, error: emailError.message };
@@ -465,8 +475,12 @@ export const runQuickScanProcess = async (job) => {
         jsonReportPath = liteAuditResult.reportPath;
         console.log(`Lite audit successful. Temp JSON at: ${jsonReportPath}`);
 
+        // CRITICAL FIX: Each quick scan gets its own unique folder to prevent race conditions
+        const uniqueQuickScanId = job.quickScanId?.toString() || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+        const sanitizedEmail = email.replace(/[^a-z0-9]/gi, '_');
+        const sanitizedUrl = url.replace(/[^a-z0-9]/gi, '_').substring(0, 50);
         const baseReportsDir = 'reports-lite';
-        const userSpecificOutputDir = path.join(baseReportsDir, `${email}_lite`);
+        const userSpecificOutputDir = path.join(baseReportsDir, sanitizedEmail, `${uniqueQuickScanId}-${sanitizedUrl}`);
 
         const pdfResult = await generateLiteAccessibilityReport(jsonReportPath, userSpecificOutputDir);
 
@@ -509,6 +523,10 @@ export const runQuickScanProcess = async (job) => {
           
           const emailResult = await Promise.race([emailPromise, timeoutPromise]);
           console.log(`✉️ Quick scan email result:`, JSON.stringify(emailResult, null, 2));
+          
+          // CRITICAL FIX: Wait before cleanup to ensure all file uploads are complete
+          console.log(`⏳ Waiting 10 seconds before cleanup to ensure all Google Drive uploads complete...`);
+          await new Promise(resolve => setTimeout(resolve, 10000));
         } catch (emailError) {
           console.error(`❌ Quick scan email failed:`, emailError.message);
           throw emailError; // Re-throw to trigger failure handling

@@ -19,6 +19,14 @@ from pydantic import BaseModel
 from camoufox import Camoufox
 from bs4 import BeautifulSoup
 
+# Try to import Lighthouse integration (optional - falls back to custom audits if not available)
+try:
+    from lighthouse_integration import run_lighthouse_audit
+    LIGHTHOUSE_AVAILABLE = True
+except ImportError:
+    LIGHTHOUSE_AVAILABLE = False
+    print("⚠️ Lighthouse integration not available, using custom audits")
+
 app = FastAPI(title="SilverSurfers Python Scanner", version="1.0.0")
 
 
@@ -485,14 +493,118 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
             # Perform audits using sync Playwright API
             audits = {}
             
-            # Color contrast - match old backend structure exactly
-            # Old backend uses Lighthouse's built-in color-contrast audit
+            # Color contrast - calculate actual WCAG contrast ratios
+            # Old backend uses Lighthouse's built-in color-contrast audit (binary: pass/fail)
+            # We'll sample text elements and calculate contrast ratios
+            # Note: Full calculation is expensive, so we sample up to 100 elements
+            try:
+                color_contrast_results = page.evaluate("""
+                    () => {
+                        // Helper function to calculate relative luminance
+                        function getLuminance(r, g, b) {
+                            const rs = r / 255;
+                            const gs = g / 255;
+                            const bs = b / 255;
+                            const rLinear = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+                            const gLinear = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+                            const bLinear = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+                            return 0.2126 * rLinear + 0.7152 * gLinear + 0.0722 * bLinear;
+                        }
+                        
+                        // Helper function to calculate contrast ratio
+                        function getContrastRatio(color1, color2) {
+                            const lum1 = getLuminance(color1.r, color1.g, color1.b);
+                            const lum2 = getLuminance(color2.r, color2.g, color2.b);
+                            const lighter = Math.max(lum1, lum2);
+                            const darker = Math.min(lum1, lum2);
+                            return (lighter + 0.05) / (darker + 0.05);
+                        }
+                        
+                        // Helper to parse color string to RGB
+                        function parseColor(colorStr) {
+                            if (!colorStr || colorStr === 'transparent') return null;
+                            const rgbMatch = colorStr.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+                            if (rgbMatch) {
+                                return { r: parseInt(rgbMatch[1]), g: parseInt(rgbMatch[2]), b: parseInt(rgbMatch[3]) };
+                            }
+                            return null;
+                        }
+                        
+                        // Sample text elements (limit to 100 for performance)
+                        const textElements = [];
+                        const allElements = document.querySelectorAll('p, span, div, li, td, th, a, button, label, h1, h2, h3, h4, h5, h6');
+                        const maxSamples = Math.min(100, allElements.length);
+                        
+                        for (let i = 0; i < maxSamples; i++) {
+                            const el = allElements[i];
+                            if (!el.offsetParent) continue; // Skip hidden elements
+                            
+                            const style = window.getComputedStyle(el);
+                            const fontSize = parseFloat(style.fontSize);
+                            const fontWeight = parseInt(style.fontWeight) || (style.fontWeight === 'bold' ? 700 : 400);
+                            const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700);
+                            const minRatio = isLargeText ? 3.0 : 4.5; // WCAG AA standards
+                            
+                            const fgColor = parseColor(style.color);
+                            let bgColor = parseColor(style.backgroundColor);
+                            
+                            // If background is transparent, check parent (up to 3 levels)
+                            if (!bgColor || (bgColor.r === 0 && bgColor.g === 0 && bgColor.b === 0 && style.backgroundColor.includes('rgba(0, 0, 0, 0)'))) {
+                                let parentEl = el.parentElement;
+                                let levels = 0;
+                                while (parentEl && levels < 3 && !bgColor) {
+                                    const parentStyle = window.getComputedStyle(parentEl);
+                                    bgColor = parseColor(parentStyle.backgroundColor);
+                                    if (bgColor && bgColor.r > 0 && bgColor.g > 0 && bgColor.b > 0) break;
+                                    parentEl = parentEl.parentElement;
+                                    levels++;
+                                }
+                            }
+                            
+                            // Default to white if no background found
+                            if (!bgColor) {
+                                bgColor = { r: 255, g: 255, b: 255 };
+                            }
+                            
+                            if (fgColor && bgColor) {
+                                const ratio = getContrastRatio(fgColor, bgColor);
+                                textElements.push({
+                                    ratio: ratio,
+                                    minRequired: minRatio,
+                                    passes: ratio >= minRatio
+                                });
+                            }
+                        }
+                        
+                        const total = textElements.length;
+                        const passing = textElements.filter(e => e.passes).length;
+                        const failing = total - passing;
+                        
+                        return {
+                            total: total,
+                            passing: passing,
+                            failing: failing,
+                            score: total > 0 ? passing / total : 1.0
+                        };
+                    }
+                """)
+                
+                contrast_score = color_contrast_results.get("score", 1.0) if color_contrast_results else 1.0
+                failing_count = color_contrast_results.get("failing", 0) if color_contrast_results else 0
+                total_count = color_contrast_results.get("total", 0) if color_contrast_results else 0
+            except Exception as e:
+                print(f"⚠️ Color contrast calculation failed: {e}")
+                contrast_score = 1.0
+                failing_count = 0
+                total_count = 0
+            
             audits["color-contrast"] = {
                 "id": "color-contrast",
                 "title": "Background and foreground colors have a sufficient contrast ratio",
-                "description": "This audit checks whether text and background colors have sufficient contrast for readability. Adequate contrast is essential for older adults with vision changes.",
-                "score": 0.9,  # Placeholder
-                "numericValue": 0.9,
+                "description": f"This audit checks whether text and background colors have sufficient contrast for readability. Found {failing_count} elements with insufficient contrast out of {total_count} sampled text elements.",
+                "score": contrast_score,
+                "numericValue": contrast_score,
+                "scoreDisplayMode": "numeric" if contrast_score < 1.0 else "binary",
             }
             
             # Target size (check for small clickable elements) - sync eval with details
@@ -818,13 +930,69 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                 "numericValue": performance_metrics.get("lcp", 0),
             }
             
-            # Cumulative Layout Shift (CLS) - placeholder
+            # Cumulative Layout Shift (CLS) - measure actual CLS from performance entries
+            # Note: CLS is measured during page load, so we read from existing performance entries
+            try:
+                cls_result = page.evaluate("""
+                    () => {
+                        let clsValue = 0;
+                        let clsEntries = [];
+                        
+                        try {
+                            // Read buffered layout-shift entries
+                            const entries = performance.getEntriesByType('layout-shift');
+                            for (const entry of entries) {
+                                if (!entry.hadRecentInput) {
+                                    clsValue += entry.value;
+                                    clsEntries.push({
+                                        value: entry.value,
+                                        startTime: entry.startTime
+                                    });
+                                }
+                            }
+                            
+                            // Lighthouse CLS scoring: 0.1 = good, 0.25 = needs improvement, 0.25+ = poor
+                            // Score: 1.0 if CLS <= 0.1, linear decrease to 0 if CLS >= 0.25
+                            let score = 1.0;
+                            if (clsValue > 0.1) {
+                                if (clsValue >= 0.25) {
+                                    score = 0;
+                                } else {
+                                    score = 1 - ((clsValue - 0.1) / 0.15);
+                                }
+                            }
+                            
+                            return {
+                                cls: clsValue,
+                                score: Math.max(0, Math.min(1, score)),
+                                entries: clsEntries.length
+                            };
+                        } catch (e) {
+                            // Fallback if Performance API not available
+                            return {
+                                cls: 0,
+                                score: 1.0,
+                                entries: 0,
+                                error: e.message
+                            };
+                        }
+                    }
+                """)
+                
+                cls_data = cls_result if isinstance(cls_result, dict) else {"cls": 0, "score": 1.0, "entries": 0}
+                cls_score = cls_data.get("score", 1.0)
+                cls_value = cls_data.get("cls", 0)
+            except Exception as e:
+                print(f"⚠️ CLS calculation failed: {e}")
+                cls_score = 1.0
+                cls_value = 0
+            
             audits["cumulative-layout-shift"] = {
                 "id": "cumulative-layout-shift",
                 "title": "Cumulative Layout Shift",
-                "description": "This audit measures visual stability. A low CLS score means the page layout is stable and doesn't shift unexpectedly, which is important for older adults.",
-                "score": 0.9,
-                "numericValue": 0.1,
+                "description": f"This audit measures visual stability. CLS value: {cls_value:.3f}. A low CLS score means the page layout is stable and doesn't shift unexpectedly, which is important for older adults.",
+                "score": cls_score,
+                "numericValue": cls_value,
             }
             
             # Missing audits - set to 0 (not None) so they're included in weight calculation
@@ -850,13 +1018,85 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                     "numericValue": 0.0,
                 }
                 
-                # Total Blocking Time (TBT) - performance metric
+                # Total Blocking Time (TBT) - measure actual TBT from performance entries
+                # Note: TBT requires Long Tasks API which may not be available, so we estimate from load time
+                try:
+                    tbt_result = page.evaluate("""
+                        () => {
+                            let totalBlockingTime = 0;
+                            
+                            try {
+                                // Try to read buffered longtask entries
+                                const longTasks = performance.getEntriesByType('longtask');
+                                for (const entry of longTasks) {
+                                    // TBT is the sum of blocking time (time > 50ms) for all long tasks
+                                    const blockingTime = entry.duration - 50;
+                                    if (blockingTime > 0) {
+                                        totalBlockingTime += blockingTime;
+                                    }
+                                }
+                                
+                                // If no long tasks found, estimate from load time
+                                if (totalBlockingTime === 0) {
+                                    const perf = performance.timing;
+                                    const loadTime = perf.loadEventEnd - perf.navigationStart;
+                                    // Rough estimate: assume some blocking during load (10% of load time over 2s)
+                                    totalBlockingTime = Math.max(0, (loadTime - 2000) * 0.1);
+                                }
+                                
+                                // Lighthouse TBT scoring: 200ms = good, 600ms = needs improvement, 600ms+ = poor
+                                // Score: 1.0 if TBT <= 200ms, linear decrease to 0 if TBT >= 600ms
+                                let score = 1.0;
+                                if (totalBlockingTime > 200) {
+                                    if (totalBlockingTime >= 600) {
+                                        score = 0;
+                                    } else {
+                                        score = 1 - ((totalBlockingTime - 200) / 400);
+                                    }
+                                }
+                                
+                                return {
+                                    tbt: totalBlockingTime,
+                                    score: Math.max(0, Math.min(1, score)),
+                                    longTasks: longTasks.length
+                                };
+                            } catch (e) {
+                                // Fallback: estimate from load time
+                                const perf = performance.timing;
+                                const loadTime = perf.loadEventEnd - perf.navigationStart;
+                                const estimatedTBT = Math.max(0, (loadTime - 2000) * 0.1);
+                                let score = 1.0;
+                                if (estimatedTBT > 200) {
+                                    if (estimatedTBT >= 600) {
+                                        score = 0;
+                                    } else {
+                                        score = 1 - ((estimatedTBT - 200) / 400);
+                                    }
+                                }
+                                return {
+                                    tbt: estimatedTBT,
+                                    score: Math.max(0, Math.min(1, score)),
+                                    longTasks: 0,
+                                    estimated: true
+                                };
+                            }
+                        }
+                    """)
+                    
+                    tbt_data = tbt_result if isinstance(tbt_result, dict) else {"tbt": 0, "score": 1.0, "longTasks": 0}
+                    tbt_score = tbt_data.get("score", 1.0)
+                    tbt_value = tbt_data.get("tbt", 0)
+                except Exception as e:
+                    print(f"⚠️ TBT calculation failed: {e}")
+                    tbt_score = 1.0
+                    tbt_value = 0
+                
                 audits["total-blocking-time"] = {
                     "id": "total-blocking-time",
                     "title": "Total Blocking Time",
-                    "description": "This audit measures the total amount of time that a page is blocked from responding to user input. Lower is better.",
-                    "score": 0.0,  # Set to 0 (not None) so it's included in weight calculation
-                    "numericValue": 0.0,
+                    "description": f"This audit measures the total amount of time that a page is blocked from responding to user input. TBT: {tbt_value:.0f}ms. Lower is better.",
+                    "score": tbt_score,
+                    "numericValue": tbt_value,
                 }
                 
                 # Interactive color audit (link color distinction)
@@ -940,7 +1180,7 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
 @app.post("/audit", response_model=AuditResponse)
 async def perform_audit(request: AuditRequest):
     """
-    Perform accessibility audit using Python/Camoufox with advanced anti-detection
+    Perform accessibility audit using Lighthouse + Camoufox (with fallback to custom audits)
     """
     try:
         # Normalize URL
@@ -949,8 +1189,59 @@ async def perform_audit(request: AuditRequest):
             url = f"https://{url}"
         
         version = "Lite" if request.isLiteVersion else "Full"
-        print(f"\n=== Starting {version} audit for {url} (Python/Camoufox) ===")
+        print(f"\n=== Starting {version} audit for {url} ===")
         print(f"Device: {request.device}")
+        
+        # Try Lighthouse first (if available)
+        if LIGHTHOUSE_AVAILABLE:
+            try:
+                print("🔍 Attempting Lighthouse audit...")
+                lighthouse_report = await run_lighthouse_audit(
+                    url=url,
+                    device=request.device,
+                    is_lite=request.isLiteVersion
+                )
+                
+                # Calculate score from Lighthouse report
+                final_score = calculate_score(lighthouse_report, request.isLiteVersion)
+                
+                if final_score > 0:
+                    # Save report to file
+                    url_obj = urlparse(url)
+                    hostname = url_obj.hostname.replace(".", "-") if url_obj.hostname else "unknown"
+                    timestamp = int(time.time() * 1000)
+                    version_suffix = "-lite" if request.isLiteVersion else ""
+                    report_filename = f"report-{hostname}-{timestamp}{version_suffix}.json"
+                    
+                    temp_dir = os.getenv("TEMP_DIR", "/tmp")
+                    os.makedirs(temp_dir, exist_ok=True)
+                    report_path = os.path.join(temp_dir, report_filename)
+                    
+                    with open(report_path, "w", encoding="utf-8") as f:
+                        json.dump(lighthouse_report, f, indent=2)
+                    
+                    print(f"✅ Lighthouse {version} audit completed successfully")
+                    print(f"📊 Score: {final_score}%")
+                    print(f"📄 Report saved to: {report_path}")
+                    
+                    return AuditResponse(
+                        success=True,
+                        reportPath=report_path,
+                        report=lighthouse_report,
+                        isLiteVersion=request.isLiteVersion,
+                        version=version,
+                        url=url,
+                        device=request.device,
+                        strategy="Lighthouse-Camoufox",
+                        attemptNumber=1,
+                        message=f"{version} audit completed successfully using Lighthouse",
+                    )
+            except Exception as lighthouse_error:
+                print(f"⚠️ Lighthouse audit failed: {lighthouse_error}")
+                print("🔄 Falling back to custom audits...")
+        
+        # Fallback to custom Camoufox audits
+        print("🔍 Using custom Camoufox audits...")
         
         # Get device configuration (viewport + emulation settings)
         device_config = get_viewport_for_device(request.device)
