@@ -174,12 +174,13 @@ function calculateSeniorFriendlinessScore(report) {
         const { id, weight } = auditRef;
         const result = auditResults[id];
 
-        // CRITICAL FIX: Match old backend behavior - ALWAYS include weight, even for missing/null audits
-        // Old backend's audit.js: score = result ? (result.score ?? 0) : 0; then always adds weight
-        // This ensures total weight matches old backend (107 instead of 79)
-        const score = result && result.score !== null ? (result.score ?? 0) : 0;
+        // CRITICAL: Match old backend's audit.js EXACTLY (lines 184-195)
+        // Old backend: const score = result ? (result.score ?? 0) : 0;
+        // Then: totalWeightedScore += score * weight; totalWeight += weight;
+        // This ALWAYS includes weight, even for missing audits (treats them as score 0)
+        const score = result ? (result.score ?? 0) : 0;
         totalWeightedScore += score * weight;
-        totalWeight += weight;  // ALWAYS add weight, even if audit is missing
+        totalWeight += weight;  // ALWAYS add weight, matching old backend exactly
     }
 
     if (totalWeight === 0) {
@@ -457,14 +458,14 @@ addOverallScoreDisplay(scoreData) {
         const auditRefs = customConfig.categories['senior-friendly']?.auditRefs || [];
         const auditResults = reportData.audits;
 
-        // Filter out N/A audits before creating the table
+        // CRITICAL FIX: Include ALL audits from auditRefs, even if they have null/0 scores
+        // This matches old backend behavior where all audits are shown in the calculation table
+        // Missing audits or null scores are treated as 0 for display
         const tableItems = auditRefs
             .map(ref => {
                 const result = auditResults[ref.id];
-                if (!result || result.score === null) {
-                    return null;
-                }
-                const score = result.score ?? 0;
+                // Treat missing or null scores as 0 (matching calculation logic)
+                const score = (result && result.score !== null) ? (result.score ?? 0) : 0;
                 const weightedScore = score * ref.weight;
                 return {
                     name: AUDIT_INFO[ref.id]?.title || ref.id,
@@ -472,8 +473,7 @@ addOverallScoreDisplay(scoreData) {
                     weight: ref.weight,
                     contribution: weightedScore.toFixed(2),
                 };
-            })
-            .filter(item => item !== null);
+            });
 
         // Draw compact table
         this.drawScoreCalculationTable(tableItems, scoreData);

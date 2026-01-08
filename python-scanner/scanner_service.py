@@ -87,10 +87,17 @@ FULL_AUDIT_REFS = [
 
 def calculate_score(report: Dict[str, Any], is_lite: bool = False) -> float:
     """
-    Calculate score using the same logic as Node.js calculateSeniorFriendlinessScore in audit.js
-    CRITICAL: Must match old backend behavior - ALWAYS include weight, even for missing/null audits
-    This matches audit.js behavior: totalWeightedScore += score * weight; totalWeight += weight;
-    (The pdf_generator.js version filters null scores, but audit.js doesn't - we match audit.js)
+    Calculate score using the EXACT same logic as old backend's audit.js (lines 181-209)
+    CRITICAL: Must match old backend EXACTLY - ALWAYS include weight, even for missing/null audits
+    Old backend logic:
+        for (const auditRef of auditRefs) {
+            const { id, weight } = auditRef;
+            const result = auditResults[id];
+            const score = result ? (result.score ?? 0) : 0;  // Use 0 if missing/null
+            totalWeightedScore += score * weight;  // ALWAYS add
+            totalWeight += weight;  // ALWAYS add
+        }
+        finalScore = (totalWeightedScore / totalWeight) * 100;
     """
     category_id = "senior-friendly-lite" if is_lite else "senior-friendly"
     audit_refs = LITE_AUDIT_REFS if is_lite else FULL_AUDIT_REFS
@@ -102,16 +109,19 @@ def calculate_score(report: Dict[str, Any], is_lite: bool = False) -> float:
     for audit_ref in audit_refs:
         audit_id = audit_ref["id"]
         weight = audit_ref["weight"]
-        result = audits.get(audit_id, {})
+        result = audits.get(audit_id)
         
-        # Match old backend's audit.js behavior: ALWAYS add weight, use 0 if missing/null
-        # This is different from pdf_generator.js which filters out null scores
-        # Old backend: score = result ? (result.score ?? 0) : 0
-        # Then: totalWeightedScore += score * weight; totalWeight += weight;
+        # EXACT match to old backend's audit.js line 184:
+        # const score = result ? (result.score ?? 0) : 0;
         score = result.get("score", 0) if result else 0
+        if result and result.get("score") is None:
+            score = 0  # Handle None explicitly (Python equivalent of ?? 0)
+        
+        # EXACT match to old backend's audit.js lines 194-195:
         total_weighted_score += score * weight
         total_weight += weight  # ALWAYS add weight, even if audit is missing
     
+    # EXACT match to old backend's audit.js line 209:
     final_score = (total_weighted_score / total_weight * 100) if total_weight > 0 else 0
     return round(final_score, 2)
 
@@ -475,7 +485,8 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
             # Perform audits using sync Playwright API
             audits = {}
             
-            # Color contrast (simplified check)
+            # Color contrast - match old backend structure exactly
+            # Old backend uses Lighthouse's built-in color-contrast audit
             audits["color-contrast"] = {
                 "id": "color-contrast",
                 "title": "Background and foreground colors have a sufficient contrast ratio",
