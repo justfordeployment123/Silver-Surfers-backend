@@ -1171,15 +1171,24 @@ addOverallScoreDisplay(scoreData) {
                     if (auditData.score === null) {
                         continue;
                     }
-                    // Generate detail pages for all audits with scores
-                    // Python scanner may not have details.items, but we still want to show the audit details
+                    // Generate detail pages for ALL audits with scores (matching old backend behavior)
+                    // This ensures complete reports with all deep results
                     detailPagesGenerated = true;
                     this.addAuditDetailPage(auditId, auditData);
-                    // Only add table pages if details.items exist (for Lighthouse reports)
+                    // Add table pages if details.items exist (for detailed findings)
                     if (auditData.details && Array.isArray(auditData.details.items) && auditData.details.items.length > 0) {
                         this.addTablePages(auditId, auditData);
                     }
                 }
+            }
+            // If no detail pages were generated, show a message (matching old backend behavior)
+            if (!detailPagesGenerated) {
+                if (this.currentY > this.doc.page.height - 100) {
+                    this.addPage();
+                    this.currentY = 60;
+                }
+                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+                this.currentY += 40;
             }
             this.doc.end();
 

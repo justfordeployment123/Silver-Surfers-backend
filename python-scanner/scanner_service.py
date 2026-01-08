@@ -102,14 +102,34 @@ def calculate_score(report: Dict[str, Any], is_lite: bool = False) -> float:
     return round(final_score, 2)
 
 
-def get_viewport_for_device(device: str = "desktop") -> Dict[str, int]:
-    """Get viewport configuration for device type"""
-    viewport_configs = {
-        "desktop": {"width": 1920, "height": 1080},
-        "tablet": {"width": 768, "height": 1024},
-        "mobile": {"width": 375, "height": 667},
+def get_viewport_for_device(device: str = "desktop") -> Dict[str, Any]:
+    """Get viewport and device emulation configuration for device type"""
+    device_configs = {
+        "desktop": {
+            "viewport": {"width": 1920, "height": 1080},
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "device_scale_factor": 1,
+            "is_mobile": False,
+            "has_touch": False,
+        },
+        "tablet": {
+            # Samsung Galaxy Tab S8 (common tablet size)
+            "viewport": {"width": 800, "height": 1280},
+            "user_agent": "Mozilla/5.0 (Linux; Android 12; SM-X906B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "device_scale_factor": 2,
+            "is_mobile": True,
+            "has_touch": True,
+        },
+        "mobile": {
+            # Samsung Galaxy S23
+            "viewport": {"width": 360, "height": 780},
+            "user_agent": "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+            "device_scale_factor": 3,
+            "is_mobile": True,
+            "has_touch": True,
+        },
     }
-    return viewport_configs.get(device, viewport_configs["desktop"])
+    return device_configs.get(device, device_configs["desktop"])
 
 
 async def perform_accessibility_audit(page, url: str, is_lite: bool = False) -> Dict[str, Any]:
@@ -353,7 +373,7 @@ async def perform_accessibility_audit(page, url: str, is_lite: bool = False) -> 
     return report
 
 
-def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) -> Dict[str, Any]:
+def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: bool) -> Dict[str, Any]:
     """
     Synchronous wrapper for Camoufox audit.
     This runs in a thread pool to avoid blocking the async event loop.
@@ -365,8 +385,60 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
         # Get a page from the browser (sync API)
         page = browser.new_page()
         
-        # Set viewport for the page (Playwright sync API expects a dict)
+        # Set viewport and device emulation for the page
+        viewport = device_config.get("viewport", {"width": 1920, "height": 1080})
         page.set_viewport_size(viewport)
+        
+        # Get device emulation settings
+        user_agent = device_config.get("user_agent")
+        device_scale_factor = device_config.get("device_scale_factor", 1)
+        is_mobile = device_config.get("is_mobile", False)
+        has_touch = device_config.get("has_touch", False)
+        
+        # Set user agent via context (more reliable)
+        if user_agent:
+            context = page.context
+            context.set_extra_http_headers({"User-Agent": user_agent})
+        
+        # Emulate device characteristics via JavaScript injection before navigation
+        # This must be done before goto() to ensure proper emulation
+        touch_value = 1 if has_touch else 0
+        platform_value = 'Linux armv8l' if is_mobile else 'Win32'
+        mobile_bool = 'true' if is_mobile else 'false'
+        
+        page.add_init_script(f"""
+            // Override user agent
+            Object.defineProperty(navigator, 'userAgent', {{
+                get: () => '{user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}',
+                configurable: true
+            }});
+            
+            // Override max touch points for touch support
+            Object.defineProperty(navigator, 'maxTouchPoints', {{
+                get: () => {touch_value},
+                configurable: true
+            }});
+            
+            // Override device pixel ratio
+            Object.defineProperty(window, 'devicePixelRatio', {{
+                get: () => {device_scale_factor},
+                configurable: true
+            }});
+            
+            // Override platform
+            Object.defineProperty(navigator, 'platform', {{
+                get: () => '{platform_value}',
+                configurable: true
+            }});
+            
+            // Override hardware concurrency for mobile devices
+            if ({mobile_bool}) {{
+                Object.defineProperty(navigator, 'hardwareConcurrency', {{
+                    get: () => 8,
+                    configurable: true
+                }});
+            }}
+        """)
         
         try:
             # Navigate to the URL (sync) - use "load" instead of "networkidle" for better reliability
@@ -398,26 +470,57 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
                 "numericValue": 0.9,
             }
             
-            # Target size (check for small clickable elements) - sync eval
-            small_targets = page.evaluate("""
+            # Target size (check for small clickable elements) - sync eval with details
+            target_size_results = page.evaluate("""
                 () => {
                     const elements = document.querySelectorAll('a, button, input[type="button"], input[type="submit"]');
-                    let smallCount = 0;
+                    const smallItems = [];
                     elements.forEach(el => {
                         const rect = el.getBoundingClientRect();
-                        if (rect.width < 44 || rect.height < 44) smallCount++;
+                        if (rect.width < 44 || rect.height < 44) {
+                            smallItems.push({
+                                node: {
+                                    nodeLabel: el.textContent.trim().substring(0, 50) || el.tagName.toLowerCase(),
+                                    selector: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.className ? '.' + el.className.split(' ')[0] : ''),
+                                    path: el.tagName.toLowerCase()
+                                },
+                                width: Math.round(rect.width),
+                                height: Math.round(rect.height)
+                            });
+                        }
                     });
-                    return { total: elements.length, small: smallCount };
+                    return { total: elements.length, small: smallItems.length, items: smallItems.slice(0, 50) };
                 }
             """)
-            target_score = 1.0 if small_targets["small"] == 0 else max(0, 1 - (small_targets["small"] / max(small_targets["total"], 1)))
+            target_score = 1.0 if target_size_results["small"] == 0 else max(0, 1 - (target_size_results["small"] / max(target_size_results["total"], 1)))
+            
+            target_details_items = []
+            if target_size_results.get("items"):
+                for item in target_size_results["items"]:
+                    target_details_items.append({
+                        "node": item.get("node", {}),
+                        "width": item.get("width", 0),
+                        "height": item.get("height", 0)
+                    })
+            
             audits["target-size"] = {
                 "id": "target-size",
                 "title": "Touch targets have sufficient size and spacing",
-                "description": f"This audit checks if interactive elements (buttons, links) are large enough for easy clicking. Found {small_targets['small']} small targets out of {small_targets['total']} total interactive elements.",
+                "description": f"This audit checks if interactive elements (buttons, links) are large enough for easy clicking. Found {target_size_results['small']} small targets out of {target_size_results['total']} total interactive elements.",
                 "score": target_score,
                 "numericValue": target_score,
             }
+            
+            if target_details_items:
+                audits["target-size"]["details"] = {
+                    "type": "table",
+                    "headings": [
+                        {"key": "node", "itemType": "node", "text": "Element"},
+                        {"key": "width", "itemType": "numeric", "text": "Width"},
+                        {"key": "height", "itemType": "numeric", "text": "Height"}
+                    ],
+                    "items": target_details_items
+                }
             
             # Viewport meta tag
             viewport_meta = soup.find("meta", attrs={"name": "viewport"})
@@ -430,73 +533,154 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
                 "numericValue": 1.0 if has_viewport else 0.0,
             }
             
-            # Link names - sync eval
-            links_without_text = page.evaluate("""
+            # Link names - sync eval with details
+            link_name_results = page.evaluate("""
                 () => {
                     const links = Array.from(document.querySelectorAll('a'));
-                    return links.filter(link => {
+                    const failingItems = [];
+                    links.forEach(link => {
                         const text = link.textContent.trim();
                         const ariaLabel = link.getAttribute('aria-label');
                         const title = link.getAttribute('title');
-                        return !text && !ariaLabel && !title;
-                    }).length;
+                        if (!text && !ariaLabel && !title) {
+                            failingItems.push({
+                                node: {
+                                    nodeLabel: link.href || 'Link',
+                                    selector: link.tagName.toLowerCase() + (link.id ? '#' + link.id : '') + (link.className ? '.' + link.className.split(' ')[0] : ''),
+                                    path: link.tagName.toLowerCase()
+                                }
+                            });
+                        }
+                    });
+                    return { total: links.length, failing: failingItems.length, items: failingItems.slice(0, 50) };
                 }
             """)
-            total_links = len(soup.find_all("a"))
-            link_score = 1.0 if total_links == 0 else max(0, 1 - (links_without_text / max(total_links, 1)))
+            link_score = 1.0 if link_name_results["total"] == 0 else max(0, 1 - (link_name_results["failing"] / max(link_name_results["total"], 1)))
+            
+            link_details_items = []
+            if link_name_results.get("items"):
+                for item in link_name_results["items"]:
+                    link_details_items.append({
+                        "node": item.get("node", {})
+                    })
+            
             audits["link-name"] = {
                 "id": "link-name",
                 "title": "Links have a discernible name",
-                "description": f"This audit checks if all links have descriptive text. Found {links_without_text} links without text out of {total_links} total links.",
+                "description": f"This audit checks if all links have descriptive text. Found {link_name_results['failing']} links without text out of {link_name_results['total']} total links.",
                 "score": link_score,
                 "numericValue": link_score,
             }
             
-            # Button names - sync eval
-            buttons_without_text = page.evaluate("""
+            if link_details_items:
+                audits["link-name"]["details"] = {
+                    "type": "table",
+                    "headings": [
+                        {"key": "node", "itemType": "node", "text": "Element"},
+                        {"key": "selector", "itemType": "code", "text": "Location"}
+                    ],
+                    "items": link_details_items
+                }
+            
+            # Button names - sync eval with details
+            button_name_results = page.evaluate("""
                 () => {
                     const buttons = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
-                    return buttons.filter(btn => {
+                    const failingItems = [];
+                    buttons.forEach(btn => {
                         const text = btn.textContent.trim();
                         const ariaLabel = btn.getAttribute('aria-label');
                         const value = btn.getAttribute('value');
-                        return !text && !ariaLabel && !value;
-                    }).length;
+                        if (!text && !ariaLabel && !value) {
+                            failingItems.push({
+                                node: {
+                                    nodeLabel: btn.tagName.toLowerCase(),
+                                    selector: btn.tagName.toLowerCase() + (btn.id ? '#' + btn.id : '') + (btn.className ? '.' + btn.className.split(' ')[0] : ''),
+                                    path: btn.tagName.toLowerCase()
+                                }
+                            });
+                        }
+                    });
+                    return { total: buttons.length, failing: failingItems.length, items: failingItems.slice(0, 50) };
                 }
             """)
-            total_buttons = len(soup.find_all(["button", "input"]))
-            button_score = 1.0 if total_buttons == 0 else max(0, 1 - (buttons_without_text / max(total_buttons, 1)))
+            button_score = 1.0 if button_name_results["total"] == 0 else max(0, 1 - (button_name_results["failing"] / max(button_name_results["total"], 1)))
+            
+            button_details_items = []
+            if button_name_results.get("items"):
+                for item in button_name_results["items"]:
+                    button_details_items.append({
+                        "node": item.get("node", {})
+                    })
+            
             audits["button-name"] = {
                 "id": "button-name",
                 "title": "Buttons have an accessible name",
-                "description": f"This audit checks if all buttons have descriptive labels. Found {buttons_without_text} buttons without text out of {total_buttons} total buttons.",
+                "description": f"This audit checks if all buttons have descriptive labels. Found {button_name_results['failing']} buttons without text out of {button_name_results['total']} total buttons.",
                 "score": button_score,
                 "numericValue": button_score,
             }
             
-            # Form labels - sync eval
-            inputs_without_labels = page.evaluate("""
+            if button_details_items:
+                audits["button-name"]["details"] = {
+                    "type": "table",
+                    "headings": [
+                        {"key": "node", "itemType": "node", "text": "Element"},
+                        {"key": "selector", "itemType": "code", "text": "Location"}
+                    ],
+                    "items": button_details_items
+                }
+            
+            # Form labels - sync eval with details
+            label_results = page.evaluate("""
                 () => {
                     const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
-                    return inputs.filter(input => {
+                    const failingItems = [];
+                    inputs.forEach(input => {
                         const id = input.id;
                         const name = input.name;
                         const label = document.querySelector(`label[for="${id}"]`);
                         const ariaLabel = input.getAttribute('aria-label');
                         const placeholder = input.getAttribute('placeholder');
-                        return !label && !ariaLabel && !placeholder;
-                    }).length;
+                        if (!label && !ariaLabel && !placeholder) {
+                            failingItems.push({
+                                node: {
+                                    nodeLabel: input.tagName.toLowerCase() + (input.type ? '[' + input.type + ']' : ''),
+                                    selector: input.tagName.toLowerCase() + (input.id ? '#' + input.id : '') + (input.className ? '.' + input.className.split(' ')[0] : ''),
+                                    path: input.tagName.toLowerCase()
+                                }
+                            });
+                        }
+                    });
+                    return { total: inputs.length, failing: failingItems.length, items: failingItems.slice(0, 50) };
                 }
             """)
-            total_inputs = len(soup.find_all(["input", "textarea", "select"]))
-            label_score = 1.0 if total_inputs == 0 else max(0, 1 - (inputs_without_labels / max(total_inputs, 1)))
+            label_score = 1.0 if label_results["total"] == 0 else max(0, 1 - (label_results["failing"] / max(label_results["total"], 1)))
+            
+            label_details_items = []
+            if label_results.get("items"):
+                for item in label_results["items"]:
+                    label_details_items.append({
+                        "node": item.get("node", {})
+                    })
+            
             audits["label"] = {
                 "id": "label",
                 "title": "Form elements have associated labels",
-                "description": f"This audit checks if all form inputs have associated labels. Found {inputs_without_labels} inputs without labels out of {total_inputs} total inputs.",
+                "description": f"This audit checks if all form inputs have associated labels. Found {label_results['failing']} inputs without labels out of {label_results['total']} total inputs.",
                 "score": label_score,
                 "numericValue": label_score,
             }
+            
+            if label_details_items:
+                audits["label"]["details"] = {
+                    "type": "table",
+                    "headings": [
+                        {"key": "node", "itemType": "node", "text": "Element"},
+                        {"key": "selector", "itemType": "code", "text": "Location"}
+                    ],
+                    "items": label_details_items
+                }
             
             # Heading order - sync eval
             heading_order_valid = page.evaluate("""
@@ -529,21 +713,43 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
                 "numericValue": 1.0 if is_https else 0.0,
             }
             
-            # Text font audit - sync eval
-            small_text_count = page.evaluate("""
+            # Text font audit - sync eval with detailed items
+            text_font_results = page.evaluate("""
                 () => {
                     const elements = document.querySelectorAll('p, span, div, li, td, th, a, button, label');
-                    let smallCount = 0;
+                    const failingItems = [];
                     elements.forEach(el => {
                         const style = window.getComputedStyle(el);
                         const fontSize = parseFloat(style.fontSize);
-                        if (fontSize < 16) smallCount++;
+                        if (fontSize < 16 && el.textContent.trim()) {
+                            failingItems.push({
+                                textSnippet: el.textContent.trim().substring(0, 100) || 'Text element',
+                                containerSelector: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.className ? '.' + el.className.split(' ')[0] : ''),
+                                fontSize: fontSize.toFixed(1) + 'px'
+                            });
+                        }
                     });
-                    return smallCount;
+                    return {
+                        total: elements.length,
+                        small: failingItems.length,
+                        items: failingItems.slice(0, 50)  // Limit to 50 items for performance
+                    };
                 }
             """)
-            total_text_elements = len(soup.find_all(["p", "span", "div", "li", "td", "th", "a", "button", "label"]))
+            total_text_elements = text_font_results.get("total", 0)
+            small_text_count = text_font_results.get("small", 0)
             text_score = 1.0 if total_text_elements == 0 else max(0, 1 - (small_text_count / max(total_text_elements, 1)))
+            
+            # Build details.items for table generation
+            text_details_items = []
+            if text_font_results.get("items"):
+                for item in text_font_results["items"]:
+                    text_details_items.append({
+                        "textSnippet": item.get("textSnippet", "Text element"),
+                        "containerSelector": item.get("containerSelector", "N/A"),
+                        "fontSize": item.get("fontSize", "N/A")
+                    })
+            
             audits["text-font-audit"] = {
                 "id": "text-font-audit",
                 "title": "Text is appropriately sized for readability",
@@ -551,6 +757,18 @@ def _run_camoufox_audit_sync(url: str, viewport: Dict[str, int], is_lite: bool) 
                 "score": text_score,
                 "numericValue": text_score,
             }
+            
+            # Add details.items if there are failing items
+            if text_details_items:
+                audits["text-font-audit"]["details"] = {
+                    "type": "table",
+                    "headings": [
+                        {"key": "textSnippet", "itemType": "text", "text": "Text Content"},
+                        {"key": "containerSelector", "itemType": "code", "text": "Element Selector"},
+                        {"key": "fontSize", "itemType": "text", "text": "Reason"}
+                    ],
+                    "items": text_details_items
+                }
             
             # Performance metrics - sync eval
             performance_metrics = page.evaluate("""
@@ -631,8 +849,11 @@ async def perform_audit(request: AuditRequest):
         print(f"\n=== Starting {version} audit for {url} (Python/Camoufox) ===")
         print(f"Device: {request.device}")
         
-        # Get viewport for device
-        viewport = get_viewport_for_device(request.device)
+        # Get device configuration (viewport + emulation settings)
+        device_config = get_viewport_for_device(request.device)
+        print(f"Viewport: {device_config.get('viewport')}")
+        print(f"User Agent: {device_config.get('user_agent', '')[:50]}...")
+        print(f"Mobile: {device_config.get('is_mobile')}, Touch: {device_config.get('has_touch')}")
         
         # Run Camoufox in a thread pool executor to avoid blocking async event loop
         # Camoufox uses Playwright's sync API, so we need to run it in a separate thread
@@ -642,7 +863,7 @@ async def perform_audit(request: AuditRequest):
                 executor,
                 _run_camoufox_audit_sync,
                 url,
-                viewport,
+                device_config,
                 request.isLiteVersion
             )
         

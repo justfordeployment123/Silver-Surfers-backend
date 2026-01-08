@@ -29,3 +29,4 @@ router.post('/quick-scans/bulk', authRequired, adminController.bulkQuickScans);
 
 export default router;
 
+
