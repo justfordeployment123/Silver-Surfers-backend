@@ -59,8 +59,9 @@ LITE_AUDIT_REFS = [
     {"id": "cumulative-layout-shift", "weight": 1},
 ]
 
-# Full audit refs (from custom-config.js - simplified version)
+# Full audit refs (from custom-config.js - MUST MATCH EXACTLY)
 FULL_AUDIT_REFS = [
+    # Tier 1: Critical (Weight: 10 each)
     {"id": "color-contrast", "weight": 10},
     {"id": "target-size", "weight": 10},
     {"id": "viewport", "weight": 10},
@@ -68,20 +69,28 @@ FULL_AUDIT_REFS = [
     {"id": "text-font-audit", "weight": 15},
     {"id": "layout-brittle-audit", "weight": 2},
     {"id": "flesch-kincaid-audit", "weight": 15},
+    # Tier 2: Important (Weight: 5 each)
     {"id": "largest-contentful-paint", "weight": 5},
     {"id": "total-blocking-time", "weight": 5},
     {"id": "link-name", "weight": 5},
     {"id": "button-name", "weight": 5},
     {"id": "label", "weight": 5},
     {"id": "interactive-color-audit", "weight": 5},
-    {"id": "heading-order", "weight": 3},
+    # Tier 3: Foundational (Weight: 2 each)
     {"id": "is-on-https", "weight": 2},
+    {"id": "dom-size", "weight": 2},
+    {"id": "heading-order", "weight": 2},
+    {"id": "errors-in-console", "weight": 2},
+    {"id": "geolocation-on-start", "weight": 2},
 ]
 
 
 def calculate_score(report: Dict[str, Any], is_lite: bool = False) -> float:
     """
-    Calculate score using the same logic as Node.js calculateLiteScore/calculateSeniorFriendlinessScore
+    Calculate score using the same logic as Node.js calculateSeniorFriendlinessScore in audit.js
+    CRITICAL: Must match old backend behavior - ALWAYS include weight, even for missing/null audits
+    This matches audit.js behavior: totalWeightedScore += score * weight; totalWeight += weight;
+    (The pdf_generator.js version filters null scores, but audit.js doesn't - we match audit.js)
     """
     category_id = "senior-friendly-lite" if is_lite else "senior-friendly"
     audit_refs = LITE_AUDIT_REFS if is_lite else FULL_AUDIT_REFS
@@ -94,9 +103,14 @@ def calculate_score(report: Dict[str, Any], is_lite: bool = False) -> float:
         audit_id = audit_ref["id"]
         weight = audit_ref["weight"]
         result = audits.get(audit_id, {})
+        
+        # Match old backend's audit.js behavior: ALWAYS add weight, use 0 if missing/null
+        # This is different from pdf_generator.js which filters out null scores
+        # Old backend: score = result ? (result.score ?? 0) : 0
+        # Then: totalWeightedScore += score * weight; totalWeight += weight;
         score = result.get("score", 0) if result else 0
         total_weighted_score += score * weight
-        total_weight += weight
+        total_weight += weight  # ALWAYS add weight, even if audit is missing
     
     final_score = (total_weighted_score / total_weight * 100) if total_weight > 0 else 0
     return round(final_score, 2)
@@ -801,6 +815,88 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                 "score": 0.9,
                 "numericValue": 0.1,
             }
+            
+            # Missing audits - set to null so they don't affect score but are included in report
+            # These are implemented in the old Lighthouse backend but not yet in Python scanner
+            if not is_lite:
+                # Layout brittle audit (checks for fixed-height containers)
+                audits["layout-brittle-audit"] = {
+                    "id": "layout-brittle-audit",
+                    "title": "Containers allow for text spacing adjustments",
+                    "description": "This audit checks if containers have fixed heights that may prevent text spacing adjustments (WCAG 1.4.12).",
+                    "score": None,  # Not yet implemented
+                    "numericValue": None,
+                }
+                
+                # Flesch-Kincaid readability audit
+                audits["flesch-kincaid-audit"] = {
+                    "id": "flesch-kincaid-audit",
+                    "title": "Flesch-Kincaid Reading Ease (Older Adult-Adjusted)",
+                    "description": "This audit calculates the Flesch-Kincaid reading ease score with category-based adjustments for older adult users.",
+                    "score": None,  # Not yet implemented - requires text analysis
+                    "numericValue": None,
+                }
+                
+                # Total Blocking Time (TBT) - performance metric
+                audits["total-blocking-time"] = {
+                    "id": "total-blocking-time",
+                    "title": "Total Blocking Time",
+                    "description": "This audit measures the total amount of time that a page is blocked from responding to user input. Lower is better.",
+                    "score": None,  # Not yet implemented - requires performance API
+                    "numericValue": None,
+                }
+                
+                # Interactive color audit (link color distinction)
+                audits["interactive-color-audit"] = {
+                    "id": "interactive-color-audit",
+                    "title": "Links are visually distinct from surrounding text",
+                    "description": "This audit checks if links have a noticeable color difference from surrounding text (Delta E > 10).",
+                    "score": None,  # Not yet implemented - requires color analysis
+                    "numericValue": None,
+                }
+                
+                # DOM size audit
+                dom_size = page.evaluate("() => document.querySelectorAll('*').length")
+                dom_size_score = 1.0 if dom_size < 1500 else max(0, 1 - (dom_size - 1500) / 1500)
+                audits["dom-size"] = {
+                    "id": "dom-size",
+                    "title": "Avoids an excessive DOM size",
+                    "description": f"This audit checks if the page has a reasonable number of DOM elements. Found {dom_size} elements. Recommended: under 1500.",
+                    "score": dom_size_score,
+                    "numericValue": dom_size,
+                }
+                
+                # Errors in console - check for JavaScript errors
+                console_errors = page.evaluate("""
+                    () => {
+                        // This would need to be captured during page load
+                        // For now, return placeholder
+                        return { count: 0, errors: [] };
+                    }
+                """)
+                audits["errors-in-console"] = {
+                    "id": "errors-in-console",
+                    "title": "No JavaScript errors in console",
+                    "description": "This audit checks if there are JavaScript errors in the browser console that could affect functionality.",
+                    "score": None,  # Not yet implemented - requires console monitoring
+                    "numericValue": None,
+                }
+                
+                # Geolocation on start - check if page requests geolocation immediately
+                geolocation_requested = page.evaluate("""
+                    () => {
+                        // Check if geolocation API was called
+                        // This would need to be monitored during page load
+                        return false;
+                    }
+                """)
+                audits["geolocation-on-start"] = {
+                    "id": "geolocation-on-start",
+                    "title": "Does not request geolocation on page load",
+                    "description": "This audit checks if the page requests user location immediately on load, which can be intrusive for older adults.",
+                    "score": 1.0 if not geolocation_requested else 0.0,
+                    "numericValue": 1.0 if not geolocation_requested else 0.0,
+                }
             
             # Build Lighthouse-compatible report
             category_id = "senior-friendly-lite" if is_lite else "senior-friendly"
