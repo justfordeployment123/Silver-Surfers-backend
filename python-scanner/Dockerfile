@@ -79,8 +79,9 @@ RUN python3 -m camoufox fetch 2>&1 || \
     camoufox fetch 2>&1 || \
     echo "Note: Camoufox browser will be downloaded at runtime if needed"
 
-# Install Lighthouse and dependencies globally
-RUN npm install -g lighthouse@latest chrome-launcher@latest
+# Copy package.json and install Lighthouse locally
+COPY package.json .
+RUN npm install --production && npm list lighthouse chrome-launcher
 
 # Copy application code
 COPY scanner_service.py .
