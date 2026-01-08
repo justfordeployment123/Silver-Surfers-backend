@@ -500,15 +500,26 @@ addOverallScoreDisplay(scoreData) {
         const audits = reportData.audits || {};
         const categories = {};
 
-        Object.keys(audits).forEach(auditId => {
+        // CRITICAL FIX: Include ALL audits from AUDIT_INFO, even if missing or have null scores
+        // This matches old backend behavior where all audits are shown in the summary
+        // Missing audits will show with score 0 (Poor)
+        Object.keys(AUDIT_INFO).forEach(auditId => {
             const info = AUDIT_INFO[auditId];
             const auditData = audits[auditId];
 
-            if (info && auditData.score !== null) {
+            if (info) {
                 if (!categories[info.category]) {
                     categories[info.category] = [];
                 }
-                categories[info.category].push({ id: auditId, info, data: audits[auditId] });
+                // Use audit data if available, otherwise create placeholder with score 0
+                const auditResult = auditData || { score: 0, numericValue: 0 };
+                // If score is null, treat as 0 to show in summary
+                const score = auditResult.score !== null ? auditResult.score : 0;
+                categories[info.category].push({ 
+                    id: auditId, 
+                    info, 
+                    data: { ...auditResult, score } 
+                });
             }
         });
 
