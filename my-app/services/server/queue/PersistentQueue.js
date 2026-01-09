@@ -95,6 +95,66 @@ class PersistentQueue {
     }
   }
 
+  // Process a single job asynchronously (doesn't block queue processing)
+  async processJobAsync(job) {
+    try {
+      // Update processing node info (status and startedAt already set by getNextJob)
+      job.processingNode = process.env.NODE_ENV || 'development';
+      await job.save();
+      console.log(`🔄 Processing job ${job.taskId} in ${this.queueName}`);
+      
+      // CRITICAL FIX: Add timeout to prevent jobs from hanging forever
+      // Full audits can take up to 15 minutes, quick scans up to 5 minutes
+      const jobTimeout = this.jobType === 'full-audit' ? 20 * 60 * 1000 : 10 * 60 * 1000; // 20min or 10min
+      
+      // Execute the job with timeout - Pass all relevant job data including custom fields
+      const jobPromise = this.processFunction({
+        email: job.email,
+        url: job.url,
+        userId: job.userId,
+        taskId: job.taskId,
+        quickScanId: job.quickScanId, // For quick scan score updates
+        firstName: job.firstName,
+        lastName: job.lastName,
+        planId: job.planId,
+        selectedDevice: job.selectedDevice,
+        jobType: job.jobType,
+        subscriptionId: job.subscriptionId
+      });
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Job timeout after ${jobTimeout / 1000 / 60} minutes`));
+        }, jobTimeout);
+      });
+      
+      const result = await Promise.race([jobPromise, timeoutPromise]);
+      
+      // Mark as completed
+      await job.complete(result);
+      console.log(`✅ Job ${job.taskId} completed successfully`);
+      
+    } catch (error) {
+      console.error(`❌ Job ${job.taskId} failed:`, error);
+      await job.fail(error.message, error.message);
+      
+      // If job can be retried, it will be picked up later
+      if (job.canRetry()) {
+        console.log(`🔄 Job ${job.taskId} will be retried`);
+      } else {
+        console.log(`💀 Job ${job.taskId} exceeded max retries`);
+      }
+    } finally {
+      // Remove from processing set
+      this.processingJobs.delete(job._id);
+      
+      // Continue processing (in case we're at concurrency limit and can now process more)
+      if (!this.isShuttingDown) {
+        setTimeout(() => this.processQueue(), 100);
+      }
+    }
+  }
+
   // Process the queue
   async processQueue() {
     if (this.isShuttingDown || !this.isProcessing) {
@@ -121,48 +181,15 @@ class PersistentQueue {
       // Note: job.status is already set to 'processing' by getNextJob's atomic update
       this.processingJobs.add(job._id);
       
-      try {
-        // Update processing node info (status and startedAt already set by getNextJob)
-        job.processingNode = process.env.NODE_ENV || 'development';
-        await job.save();
-        console.log(`🔄 Processing job ${job.taskId} in ${this.queueName}`);
-        
-        // Execute the job - Pass all relevant job data including custom fields
-        const result = await this.processFunction({
-          email: job.email,
-          url: job.url,
-          userId: job.userId,
-          taskId: job.taskId,
-          quickScanId: job.quickScanId, // For quick scan score updates
-          firstName: job.firstName,
-          lastName: job.lastName,
-          planId: job.planId,
-          selectedDevice: job.selectedDevice,
-          jobType: job.jobType
-        });
-        
-        // Mark as completed
-        await job.complete(result);
-        console.log(`✅ Job ${job.taskId} completed successfully`);
-        
-      } catch (error) {
-        console.error(`❌ Job ${job.taskId} failed:`, error);
-        await job.fail(error.message, error.message);
-        
-        // If job can be retried, it will be picked up later
-        if (job.canRetry()) {
-          console.log(`🔄 Job ${job.taskId} will be retried`);
-        } else {
-          console.log(`💀 Job ${job.taskId} exceeded max retries`);
-        }
-      } finally {
-        this.processingJobs.delete(job._id);
-        
-        // Continue processing
-        if (!this.isShuttingDown) {
-          setTimeout(() => this.processQueue(), 100);
-        }
-      }
+      // CRITICAL FIX: Don't await the job processing - fire it off and continue immediately
+      // This allows the queue to process multiple jobs concurrently without blocking
+      this.processJobAsync(job).catch(err => {
+        console.error(`❌ Unhandled error in job ${job.taskId}:`, err);
+      });
+      
+      // Continue processing immediately (don't wait for job to complete)
+      // This allows multiple jobs to run concurrently up to the concurrency limit
+      setTimeout(() => this.processQueue(), 100);
       
     } catch (error) {
       console.error(`❌ Queue processing error in ${this.queueName}:`, error);

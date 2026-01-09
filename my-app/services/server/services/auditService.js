@@ -150,6 +150,10 @@ export const runFullAuditProcess = async (job) => {
             console.log(`📄 Starting PDF generation for ${link} (${device}) with plan: ${effectivePlanId}`);
             console.log(`   Output directory: ${finalReportFolder}`);
             try {
+              // CRITICAL FIX: Add small delay before CPU-intensive PDF generation to yield to event loop
+              // This prevents blocking other Express requests during PDF generation
+              await new Promise(resolve => setImmediate(resolve));
+              
               // Add timeout to PDF generation (2 minutes max)
               const pdfPromise = generateSeniorAccessibilityReport({
                 inputFile: jsonReportPath,
