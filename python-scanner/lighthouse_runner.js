@@ -177,9 +177,16 @@ async function runLighthouse() {
                 : './lighthouse-configs/custom-config.js'
         ];
         
+        console.log(`🔍 Looking for custom config (isLite: ${isLite})...`);
+        for (const configPath of possibleConfigPaths) {
+            const exists = fs.existsSync(configPath);
+            console.log(`   Checking: ${configPath} - ${exists ? '✅ EXISTS' : '❌ NOT FOUND'}`);
+        }
+        
         // Try to load custom config (ES module) - if it fails, continue without it
         for (const configPath of possibleConfigPaths) {
             if (fs.existsSync(configPath)) {
+                console.log(`📂 Attempting to load config from: ${configPath}`);
                 try {
                     // Use dynamic import for ES modules (config files use import/export)
                     const resolvedPath = path.resolve(configPath);
@@ -297,12 +304,21 @@ async function runLighthouse() {
                     break;
                 } catch (e) {
                     // Log error for debugging
-                    console.warn(`⚠️ Could not load custom config from ${configPath}: ${e.message}`);
+                    console.error(`❌ Failed to load custom config from ${configPath}: ${e.message}`);
+                    console.error(`   Error stack: ${e.stack}`);
                     if (configPath === possibleConfigPaths[possibleConfigPaths.length - 1]) {
                         console.warn(`⚠️ Will use Lighthouse defaults (custom audits will not run)`);
+                        console.warn(`   This means text-font-audit, flesch-kincaid-audit, and other custom audits will be missing!`);
                     }
                 }
             }
+        }
+        
+        if (!customConfig) {
+            console.warn(`⚠️ No custom config loaded - using Lighthouse defaults only`);
+            console.warn(`   Custom audits (text-font-audit, flesch-kincaid-audit, etc.) will not run!`);
+        } else {
+            console.log(`✅ Custom config successfully loaded and ready to use`);
         }
         
         // If no custom config loaded, Lighthouse will use its default config
