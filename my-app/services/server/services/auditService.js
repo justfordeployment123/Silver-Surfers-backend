@@ -4,8 +4,10 @@
  */
 
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import PDFDocument from 'pdfkit';
 import { InternalLinksExtractor } from '../../internal_links/internal_links.js';
 import { runLighthouseAudit } from '../../load_and_audit/audit.js';
 import { runLighthouseLiteAudit } from '../../load_and_audit/audit-module-with-lite.js';
@@ -24,6 +26,151 @@ import QuickScan from '../models/QuickScan.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Helper function to generate summary PDF
+async function generateSummaryPDF(pageResults, outputPath) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      margin: 40,
+      size: 'A4'
+    });
+
+    const writeStream = fsSync.createWriteStream(outputPath);
+    doc.pipe(writeStream);
+
+    // Title
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#1F2937')
+      .text('Audit Summary Report', 40, 40, { align: 'center', width: 515 });
+    
+    doc.fontSize(11).font('Helvetica').fillColor('#6B7280')
+      .text(`Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`, 40, 70, { align: 'center', width: 515 });
+    
+    let currentY = 110;
+    const margin = 40;
+    const pageWidth = 515;
+    const headerHeight = 35;
+    const rowHeight = 25;
+    
+    // Table headers
+    const headers = ['Audit Page', 'Platform', 'Score', 'Result'];
+    const colWidths = [280, 80, 80, 75];
+    
+    // Draw header background
+    doc.rect(margin, currentY, pageWidth, headerHeight).fill('#6366F1');
+    
+    // Header text
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#FFFFFF');
+    let x = margin;
+    headers.forEach((header, index) => {
+      doc.text(header, x + 10, currentY + 10, { 
+        width: colWidths[index] - 20, 
+        align: index === 0 ? 'left' : 'center' 
+      });
+      x += colWidths[index];
+    });
+    
+    currentY += headerHeight;
+    
+    // Table rows
+    doc.fontSize(10).font('Helvetica').fillColor('#1F2937');
+    
+    pageResults.forEach((result, index) => {
+      // Check if we need a new page
+      if (currentY + rowHeight > doc.page.height - 60) {
+        doc.addPage();
+        currentY = margin;
+        
+        // Redraw header on new page
+        doc.rect(margin, currentY, pageWidth, headerHeight).fill('#6366F1');
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#FFFFFF');
+        x = margin;
+        headers.forEach((header, idx) => {
+          doc.text(header, x + 10, currentY + 10, { 
+            width: colWidths[idx] - 20, 
+            align: idx === 0 ? 'left' : 'center' 
+          });
+          x += colWidths[idx];
+        });
+        currentY += headerHeight;
+      }
+      
+      // Alternate row background
+      if (index % 2 === 0) {
+        doc.rect(margin, currentY, pageWidth, rowHeight).fill('#F9FAFB');
+      }
+      
+      const filename = result.filename || 'Unknown';
+      const platform = result.platform || 'Unknown';
+      const score = result.score !== null && result.score !== undefined ? `${Math.round(result.score)}%` : 'N/A';
+      
+      // Determine result status and color based on score
+      let resultStatus = 'N/A';
+      let resultColor = '#6B7280';
+      if (result.score !== null && result.score !== undefined) {
+        if (result.score >= 70) {
+          resultStatus = 'Pass';
+          resultColor = '#10B981'; // Green
+        } else if (result.score >= 50) {
+          resultStatus = 'Warning';
+          resultColor = '#F59E0B'; // Orange
+        } else {
+          resultStatus = 'Fail';
+          resultColor = '#EF4444'; // Red
+        }
+      }
+      
+      // Draw row content
+      x = margin;
+      
+      // Audit Page (left-aligned, truncate if too long)
+      const displayFilename = filename.length > 50 ? filename.substring(0, 47) + '...' : filename;
+      doc.fillColor('#1F2937').text(displayFilename, x + 10, currentY + 7, { 
+        width: colWidths[0] - 20, 
+        align: 'left' 
+      });
+      x += colWidths[0];
+      
+      // Platform (center-aligned)
+      doc.fillColor('#1F2937').text(platform, x, currentY + 7, { 
+        width: colWidths[1], 
+        align: 'center' 
+      });
+      x += colWidths[1];
+      
+      // Score (center-aligned)
+      doc.fillColor('#1F2937').text(score, x, currentY + 7, { 
+        width: colWidths[2], 
+        align: 'center' 
+      });
+      x += colWidths[2];
+      
+      // Result (center-aligned, colored)
+      doc.fillColor(resultColor).font('Helvetica-Bold').text(resultStatus, x, currentY + 7, { 
+        width: colWidths[3], 
+        align: 'center' 
+      });
+      doc.font('Helvetica'); // Reset to regular font
+      
+      // Draw bottom border
+      doc.strokeColor('#E5E7EB').lineWidth(0.5)
+        .moveTo(margin, currentY + rowHeight)
+        .lineTo(margin + pageWidth, currentY + rowHeight)
+        .stroke();
+      
+      currentY += rowHeight;
+    });
+    
+    doc.end();
+    
+    writeStream.on('finish', () => {
+      resolve(outputPath);
+    });
+    
+    writeStream.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
 
 // Signal backend function
 const signalBackend = async (payload) => {
@@ -132,6 +279,9 @@ export const runFullAuditProcess = async (job) => {
       console.log(`📱 Non-pro/onetime plan (${effectivePlanId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
     }
 
+    // Track all page results for summary generation
+    const pageResults = [];
+
     for (const link of linksToAudit) {
       for (const device of devicesToAudit) {
         console.log(`--- Starting full ${device} audit for: ${link} ---`);
@@ -170,6 +320,19 @@ export const runFullAuditProcess = async (job) => {
               );
               const pdfResult = await Promise.race([pdfPromise, timeoutPromise]);
               console.log(`✅ PDF generated for ${link} (${device}) [Plan: ${effectivePlanId}]`);
+              
+              // Track page result for summary CSV
+              if (pdfResult && pdfResult.reportPath) {
+                const filename = path.basename(pdfResult.reportPath);
+                const score = pdfResult.score !== undefined ? parseFloat(pdfResult.score) : null;
+                pageResults.push({
+                  filename,
+                  platform: device.charAt(0).toUpperCase() + device.slice(1), // Capitalize first letter
+                  score,
+                  url: link
+                });
+              }
+              
               // Store the score in the database if available
               if (pdfResult && pdfResult.score !== undefined && record) {
                 record.score = parseFloat(pdfResult.score);
@@ -199,6 +362,21 @@ export const runFullAuditProcess = async (job) => {
     }
 
     console.log(`🎉 All links for ${email} have been processed.`);
+    console.log(`\n=== GENERATING SUMMARY PDF ===`);
+    
+    // Generate summary PDF with all pages and scores (only for full audits, not quick scans)
+    if (pageResults.length > 0) {
+      try {
+        const pdfPath = path.join(finalReportFolder, 'audit-summary.pdf');
+        await generateSummaryPDF(pageResults, pdfPath);
+        console.log(`✅ Summary PDF generated: ${pdfPath}`);
+        console.log(`   Contains ${pageResults.length} page results`);
+      } catch (pdfError) {
+        console.error(`❌ Failed to generate summary PDF:`, pdfError.message);
+        // Don't fail the entire job if PDF generation fails
+      }
+    }
+
     console.log(`\n=== EMAIL SENDING PHASE STARTING ===`);
 
     // Pre-check attachments to ensure we have content to send

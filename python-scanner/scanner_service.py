@@ -1410,12 +1410,42 @@ async def perform_audit(request: AuditRequest):
                         print(f"   Step 2: Lighthouse auditing URL that Camoufox successfully loaded...")
                     
                     # Step 2: Use Lighthouse (with CDP if available, otherwise just URL)
-                    lighthouse_report = await run_lighthouse_audit(
-                        url=final_url,
-                        device=request.device,
-                        is_lite=request.isLiteVersion,
-                        cdp_endpoint=cdp_endpoint
-                    )
+                    try:
+                        lighthouse_report = await run_lighthouse_audit(
+                            url=final_url,
+                            device=request.device,
+                            is_lite=request.isLiteVersion,
+                            cdp_endpoint=cdp_endpoint
+                        )
+                    except Exception as lh_error:
+                        # If Lighthouse fails to load the page (403, 404, etc.), fall back to Camoufox
+                        error_str = str(lh_error).lower()
+                        if "403" in error_str or "404" in error_str or "unable to reliably load" in error_str or "errored_document_request" in error_str:
+                            print(f"   ⚠️ Lighthouse failed to load page (likely blocked): {lh_error}")
+                            print("   🔄 Falling back to custom Camoufox audits...")
+                            raise Exception("Lighthouse page load failed")  # This will trigger fallback
+                        else:
+                            # Re-raise other errors
+                            raise
+                    
+                    # Check if Lighthouse report indicates page load failure
+                    if lighthouse_report:
+                        # Check for ERRORED_DOCUMENT_REQUEST in audits
+                        audits = lighthouse_report.get("audits", {})
+                        errored_audits = [
+                            audit_id for audit_id, audit_data in audits.items()
+                            if audit_data.get("score") is None and 
+                            ("ERRORED_DOCUMENT_REQUEST" in str(audit_data.get("errorMessage", "")) or
+                             "unable to reliably load" in str(audit_data.get("errorMessage", "")).lower() or
+                             "status code: 403" in str(audit_data.get("errorMessage", "")).lower() or
+                             "status code: 404" in str(audit_data.get("errorMessage", "")).lower())
+                        ]
+                        
+                        if errored_audits:
+                            print(f"   ⚠️ Lighthouse detected page load errors in {len(errored_audits)} audits")
+                            print(f"   Failed audits: {', '.join(errored_audits[:5])}")
+                            print("   🔄 Falling back to custom Camoufox audits...")
+                            raise Exception("Lighthouse page load errors detected")
                     
                     # Calculate score from Lighthouse report
                     final_score = calculate_score(lighthouse_report, request.isLiteVersion)
@@ -1457,7 +1487,12 @@ async def perform_audit(request: AuditRequest):
                     raise Exception("Failed to get CDP endpoint from Camoufox")
                     
             except Exception as lighthouse_error:
-                print(f"⚠️ Hybrid audit failed: {lighthouse_error}")
+                error_str = str(lighthouse_error).lower()
+                # Check if it's a page load error (403, 404, etc.)
+                if "403" in error_str or "404" in error_str or "unable to reliably load" in error_str or "errored_document_request" in error_str or "page load" in error_str:
+                    print(f"⚠️ Hybrid audit failed - Page blocked or not found: {lighthouse_error}")
+                else:
+                    print(f"⚠️ Hybrid audit failed: {lighthouse_error}")
                 print("🔄 Falling back to custom Camoufox audits...")
         
         # Fallback to custom Camoufox audits
