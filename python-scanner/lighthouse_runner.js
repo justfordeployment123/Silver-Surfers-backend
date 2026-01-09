@@ -3,12 +3,30 @@
  * This script runs Lighthouse and connects to an existing browser via CDP
  */
 
-const lighthouse = require('lighthouse');
-const chromeLauncher = require('chrome-launcher');
+// CommonJS imports
 const fs = require('fs');
 const path = require('path');
 
+// Lighthouse and chrome-launcher - handle both CommonJS and ES module exports
+let lighthouse, chromeLauncher;
+
 async function runLighthouse() {
+    // Import Lighthouse and chrome-launcher
+    // Lighthouse v12+ may export as ES module even in CommonJS context
+    if (!lighthouse || !chromeLauncher) {
+        const lighthouseModule = require('lighthouse');
+        const chromeLauncherModule = require('chrome-launcher');
+        
+        // Handle both default export and named export
+        lighthouse = lighthouseModule.default || lighthouseModule;
+        chromeLauncher = chromeLauncherModule.default || chromeLauncherModule;
+        
+        // Verify lighthouse is a function
+        if (typeof lighthouse !== 'function') {
+            throw new Error(`Lighthouse is not a function. Type: ${typeof lighthouse}, Module keys: ${Object.keys(lighthouseModule)}`);
+        }
+    }
+    
     const args = process.argv.slice(2);
     
     // Parse arguments
@@ -159,23 +177,29 @@ async function runLighthouse() {
                 : './lighthouse-configs/custom-config.js'
         ];
         
+        // Try to load custom config (ES module) - if it fails, continue without it
         for (const configPath of possibleConfigPaths) {
             if (fs.existsSync(configPath)) {
                 try {
-                    // Use dynamic import for ES modules
-                    const configModule = await import('file://' + path.resolve(configPath));
+                    // Use dynamic import for ES modules (config files use import/export)
+                    const resolvedPath = path.resolve(configPath);
+                    const fileUrl = resolvedPath.startsWith('file://') ? resolvedPath : `file://${resolvedPath}`;
+                    const configModule = await import(fileUrl);
                     customConfig = configModule.default || configModule;
-                    console.log(`Loaded custom config from ${configPath}`);
+                    console.log(`✅ Loaded custom config from ${configPath}`);
                     break;
                 } catch (e) {
-                    console.warn(`Could not load custom config from ${configPath}: ${e.message}`);
+                    // Silently continue - config is optional, Lighthouse will use defaults
+                    // Only log warning for debugging
+                    if (configPath === possibleConfigPaths[possibleConfigPaths.length - 1]) {
+                        console.warn(`⚠️ Could not load custom config (will use Lighthouse defaults): ${e.message}`);
+                    }
                 }
             }
         }
         
-        if (!customConfig) {
-            console.log('Using default Lighthouse config (no custom config found)');
-        }
+        // If no custom config loaded, Lighthouse will use its default config
+        // This is fine - we can still run audits without custom config
         
         // Run Lighthouse with retry logic
         console.log(`Running Lighthouse audit for ${url} on port ${port}...`);
@@ -191,6 +215,7 @@ async function runLighthouse() {
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 }
                 
+                // Call lighthouse function (already extracted in function start)
                 result = await lighthouse(url, options, customConfig);
                 
                 if (!result || !result.lhr) {
