@@ -40,17 +40,17 @@ export default {
 
 
   artifacts: [
-    { id: 'PageText', gatherer: path.resolve(__dirname, 'custom_gatherers/text-gatherer.js') },
-    { id: 'PageLinkColors', gatherer: path.resolve(__dirname, 'custom_gatherers/color-gatherer.js') },
-    { id: 'BrittleLayoutElements', gatherer: path.resolve(__dirname, 'custom_gatherers/layout-gatherer.js') },
-    { id: 'PageContentGatherer', gatherer: path.resolve(__dirname, 'custom_gatherers/page-content-gatherer.js') },
+    { id: 'PageText', gatherer: path.resolve(__dirname, 'custom_gatherers/text-gatherer.mjs') },
+    { id: 'PageLinkColors', gatherer: path.resolve(__dirname, 'custom_gatherers/color-gatherer.mjs') },
+    { id: 'BrittleLayoutElements', gatherer: path.resolve(__dirname, 'custom_gatherers/layout-gatherer.mjs') },
+    { id: 'PageContentGatherer', gatherer: path.resolve(__dirname, 'custom_gatherers/page-content-gatherer.mjs') },
   ],
 
   audits: [
-    { path: path.resolve(__dirname, 'custom_audits/text-audit.js') },
-    { path: path.resolve(__dirname, 'custom_audits/color-audit.js') },
-    { path: path.resolve(__dirname, 'custom_audits/layout-audit.js') },
-    { path: path.resolve(__dirname, 'custom_audits/flesch-kincaid-audit.js') },
+    { path: path.resolve(__dirname, 'custom_audits/text-audit.mjs') },
+    { path: path.resolve(__dirname, 'custom_audits/color-audit.mjs') },
+    { path: path.resolve(__dirname, 'custom_audits/layout-audit.mjs') },
+    { path: path.resolve(__dirname, 'custom_audits/flesch-kincaid-audit.mjs') },
   ],
 
 

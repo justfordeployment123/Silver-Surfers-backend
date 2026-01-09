@@ -22,11 +22,11 @@ export default {
   
   // 3. Add custom gatherer and audit for the font check
   artifacts: [
-    { id: 'PageText', gatherer: path.resolve(__dirname, 'custom_gatherers/text-gatherer.js') },
+    { id: 'PageText', gatherer: path.resolve(__dirname, 'custom_gatherers/text-gatherer.mjs') },
   ],
   
   audits: [
-    { path: path.resolve(__dirname, 'custom_audits/text-audit.js') },
+    { path: path.resolve(__dirname, 'custom_audits/text-audit.mjs') },
   ],
   
   // 4. Lite category with built-in audits plus custom font audit
