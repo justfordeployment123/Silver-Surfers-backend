@@ -406,6 +406,112 @@ async def perform_accessibility_audit(page, url: str, is_lite: bool = False) -> 
     return report
 
 
+def _launch_camoufox_and_get_cdp(url: str, device_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Launch Camoufox, navigate to URL (bypassing bot protection), and return final URL.
+    This allows Lighthouse to audit the same URL that Camoufox successfully loaded.
+    
+    Note: Getting CDP endpoint from Playwright sync API is complex, so we use URL-based approach:
+    Camoufox navigates and bypasses bots, then Lighthouse audits the verified URL.
+    """
+    try:
+        # Use Camoufox context manager
+        with Camoufox(headless=True) as browser:
+            page = browser.new_page()
+            
+            # Set viewport and device emulation
+            viewport = device_config.get("viewport", {"width": 1920, "height": 1080})
+            page.set_viewport_size(viewport)
+            
+            user_agent = device_config.get("user_agent")
+            device_scale_factor = device_config.get("device_scale_factor", 1)
+            is_mobile = device_config.get("is_mobile", False)
+            has_touch = device_config.get("has_touch", False)
+            
+            if user_agent:
+                context = page.context
+                context.set_extra_http_headers({"User-Agent": user_agent})
+            
+            # Device emulation script
+            touch_value = 1 if has_touch else 0
+            platform_value = 'Linux armv8l' if is_mobile else 'Win32'
+            mobile_bool = 'true' if is_mobile else 'false'
+            
+            page.add_init_script(f"""
+                Object.defineProperty(navigator, 'userAgent', {{
+                    get: () => '{user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}',
+                    configurable: true
+                }});
+                Object.defineProperty(navigator, 'maxTouchPoints', {{
+                    get: () => {touch_value},
+                    configurable: true
+                }});
+                Object.defineProperty(window, 'devicePixelRatio', {{
+                    get: () => {device_scale_factor},
+                    configurable: true
+                }});
+                Object.defineProperty(navigator, 'platform', {{
+                    get: () => '{platform_value}',
+                    configurable: true
+                }});
+                if ({mobile_bool}) {{
+                    Object.defineProperty(navigator, 'hardwareConcurrency', {{
+                        get: () => 8,
+                        configurable: true
+                    }});
+                }}
+            """)
+            
+            # Navigate to URL (this bypasses bot protection)
+            print(f"   🕷️ Camoufox navigating to {url}...")
+            page.goto(url, wait_until="load", timeout=120000)
+            page.wait_for_timeout(3000)  # Wait for dynamic content and anti-bot checks
+            
+            final_url = page.url
+            print(f"   ✅ Successfully navigated to: {final_url}")
+            
+            # Try to get CDP endpoint from browser
+            # Playwright stores this in browser._browser._connection._ws._url
+            cdp_endpoint = None
+            try:
+                # Access internal browser connection
+                browser_internal = browser._browser if hasattr(browser, '_browser') else browser
+                if hasattr(browser_internal, '_connection'):
+                    conn = browser_internal._connection
+                    if hasattr(conn, '_ws'):
+                        ws = conn._ws
+                        cdp_endpoint = getattr(ws, '_url', None) or getattr(ws, 'url', None)
+                
+                # If still not found, try accessing via context
+                if not cdp_endpoint:
+                    context = page.context
+                    browser_context = getattr(context, '_browser_context', None)
+                    if browser_context and hasattr(browser_context, '_connection'):
+                        conn = browser_context._connection
+                        if hasattr(conn, '_ws'):
+                            ws = conn._ws
+                            cdp_endpoint = getattr(ws, '_url', None) or getattr(ws, 'url', None)
+            except Exception as e:
+                print(f"   ⚠️ Could not extract CDP endpoint: {e}")
+                print(f"   ℹ️ Will use URL-based approach instead")
+            
+            # Return result - if we have CDP endpoint, use it; otherwise return URL for Lighthouse
+            # Note: Since we're using context manager, browser will close when we exit
+            # For CDP connection, we'd need to keep browser alive, but that's complex with Playwright sync API
+            # So we'll use the URL-based approach: Camoufox verifies the URL is accessible, Lighthouse audits it
+            print(f"   ℹ️ Using URL-based approach: Lighthouse will audit {final_url}")
+            return {
+                "success": True,
+                "cdp_endpoint": None,  # CDP extraction is complex with Playwright sync API
+                "url": final_url
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: bool, get_cdp_endpoint: bool = False) -> Dict[str, Any]:
     """
     Synchronous wrapper for Camoufox audit.
