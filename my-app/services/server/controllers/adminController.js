@@ -225,41 +225,119 @@ export async function getUsers(req, res) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
-    const { page = 1, limit = 50, search, role, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
-    const skip = (page - 1) * limit;
-
-    const query = {};
-    if (role && role !== 'all') {
-      query.role = role;
-    }
+    const { search, role, subscriptionStatus, page = 1, limit = 50, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    
+    // Build query
+    let query = {};
+    
     if (search) {
       query.$or = [
         { email: { $regex: search, $options: 'i' } },
         { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } }
+        { lastName: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } } // Support legacy 'name' field
       ];
     }
-
-    const sort = {};
-    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
-
-    const [users, total] = await Promise.all([
-      User.find(query)
-        .select('-password')
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      User.countDocuments(query)
-    ]);
-
+    
+    if (role && role !== 'all') {
+      query.role = role;
+    }
+    
+    // Fetch users (without subscription filtering first)
+    let users = await User.find(query)
+      .select('-password -passwordHash')
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    // Populate subscription details for each user
+    // First check embedded subscription in User, then fall back to Subscription collection
+    const usersWithSubscriptions = await Promise.all(
+      users.map(async (user) => {
+        const userObj = { ...user };
+        
+        // Add computed 'name' field from firstName and lastName (for frontend compatibility)
+        if (!userObj.name && (userObj.firstName || userObj.lastName)) {
+          userObj.name = [userObj.firstName, userObj.lastName].filter(Boolean).join(' ') || userObj.email;
+        }
+        
+        // Use embedded subscription from User model if it exists and has status
+        if (user.subscription && user.subscription.status && user.subscription.status !== 'none') {
+          userObj.subscription = {
+            planName: user.subscription.planId,
+            planId: user.subscription.planId,
+            status: user.subscription.status,
+            scansPerMonth: user.subscription.scansPerMonth || 0,
+            usage: user.subscription.usage?.scansThisMonth || 0,
+            limit: user.subscription.scansPerMonth || 0,
+            currentPeriodEnd: user.subscription.currentPeriodEnd,
+            periodEnd: user.subscription.currentPeriodEnd,
+            isTeamMember: user.subscription.isTeamMember || false,
+            billingCycle: user.subscription.billingCycle || 'monthly'
+          };
+        } else {
+          // Fall back to Subscription collection
+          const subscription = await Subscription.findOne({ 
+            user: user._id, 
+            status: { $in: ['active', 'trialing', 'past_due', 'canceled'] } 
+          }).sort({ createdAt: -1 }).lean();
+          
+          if (subscription) {
+            userObj.subscription = {
+              planName: subscription.planId,
+              planId: subscription.planId,
+              status: subscription.status,
+              scansPerMonth: subscription.limits?.scansPerMonth || 0,
+              usage: subscription.usage?.scansThisMonth || 0,
+              limit: subscription.limits?.scansPerMonth || 0,
+              currentPeriodEnd: subscription.currentPeriodEnd,
+              periodEnd: subscription.currentPeriodEnd,
+              isTeamMember: subscription.teamMembers?.length > 0 || false,
+              billingCycle: 'monthly'
+            };
+          } else {
+            userObj.subscription = null;
+          }
+        }
+        
+        return userObj;
+      })
+    );
+    
+    // Filter by subscription status if needed
+    let filteredUsers = usersWithSubscriptions;
+    if (subscriptionStatus && subscriptionStatus !== 'all') {
+      filteredUsers = usersWithSubscriptions.filter(user => {
+        const sub = user.subscription;
+        if (!sub) return subscriptionStatus === 'none';
+        
+        if (subscriptionStatus === 'active') {
+          return sub.status === 'active' || sub.status === 'trialing';
+        }
+        
+        if (subscriptionStatus === 'inactive') {
+          return sub.status === 'canceled' || sub.status === 'past_due';
+        }
+        
+        if (subscriptionStatus === 'team_member') {
+          return sub.isTeamMember === true;
+        }
+        
+        return true;
+      });
+    }
+    
+    // Apply pagination after filtering
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const total = filteredUsers.length;
+    const paginatedUsers = filteredUsers.slice(skip, skip + parseInt(limit));
+    
     res.json({
       success: true,
-      items: users,
+      users: paginatedUsers, // Frontend expects 'users' not 'items'
       total,
       page: parseInt(page),
       limit: parseInt(limit),
-      pages: Math.ceil(total / limit)
+      pages: Math.ceil(total / parseInt(limit))
     });
   } catch (error) {
     console.error('Error fetching users:', error);

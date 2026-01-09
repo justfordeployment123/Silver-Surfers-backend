@@ -20,6 +20,7 @@ from camoufox import Camoufox
 from bs4 import BeautifulSoup
 
 # Try to import Lighthouse integration (optional - falls back to custom audits if not available)
+# Enable Lighthouse integration
 try:
     from lighthouse_integration import run_lighthouse_audit
     LIGHTHOUSE_AVAILABLE = True

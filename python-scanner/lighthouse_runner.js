@@ -42,28 +42,75 @@ async function runLighthouse() {
             // Use CHROME_PATH from environment if set, otherwise chrome-launcher will find it
             const chromePath = process.env.CHROME_PATH || process.env.CHROMIUM_PATH;
             
+            if (!chromePath) {
+                throw new Error('The CHROME_PATH environment variable must be set to a Chrome/Chromium executable.');
+            }
+            
+            // Verify Chrome executable exists
+            if (!fs.existsSync(chromePath)) {
+                throw new Error(`Chrome executable not found at: ${chromePath}`);
+            }
+            
+            // Check if it's executable
+            try {
+                fs.accessSync(chromePath, fs.constants.F_OK | fs.constants.X_OK);
+            } catch (accessError) {
+                throw new Error(`Chrome executable is not accessible at: ${chromePath}`);
+            }
+            
+            // Use a fixed port range to avoid conflicts, but let chrome-launcher pick an available one
             const launchOptions = {
                 chromeFlags: [
-                    '--headless',
+                    '--headless=new', // Use new headless mode
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
-                    '--remote-debugging-port=0', // Use random port
+                    '--disable-software-rasterizer',
                     '--disable-blink-features=AutomationControlled',
-                    '--disable-features=IsolateOrigins,site-per-process'
-                ]
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding'
+                ],
+                chromePath: chromePath,
+                port: 0 // Let chrome-launcher pick an available port
             };
             
-            // Set Chrome path if available
-            if (chromePath) {
-                launchOptions.chromePath = chromePath;
-                console.log(`Using Chrome at: ${chromePath}`);
-            }
+            console.log(`Launching Chrome/Chromium from: ${chromePath}`);
             
-            chrome = await chromeLauncher.launch(launchOptions);
-            port = chrome.port;
-            console.log(`Launched Chrome/Chromium on port ${port}`);
+            try {
+                chrome = await chromeLauncher.launch(launchOptions);
+                port = chrome.port;
+                console.log(`✅ Chrome/Chromium launched successfully on port ${port}`);
+                
+                // Wait a moment to ensure Chrome is fully ready
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Verify Chrome is accessible
+                const http = require('http');
+                const checkUrl = `http://localhost:${port}/json/version`;
+                await new Promise((resolve, reject) => {
+                    const req = http.get(checkUrl, (res) => {
+                        if (res.statusCode === 200) {
+                            console.log(`✅ Chrome debugger is accessible on port ${port}`);
+                            resolve();
+                        } else {
+                            reject(new Error(`Chrome debugger returned status ${res.statusCode}`));
+                        }
+                    });
+                    req.on('error', (err) => {
+                        reject(new Error(`Cannot connect to Chrome debugger: ${err.message}`));
+                    });
+                    req.setTimeout(5000, () => {
+                        req.destroy();
+                        reject(new Error('Chrome debugger connection timeout'));
+                    });
+                });
+            } catch (launchError) {
+                console.error(`❌ Failed to launch Chrome: ${launchError.message}`);
+                throw new Error(`Chrome launch failed: ${launchError.message}`);
+            }
         }
         
         // Lighthouse options
@@ -73,11 +120,16 @@ async function runLighthouse() {
             logLevel: 'info',
             maxWaitForFcp: 15000,
             maxWaitForLoad: 45000,
-            formFactor: device === 'mobile' ? 'mobile' : 'desktop',
+            formFactor: device === 'mobile' ? 'mobile' : (device === 'tablet' ? 'mobile' : 'desktop'),
             screenEmulation: device === 'mobile' ? {
                 mobile: true,
                 width: 375,
                 height: 667,
+                deviceScaleFactor: 2
+            } : device === 'tablet' ? {
+                mobile: true,
+                width: 800,
+                height: 1280,
                 deviceScaleFactor: 2
             } : {
                 mobile: false,
@@ -86,7 +138,10 @@ async function runLighthouse() {
                 deviceScaleFactor: 1
             },
             throttlingMethod: 'simulate',
-            disableStorageReset: true
+            disableStorageReset: true,
+            // Additional options for stability
+            skipAboutBlank: false,
+            onlyCategories: isLite ? ['senior-friendly-lite'] : ['senior-friendly']
         };
         
         // Load custom config if available
@@ -122,12 +177,37 @@ async function runLighthouse() {
             console.log('Using default Lighthouse config (no custom config found)');
         }
         
-        // Run Lighthouse
-        console.log(`Running Lighthouse audit for ${url}...`);
-        const result = await lighthouse(url, options, customConfig);
+        // Run Lighthouse with retry logic
+        console.log(`Running Lighthouse audit for ${url} on port ${port}...`);
+        let result;
+        let lastError;
         
-        if (!result || !result.lhr) {
-            throw new Error('Lighthouse failed to generate report');
+        // Retry up to 2 times if connection fails
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                if (attempt > 1) {
+                    console.log(`Retry attempt ${attempt}...`);
+                    // Wait a bit before retry
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+                
+                result = await lighthouse(url, options, customConfig);
+                
+                if (!result || !result.lhr) {
+                    throw new Error('Lighthouse failed to generate report');
+                }
+                
+                // Success - break out of retry loop
+                break;
+            } catch (error) {
+                lastError = error;
+                console.error(`Lighthouse attempt ${attempt} failed: ${error.message}`);
+                
+                if (attempt === 2) {
+                    // Last attempt failed, throw the error
+                    throw new Error(`Lighthouse failed after ${attempt} attempts: ${error.message}`);
+                }
+            }
         }
         
         // Save report
