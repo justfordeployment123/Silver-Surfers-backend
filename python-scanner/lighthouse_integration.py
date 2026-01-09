@@ -9,6 +9,7 @@ import json
 import subprocess
 import tempfile
 import os
+import sys
 from typing import Dict, Any, Optional
 from pathlib import Path
 
@@ -77,8 +78,19 @@ async def run_lighthouse_audit(
             timeout=300  # 5 minutes timeout
         )
         
+        # Print stdout and stderr for debugging (especially config loading messages)
+        if stdout:
+            stdout_text = stdout.decode('utf-8', errors='replace')
+            if stdout_text.strip():
+                print(stdout_text)
+        
+        if stderr:
+            stderr_text = stderr.decode('utf-8', errors='replace')
+            if stderr_text.strip():
+                print(stderr_text, file=sys.stderr)
+        
         if process.returncode != 0:
-            error_msg = stderr.decode() if stderr else "Unknown error"
+            error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown error"
             raise RuntimeError(f"Lighthouse failed with code {process.returncode}: {error_msg}")
         
         # Read and parse report
