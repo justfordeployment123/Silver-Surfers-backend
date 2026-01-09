@@ -554,7 +554,7 @@ addOverallScoreDisplay(scoreData) {
             
             const categoryAudits = categories[categoryName];
             const auditCount = categoryAudits.length;
-            const cardHeight = 60 + (auditCount * 28); // Header + audits
+            const cardHeight = 60 + (auditCount * 30); // Header + audits (increased spacing)
             
             // Draw card background
             this.doc.roundedRect(cardX, this.currentY, cardWidth, cardHeight, 8)
@@ -588,18 +588,19 @@ addOverallScoreDisplay(scoreData) {
                     textColor = '#92400E';
                 }
                 
-                // Audit name
-                this.doc.fontSize(9).font('RegularFont').fillColor('#374151')
-                    .text(audit.info.title, cardX + 12, auditY, { width: cardWidth - 90 });
+                // Audit name - increased font size for better visibility
+                this.doc.fontSize(10).font('RegularFont').fillColor('#1F2937')
+                    .text(audit.info.title, cardX + 12, auditY, { width: cardWidth - 100 });
                 
-                // Score badge
-                const badgeWidth = 70;
+                // Score badge - increased size and font for better visibility
+                const badgeWidth = 85;
+                const badgeHeight = 20;
                 const badgeX = cardX + cardWidth - badgeWidth - 12;
-                this.doc.roundedRect(badgeX, auditY - 2, badgeWidth, 18, 4).fill(bgColor);
-                this.doc.fontSize(8).font('BoldFont').fillColor(textColor)
-                    .text(scoreText, badgeX, auditY + 3, { width: badgeWidth, align: 'center' });
+                this.doc.roundedRect(badgeX, auditY - 2, badgeWidth, badgeHeight, 4).fill(bgColor);
+                this.doc.fontSize(9).font('BoldFont').fillColor(textColor)
+                    .text(scoreText, badgeX, auditY + 2, { width: badgeWidth, align: 'center' });
                 
-                auditY += 28;
+                auditY += 30; // Increased spacing between items
             });
             
             // Move to next position
@@ -743,7 +744,9 @@ addOverallScoreDisplay(scoreData) {
     }
     
     // Detailed Results section with left border and card background
-    if (auditData.displayValue) {
+    // Show if displayValue exists, or if numericValue exists (for audits like dom-size)
+    const detailedValue = auditData.displayValue || (auditData.numericValue !== undefined && auditData.numericValue !== null ? `${auditData.numericValue}${auditData.numericUnit ? ' ' + auditData.numericUnit : ''}` : null);
+    if (detailedValue) {
         const detailedStartY = this.currentY;
         
         // Draw left border
@@ -754,7 +757,7 @@ addOverallScoreDisplay(scoreData) {
         
         // Content
         this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937').text('Detailed Results', this.margin + 10, detailedStartY + 12);
-        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(auditData.displayValue, this.margin + 10, detailedStartY + 32, { width: this.pageWidth - 20 });
+        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(detailedValue, this.margin + 10, detailedStartY + 32, { width: this.pageWidth - 20 });
         this.currentY += 85;
     }
 }
@@ -895,13 +898,13 @@ addOverallScoreDisplay(scoreData) {
         if (!items || items.length === 0) return;
         
         const startY = this.currentY;
-        const headerHeight = 28;
-        const rowHeight = 22;
+        const headerHeight = 32;
+        const rowHeight = 24;
         const colWidths = [295, 60, 60, 100]; // Audit Component, Score, Weight, Weighted
         
         // Draw header with purple background
         this.doc.rect(this.margin, startY, this.pageWidth, headerHeight).fill('#6366F1');
-        this.doc.font('BoldFont').fontSize(10).fillColor('#FFFFFF');
+        this.doc.font('BoldFont').fontSize(11).fillColor('#FFFFFF');
         
         const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
         let currentX = this.margin;
@@ -917,39 +920,38 @@ addOverallScoreDisplay(scoreData) {
         });
         
         let tableY = startY + headerHeight;
-        this.doc.font('RegularFont').fontSize(9);
         
         // Draw rows
         items.forEach((item, rowIndex) => {
             // White background
             this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FFFFFF');
             currentX = this.margin;
-            // Audit Component (left-aligned, wrap)
-            this.doc.fillColor('#374151').text(item.name, currentX + 10, tableY + 6, {
+            // Audit Component (left-aligned, wrap) - increased font size
+            this.doc.font('RegularFont').fontSize(10).fillColor('#1F2937').text(item.name, currentX + 10, tableY + 6, {
                 width: colWidths[0] - 20,
                 height: rowHeight - 6,
                 align: 'left',
                 lineGap: 2
             });
             currentX += colWidths[0];
-            // Score (center-aligned, wrap)
-            this.doc.text(item.score, currentX + 10, tableY + 6, {
+            // Score (center-aligned, wrap) - bold and larger for visibility
+            this.doc.font('BoldFont').fontSize(10).fillColor('#1F2937').text(item.score, currentX + 10, tableY + 6, {
                 width: colWidths[1] - 20,
                 height: rowHeight - 6,
                 align: 'center',
                 lineGap: 2
             });
             currentX += colWidths[1];
-            // Weight (center-aligned, wrap)
-            this.doc.text(String(item.weight), currentX + 10, tableY + 6, {
+            // Weight (center-aligned, wrap) - increased font size
+            this.doc.font('RegularFont').fontSize(10).fillColor('#1F2937').text(String(item.weight), currentX + 10, tableY + 6, {
                 width: colWidths[2] - 20,
                 height: rowHeight - 6,
                 align: 'center',
                 lineGap: 2
             });
             currentX += colWidths[2];
-            // Weighted (center-aligned, wrap)
-            this.doc.text(item.contribution, currentX + 10, tableY + 6, {
+            // Weighted (center-aligned, wrap) - bold for visibility
+            this.doc.font('BoldFont').fontSize(10).fillColor('#1F2937').text(item.contribution, currentX + 10, tableY + 6, {
                 width: colWidths[3] - 20,
                 height: rowHeight - 6,
                 align: 'center',
@@ -970,10 +972,10 @@ addOverallScoreDisplay(scoreData) {
         this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, calcBoxHeight, 4).fill('#FEF3C7');
         
         const finalCalcText = `Final Calculation: ${scoreData.totalWeightedScore.toFixed(2)} (Total Points) / ${scoreData.totalWeight} (Total Weight) = ${Math.round(scoreData.finalScore)}%`;
-        this.doc.fontSize(10).font('BoldFont').fillColor('#92400E').text(
+        this.doc.fontSize(12).font('BoldFont').fillColor('#92400E').text(
             finalCalcText,
             this.margin + 15,
-            this.currentY + 9,
+            this.currentY + 7,
             { width: this.pageWidth - 30, align: 'center' }
         );
         

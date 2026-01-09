@@ -1228,12 +1228,79 @@ def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: b
                 # DOM size audit
                 dom_size = page.evaluate("() => document.querySelectorAll('*').length")
                 dom_size_score = 1.0 if dom_size < 1500 else max(0, 1 - (dom_size - 1500) / 1500)
+                
+                # Get sample DOM elements for detailed findings table
+                # Get top-level elements and navigation items as examples
+                sample_elements = page.evaluate("""
+                    () => {
+                        const elements = [];
+                        // Get navigation links
+                        const navLinks = Array.from(document.querySelectorAll('nav a, header a, .nav a, .navigation a')).slice(0, 10);
+                        navLinks.forEach(link => {
+                            const text = link.textContent.trim().substring(0, 50);
+                            if (text) {
+                                // Build selector
+                                let selector = link.tagName.toLowerCase();
+                                if (link.id) {
+                                    selector += '#' + link.id;
+                                } else if (link.className) {
+                                    const firstClass = link.className.split(' ')[0];
+                                    if (firstClass) selector += '.' + firstClass;
+                                }
+                                elements.push({
+                                    nodeLabel: text || 'Navigation Link',
+                                    selector: selector,
+                                    explanation: 'May impact older adult users'
+                                });
+                            }
+                        });
+                        // Get some divs with complex nesting (potential complexity issues)
+                        const complexDivs = Array.from(document.querySelectorAll('div[class*="relative"], div[class*="absolute"]')).slice(0, 5);
+                        complexDivs.forEach(div => {
+                            const depth = div.querySelectorAll('*').length;
+                            if (depth > 5) {
+                                let selector = div.tagName.toLowerCase();
+                                if (div.id) {
+                                    selector += '#' + div.id;
+                                } else if (div.className) {
+                                    const firstClass = div.className.split(' ')[0];
+                                    if (firstClass) selector += '.' + firstClass;
+                                }
+                                elements.push({
+                                    nodeLabel: selector,
+                                    selector: selector,
+                                    explanation: 'May impact older adult users'
+                                });
+                            }
+                        });
+                        return elements.slice(0, 10); // Limit to 10 items
+                    }
+                """)
+                
+                # Build details.items in the format expected by PDF generator's default table config
+                # Default config expects: item.node?.nodeLabel, item.node?.selector, item.explanation
+                details_items = []
+                if sample_elements:
+                    for elem in sample_elements:
+                        details_items.append({
+                            "node": {
+                                "nodeLabel": elem.get("nodeLabel", "Page Element"),
+                                "selector": elem.get("selector", "N/A")
+                            },
+                            "explanation": elem.get("explanation", "May impact older adult users")
+                        })
+                
                 audits["dom-size"] = {
                     "id": "dom-size",
                     "title": "Avoids an excessive DOM size",
                     "description": f"This audit checks if the page has a reasonable number of DOM elements. Found {dom_size} elements. Recommended: under 1500.",
                     "score": dom_size_score,
                     "numericValue": dom_size,
+                    "displayValue": f"{dom_size} elements",
+                    "details": {
+                        "type": "table",
+                        "items": details_items
+                    } if details_items else None
                 }
                 
                 # Errors in console - check for JavaScript errors
