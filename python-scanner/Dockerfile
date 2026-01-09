@@ -56,6 +56,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Chromium for Lighthouse (Lighthouse requires Chrome/Chromium)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install build dependencies for some packages (lxml, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -98,7 +104,9 @@ RUN mkdir -p /tmp && chmod 777 /tmp
 ENV PYTHONUNBUFFERED=1 \
     TEMP_DIR=/tmp \
     PORT=8001 \
-    HOST=0.0.0.0
+    HOST=0.0.0.0 \
+    CHROME_PATH=/usr/bin/chromium \
+    CHROMIUM_PATH=/usr/bin/chromium
 
 # Expose port
 EXPOSE 8001

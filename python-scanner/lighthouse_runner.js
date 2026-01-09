@@ -38,19 +38,32 @@ async function runLighthouse() {
                 throw new Error('Invalid CDP URL format');
             }
         } else {
-            // Launch new Chrome instance
-            chrome = await chromeLauncher.launch({
+            // Launch new Chrome/Chromium instance
+            // Use CHROME_PATH from environment if set, otherwise chrome-launcher will find it
+            const chromePath = process.env.CHROME_PATH || process.env.CHROMIUM_PATH;
+            
+            const launchOptions = {
                 chromeFlags: [
                     '--headless',
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
-                    '--remote-debugging-port=0' // Use random port
+                    '--remote-debugging-port=0', // Use random port
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-features=IsolateOrigins,site-per-process'
                 ]
-            });
+            };
+            
+            // Set Chrome path if available
+            if (chromePath) {
+                launchOptions.chromePath = chromePath;
+                console.log(`Using Chrome at: ${chromePath}`);
+            }
+            
+            chrome = await chromeLauncher.launch(launchOptions);
             port = chrome.port;
-            console.log(`Launched Chrome on port ${port}`);
+            console.log(`Launched Chrome/Chromium on port ${port}`);
         }
         
         // Lighthouse options
