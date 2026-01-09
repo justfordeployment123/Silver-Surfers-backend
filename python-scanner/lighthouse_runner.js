@@ -165,16 +165,18 @@ async function runLighthouse() {
         // Load custom config if available
         let customConfig = null;
         // Try multiple possible paths for config files
+        // CRITICAL: Try .mjs extension first (forces ES module interpretation)
+        // Then fall back to .js (which might fail if package.json has "type": "commonjs")
+        const configBaseName = isLite ? 'custom-config-lite' : 'custom-config';
         const possibleConfigPaths = [
-            isLite 
-                ? '/app/lighthouse-configs/custom-config-lite.js'
-                : '/app/lighthouse-configs/custom-config.js',
-            isLite
-                ? path.join(__dirname, 'lighthouse-configs', 'custom-config-lite.js')
-                : path.join(__dirname, 'lighthouse-configs', 'custom-config.js'),
-            isLite
-                ? './lighthouse-configs/custom-config-lite.js'
-                : './lighthouse-configs/custom-config.js'
+            // Try .mjs first (forces ES module)
+            `/app/lighthouse-configs/${configBaseName}.mjs`,
+            path.join(__dirname, 'lighthouse-configs', `${configBaseName}.mjs`),
+            `./lighthouse-configs/${configBaseName}.mjs`,
+            // Fall back to .js
+            `/app/lighthouse-configs/${configBaseName}.js`,
+            path.join(__dirname, 'lighthouse-configs', `${configBaseName}.js`),
+            `./lighthouse-configs/${configBaseName}.js`
         ];
         
         console.log(`🔍 Looking for custom config (isLite: ${isLite})...`);
@@ -189,8 +191,26 @@ async function runLighthouse() {
                 console.log(`📂 Attempting to load config from: ${configPath}`);
                 try {
                     // Use dynamic import for ES modules (config files use import/export)
+                    // CRITICAL: Must use proper file:// URL format for ES modules
+                    // In CommonJS context, we need to ensure the file is treated as ES module
                     const resolvedPath = path.resolve(configPath);
-                    const fileUrl = resolvedPath.startsWith('file://') ? resolvedPath : `file://${resolvedPath}`;
+                    
+                    // Ensure proper file:// URL format
+                    // For ES modules, we need file:/// (three slashes) on Unix, file:///C:/ on Windows
+                    let fileUrl;
+                    if (process.platform === 'win32') {
+                        // Windows: file:///C:/path/to/file.js (three slashes + drive letter)
+                        const normalizedPath = resolvedPath.replace(/\\/g, '/');
+                        fileUrl = `file:///${normalizedPath}`;
+                    } else {
+                        // Unix: file:///path/to/file.js (three slashes)
+                        fileUrl = `file://${resolvedPath}`;
+                    }
+                    
+                    console.log(`   Loading ES module from: ${fileUrl}`);
+                    
+                    // Use dynamic import with proper URL
+                    // Dynamic import() in CommonJS context should handle ES modules correctly
                     const configModule = await import(fileUrl);
                     let loadedConfig = configModule.default || configModule;
                     
