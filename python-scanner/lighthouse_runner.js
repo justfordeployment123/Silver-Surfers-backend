@@ -185,14 +185,121 @@ async function runLighthouse() {
                     const resolvedPath = path.resolve(configPath);
                     const fileUrl = resolvedPath.startsWith('file://') ? resolvedPath : `file://${resolvedPath}`;
                     const configModule = await import(fileUrl);
-                    customConfig = configModule.default || configModule;
+                    let loadedConfig = configModule.default || configModule;
+                    
+                    // CRITICAL FIX: Resolve paths in config relative to config file location
+                    // The config uses __dirname which is evaluated in the config file's context
+                    // We need to ensure paths are correct relative to where the config file actually is
+                    const configDir = path.dirname(resolvedPath);
+                    
+                    // CRITICAL: The config file's __dirname is evaluated when the config module is loaded.
+                    // The paths should already be absolute. However, if they're wrong (e.g., from a different
+                    // working directory), we need to fix them relative to the config file's actual location.
+                    // The config file structure is: /app/lighthouse-configs/custom-config.js
+                    // Gatherers are at: /app/lighthouse-configs/custom_gatherers/*.js
+                    // Audits are at: /app/lighthouse-configs/custom_audits/*.js
+                    
+                    // Fix artifact paths (gatherers)
+                    if (loadedConfig.artifacts && Array.isArray(loadedConfig.artifacts)) {
+                        loadedConfig.artifacts = loadedConfig.artifacts.map(artifact => {
+                            if (artifact.gatherer) {
+                                // If path doesn't exist, try to find it relative to config directory
+                                if (!fs.existsSync(artifact.gatherer)) {
+                                    const gathererBasename = path.basename(artifact.gatherer);
+                                    const gathererDirName = 'custom_gatherers';
+                                    
+                                    // Try common locations
+                                    const possiblePaths = [
+                                        path.join(configDir, gathererDirName, gathererBasename), // Same dir as config
+                                        path.join('/app', 'lighthouse-configs', gathererDirName, gathererBasename), // Absolute in container
+                                        path.join(__dirname, 'lighthouse-configs', gathererDirName, gathererBasename), // Relative to runner
+                                        artifact.gatherer // Keep original as fallback
+                                    ];
+                                    
+                                    for (const possiblePath of possiblePaths) {
+                                        if (fs.existsSync(possiblePath)) {
+                                            artifact.gatherer = possiblePath;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            return artifact;
+                        });
+                    }
+                    
+                    // Fix audit paths
+                    if (loadedConfig.audits && Array.isArray(loadedConfig.audits)) {
+                        loadedConfig.audits = loadedConfig.audits.map(audit => {
+                            if (audit.path) {
+                                // If path doesn't exist, try to find it relative to config directory
+                                if (!fs.existsSync(audit.path)) {
+                                    const auditBasename = path.basename(audit.path);
+                                    const auditDirName = 'custom_audits';
+                                    
+                                    // Try common locations
+                                    const possiblePaths = [
+                                        path.join(configDir, auditDirName, auditBasename), // Same dir as config
+                                        path.join('/app', 'lighthouse-configs', auditDirName, auditBasename), // Absolute in container
+                                        path.join(__dirname, 'lighthouse-configs', auditDirName, auditBasename), // Relative to runner
+                                        audit.path // Keep original as fallback
+                                    ];
+                                    
+                                    for (const possiblePath of possiblePaths) {
+                                        if (fs.existsSync(possiblePath)) {
+                                            audit.path = possiblePath;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            return audit;
+                        });
+                    }
+                    
+                    customConfig = loadedConfig;
                     console.log(`✅ Loaded custom config from ${configPath}`);
+                    console.log(`   Config directory: ${configDir}`);
+                    console.log(`   Found ${loadedConfig.artifacts?.length || 0} gatherers and ${loadedConfig.audits?.length || 0} audits`);
+                    
+                    // Verify paths exist and log details
+                    let allPathsValid = true;
+                    if (loadedConfig.artifacts) {
+                        console.log(`   Verifying gatherer paths...`);
+                        for (const artifact of loadedConfig.artifacts) {
+                            if (artifact.gatherer) {
+                                if (fs.existsSync(artifact.gatherer)) {
+                                    console.log(`     ✅ ${artifact.id}: ${path.basename(artifact.gatherer)}`);
+                                } else {
+                                    console.log(`     ❌ ${artifact.id}: Path not found - ${artifact.gatherer}`);
+                                    allPathsValid = false;
+                                }
+                            }
+                        }
+                    }
+                    if (loadedConfig.audits) {
+                        console.log(`   Verifying audit paths...`);
+                        for (const audit of loadedConfig.audits) {
+                            if (audit.path) {
+                                if (fs.existsSync(audit.path)) {
+                                    console.log(`     ✅ ${path.basename(audit.path)}`);
+                                } else {
+                                    console.log(`     ❌ Path not found - ${audit.path}`);
+                                    allPathsValid = false;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!allPathsValid) {
+                        console.warn(`⚠️ Some custom audit/gatherer paths are invalid. Custom audits may not run correctly.`);
+                    }
                     break;
                 } catch (e) {
-                    // Silently continue - config is optional, Lighthouse will use defaults
-                    // Only log warning for debugging
+                    // Log error for debugging
+                    console.warn(`⚠️ Could not load custom config from ${configPath}: ${e.message}`);
                     if (configPath === possibleConfigPaths[possibleConfigPaths.length - 1]) {
-                        console.warn(`⚠️ Could not load custom config (will use Lighthouse defaults): ${e.message}`);
+                        console.warn(`⚠️ Will use Lighthouse defaults (custom audits will not run)`);
                     }
                 }
             }
@@ -203,6 +310,17 @@ async function runLighthouse() {
         
         // Run Lighthouse with retry logic
         console.log(`Running Lighthouse audit for ${url} on port ${port}...`);
+        if (customConfig) {
+            console.log(`   Using custom config with ${customConfig.audits?.length || 0} custom audits`);
+            if (customConfig.audits) {
+                customConfig.audits.forEach(audit => {
+                    console.log(`     - ${path.basename(audit.path || 'unknown')}`);
+                });
+            }
+        } else {
+            console.log(`   Using default Lighthouse config (no custom audits)`);
+        }
+        
         let result;
         let lastError;
         
