@@ -27,6 +27,12 @@ router.get('/quick-scans', authRequired, adminController.getQuickScans);
 // Bulk quick scans
 router.post('/quick-scans/bulk', authRequired, adminController.bulkQuickScans);
 
+// User management routes
+router.get('/users', authRequired, adminOnly, adminController.getUsers);
+router.get('/users/:id', authRequired, adminOnly, adminController.getUser);
+router.post('/users/:id/reset-usage', authRequired, adminOnly, adminController.resetUserUsage);
+router.put('/users/:id/role', authRequired, adminOnly, adminController.updateUserRole);
+
 export default router;
 
 

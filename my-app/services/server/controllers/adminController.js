@@ -5,6 +5,8 @@
 import AnalysisRecord from '../models/AnalysisRecord.js';
 import QuickScan from '../models/QuickScan.js';
 import ContactMessage from '../models/ContactMessage.js';
+import User from '../models/User.js';
+import Subscription from '../models/Subscription.js';
 
 // Queue references (set by server.js)
 let fullAuditQueue, quickScanQueue;
@@ -213,6 +215,163 @@ export async function bulkQuickScans(req, res) {
   } catch (error) {
     console.error('Bulk quick scans error:', error);
     res.status(500).json({ error: 'Failed to queue bulk quick scans' });
+  }
+}
+
+// User management functions
+export async function getUsers(req, res) {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { page = 1, limit = 50, search, role, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    const skip = (page - 1) * limit;
+
+    const query = {};
+    if (role && role !== 'all') {
+      query.role = role;
+    }
+    if (search) {
+      query.$or = [
+        { email: { $regex: search, $options: 'i' } },
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select('-password')
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      User.countDocuments(query)
+    ]);
+
+    res.json({
+      success: true,
+      items: users,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+}
+
+export async function getUser(req, res) {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const user = await User.findById(id).select('-password').lean();
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const subscription = await Subscription.findOne({ 
+      user: id, 
+      status: { $in: ['active', 'trialing', 'past_due', 'canceled'] } 
+    }).sort({ createdAt: -1 }).lean();
+
+    res.json({
+      success: true,
+      user: {
+        ...user,
+        subscription
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+}
+
+export async function resetUserUsage(req, res) {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const subscription = await Subscription.findOne({ 
+      user: id, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    if (subscription) {
+      await Subscription.findByIdAndUpdate(subscription._id, {
+        $set: { 'usage.scansThisMonth': 0 }
+      });
+    }
+
+    // Also reset in User collection if it has subscription.usage
+    await User.findByIdAndUpdate(id, {
+      $set: { 'subscription.usage.scansThisMonth': 0 }
+    });
+
+    res.json({
+      success: true,
+      message: 'User usage reset successfully'
+    });
+  } catch (error) {
+    console.error('Error resetting user usage:', error);
+    res.status(500).json({ error: 'Failed to reset user usage' });
+  }
+}
+
+export async function updateUserRole(req, res) {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!role || !['user', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'Valid role (user or admin) is required' });
+    }
+
+    // Prevent admin from demoting themselves
+    if (req.user.id === id && role !== 'admin') {
+      return res.status(400).json({ error: 'You cannot demote yourself from admin role' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { role },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      user
+    });
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    res.status(500).json({ error: 'Failed to update user role' });
   }
 }
 
