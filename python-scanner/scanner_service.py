@@ -406,11 +406,21 @@ async def perform_accessibility_audit(page, url: str, is_lite: bool = False) -> 
     return report
 
 
-def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: bool) -> Dict[str, Any]:
+def _run_camoufox_audit_sync(url: str, device_config: Dict[str, Any], is_lite: bool, get_cdp_endpoint: bool = False) -> Dict[str, Any]:
     """
     Synchronous wrapper for Camoufox audit.
     This runs in a thread pool to avoid blocking the async event loop.
     Camoufox uses Playwright's sync API, so we need to run it in a separate thread.
+    
+    Args:
+        url: URL to audit
+        device_config: Device configuration (viewport, user agent, etc.)
+        is_lite: Whether to use lite version
+        get_cdp_endpoint: If True, return CDP endpoint instead of running audits (for Lighthouse integration)
+    
+    Returns:
+        If get_cdp_endpoint=True: {"success": True, "cdp_endpoint": "ws://..."}
+        Otherwise: {"success": True, "report": {...}, "score": ...}
     """
     # Use Camoufox for advanced anti-detection (sync API)
     # Note: viewport is set on the page, not in the browser constructor
@@ -1193,53 +1203,89 @@ async def perform_audit(request: AuditRequest):
         print(f"\n=== Starting {version} audit for {url} ===")
         print(f"Device: {request.device}")
         
-        # Try Lighthouse first (if available)
+        # HYBRID APPROACH: Use Camoufox to navigate (anti-bot), then Lighthouse to audit
         if LIGHTHOUSE_AVAILABLE:
             try:
-                print("🔍 Attempting Lighthouse audit...")
-                lighthouse_report = await run_lighthouse_audit(
-                    url=url,
-                    device=request.device,
-                    is_lite=request.isLiteVersion
-                )
+                print("🔍 Attempting hybrid Camoufox + Lighthouse audit...")
+                print("   Step 1: Camoufox navigates to site (anti-bot bypass)...")
                 
-                # Calculate score from Lighthouse report
-                final_score = calculate_score(lighthouse_report, request.isLiteVersion)
+                # Get device configuration
+                device_config = get_viewport_for_device(request.device)
                 
-                if final_score > 0:
-                    # Save report to file
-                    url_obj = urlparse(url)
-                    hostname = url_obj.hostname.replace(".", "-") if url_obj.hostname else "unknown"
-                    timestamp = int(time.time() * 1000)
-                    version_suffix = "-lite" if request.isLiteVersion else ""
-                    report_filename = f"report-{hostname}-{timestamp}{version_suffix}.json"
-                    
-                    temp_dir = os.getenv("TEMP_DIR", "/tmp")
-                    os.makedirs(temp_dir, exist_ok=True)
-                    report_path = os.path.join(temp_dir, report_filename)
-                    
-                    with open(report_path, "w", encoding="utf-8") as f:
-                        json.dump(lighthouse_report, f, indent=2)
-                    
-                    print(f"✅ Lighthouse {version} audit completed successfully")
-                    print(f"📊 Score: {final_score}%")
-                    print(f"📄 Report saved to: {report_path}")
-                    
-                    return AuditResponse(
-                        success=True,
-                        reportPath=report_path,
-                        report=lighthouse_report,
-                        isLiteVersion=request.isLiteVersion,
-                        version=version,
-                        url=url,
-                        device=request.device,
-                        strategy="Lighthouse-Camoufox",
-                        attemptNumber=1,
-                        message=f"{version} audit completed successfully using Lighthouse",
+                # Step 1: Use Camoufox to navigate and get past bot protection
+                # We'll launch Camoufox, navigate, then get the CDP endpoint for Lighthouse
+                loop = asyncio.get_event_loop()
+                with ThreadPoolExecutor() as executor:
+                    # Launch Camoufox and navigate
+                    cdp_result = await loop.run_in_executor(
+                        executor,
+                        _launch_camoufox_and_get_cdp,
+                        url,
+                        device_config
                     )
+                
+                if cdp_result.get("success"):
+                    final_url = cdp_result.get("url", url)
+                    cdp_endpoint = cdp_result.get("cdp_endpoint")
+                    
+                    print(f"   ✅ Camoufox navigation successful")
+                    
+                    if cdp_endpoint:
+                        print(f"   Step 2: Lighthouse connecting to browser via CDP...")
+                        print(f"   CDP Endpoint: {cdp_endpoint[:60]}...")
+                    else:
+                        print(f"   Step 2: Lighthouse auditing URL that Camoufox successfully loaded...")
+                    
+                    # Step 2: Use Lighthouse (with CDP if available, otherwise just URL)
+                    lighthouse_report = await run_lighthouse_audit(
+                        url=final_url,
+                        device=request.device,
+                        is_lite=request.isLiteVersion,
+                        cdp_endpoint=cdp_endpoint
+                    )
+                    
+                    # Calculate score from Lighthouse report
+                    final_score = calculate_score(lighthouse_report, request.isLiteVersion)
+                    
+                    if final_score > 0:
+                        # Save report to file
+                        url_obj = urlparse(final_url)
+                        hostname = url_obj.hostname.replace(".", "-") if url_obj.hostname else "unknown"
+                        timestamp = int(time.time() * 1000)
+                        version_suffix = "-lite" if request.isLiteVersion else ""
+                        report_filename = f"report-{hostname}-{timestamp}{version_suffix}.json"
+                        
+                        temp_dir = os.getenv("TEMP_DIR", "/tmp")
+                        os.makedirs(temp_dir, exist_ok=True)
+                        report_path = os.path.join(temp_dir, report_filename)
+                        
+                        with open(report_path, "w", encoding="utf-8") as f:
+                            json.dump(lighthouse_report, f, indent=2)
+                        
+                        print(f"✅ Hybrid {version} audit completed successfully")
+                        print(f"📊 Score: {final_score}%")
+                        print(f"📄 Report saved to: {report_path}")
+                        
+                        return AuditResponse(
+                            success=True,
+                            reportPath=report_path,
+                            report=lighthouse_report,
+                            isLiteVersion=request.isLiteVersion,
+                            version=version,
+                            url=final_url,
+                            device=request.device,
+                            strategy="Camoufox+Lighthouse-Hybrid",
+                            attemptNumber=1,
+                            message=f"{version} audit completed successfully using Camoufox navigation + Lighthouse audit",
+                        )
+                    else:
+                        raise Exception("Lighthouse score is 0")
+                else:
+                    raise Exception("Failed to get CDP endpoint from Camoufox")
+                    
             except Exception as lighthouse_error:
-                print(f"⚠️ Lighthouse audit failed: {lighthouse_error}")
-                print("🔄 Falling back to custom audits...")
+                print(f"⚠️ Hybrid audit failed: {lighthouse_error}")
+                print("🔄 Falling back to custom Camoufox audits...")
         
         # Fallback to custom Camoufox audits
         print("🔍 Using custom Camoufox audits...")

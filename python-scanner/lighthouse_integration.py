@@ -17,7 +17,8 @@ async def run_lighthouse_audit(
     url: str,
     device: str = "desktop",
     is_lite: bool = False,
-    output_dir: str = "/tmp"
+    output_dir: str = "/tmp",
+    cdp_endpoint: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Run Lighthouse audit using Node.js subprocess.
@@ -53,7 +54,7 @@ async def run_lighthouse_audit(
             report_path,
             device,
             str(is_lite).lower(),
-            ""  # No CDP URL (Lighthouse will launch its own Chrome)
+            cdp_endpoint or ""  # CDP endpoint from Camoufox (if provided)
         ]
         
         # Set NODE_PATH to include local node_modules
