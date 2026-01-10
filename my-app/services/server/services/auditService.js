@@ -238,17 +238,15 @@ async function mergePDFsByPlatform(options) {
     coverStream.on('error', reject);
   });
   
-  // Load cover page and add to merged PDF
-  const coverBytes = await fs.readFile(coverPagePath);
-  const coverDocLib = await PDFLib.load(coverBytes);
-  const [coverPage] = await mergedPdf.copyPages(coverDocLib, [0]);
-  mergedPdf.addPage(coverPage);
+  // STEP 1: First pass - count pages in each PDF to calculate accurate starting page numbers
+  const pageCounts = [];
+  const validPdfPaths = [];
+  const validReports = [];
   
-  // Clean up temporary cover page file
-  await fs.unlink(coverPagePath).catch(() => {});
-  
-  // Merge all individual PDFs
-  for (const pdfPath of pdfPaths) {
+  for (let i = 0; i < pdfPaths.length; i++) {
+    const pdfPath = pdfPaths[i];
+    const report = reports[i];
+    
     try {
       if (!await fs.access(pdfPath).then(() => true).catch(() => false)) {
         console.warn(`⚠️ PDF not found, skipping: ${pdfPath}`);
@@ -257,16 +255,208 @@ async function mergePDFsByPlatform(options) {
       
       const pdfBytes = await fs.readFile(pdfPath);
       const pdfDoc = await PDFLib.load(pdfBytes);
-      const pdfPageCount = pdfDoc.getPageCount();
+      const pageCount = pdfDoc.getPageCount();
+      
+      pageCounts.push(pageCount);
+      validPdfPaths.push(pdfPath);
+      validReports.push(report);
+    } catch (error) {
+      console.error(`   ❌ Failed to read ${pdfPath}:`, error.message);
+      // Skip this PDF
+    }
+  }
+  
+  // Function to extract page name from URL
+  const getPageName = (url) => {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      if (!pathname || pathname === '/' || pathname === '') {
+        return 'Home Page';
+      }
+      // Extract last part of path and make it readable
+      const parts = pathname.split('/').filter(p => p);
+      if (parts.length === 0) {
+        return 'Home Page';
+      }
+      const lastPart = parts[parts.length - 1];
+      // Convert kebab-case, snake_case, or lowercase to Title Case
+      return lastPart
+        .replace(/[-_]/g, ' ')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ') + ' Page';
+    } catch (e) {
+      // Fallback: use URL hostname or a default name
+      try {
+        const urlObj = new URL(url);
+        return urlObj.hostname.replace('www.', '').split('.')[0] + ' Page';
+      } catch (e2) {
+        return 'Page';
+      }
+    }
+  };
+  
+  // Calculate starting page numbers (Cover = 1, TOC = 2, Content starts at 3)
+  const tocEntries = [];
+  let currentPageNumber = 3; // Content starts at page 3 (after cover and TOC)
+  
+  for (let i = 0; i < validReports.length; i++) {
+    const report = validReports[i];
+    const pageName = getPageName(report.url);
+    const score = report.score !== null && report.score !== undefined ? `${Math.round(report.score)}%` : 'N/A';
+    const startPage = currentPageNumber;
+    
+    tocEntries.push({
+      pageName,
+      score,
+      startPage,
+      pageCount: pageCounts[i]
+    });
+    
+    // Move to next report's starting page
+    currentPageNumber += pageCounts[i];
+  }
+  
+  // STEP 2: Create cover page
+  const coverBytes = await fs.readFile(coverPagePath);
+  const coverDocLib = await PDFLib.load(coverBytes);
+  const [coverPage] = await mergedPdf.copyPages(coverDocLib, [0]);
+  mergedPdf.addPage(coverPage);
+  await fs.unlink(coverPagePath).catch(() => {});
+  
+  // STEP 3: Create Table of Contents page with accurate page numbers
+  const tocPagePath = path.join(outputDir, `toc-${device}-${Date.now()}.pdf`);
+  const tocDoc = new PDFDocument({ margin: 40, size: 'A4' });
+  const tocStream = fsSync.createWriteStream(tocPagePath);
+  tocDoc.pipe(tocStream);
+  
+  tocDoc.registerFont('RegularFont', 'Helvetica');
+  tocDoc.registerFont('BoldFont', 'Helvetica-Bold');
+  
+  let tocY = 40;
+  const tocMargin = 40;
+  const tocWidth = 515;
+  
+  // TOC Title
+  tocDoc.fontSize(24).font('BoldFont').fillColor('#2C3E50')
+    .text('Table of Contents', tocMargin, tocY, { width: tocWidth, align: 'center' });
+  tocY += 50;
+  
+  // TOC Table
+  const headerHeight = 35;
+  const rowHeight = 28;
+  const colWidths = [320, 100, 95]; // Page Name, Score, Page #
+  
+  // Header
+  tocDoc.rect(tocMargin, tocY, tocWidth, headerHeight).fill('#6366F1');
+  tocDoc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
+  let x = tocMargin;
+  tocDoc.text('Page', x + 15, tocY + 12, { width: colWidths[0] - 30, align: 'left' });
+  x += colWidths[0];
+  tocDoc.text('Score', x, tocY + 12, { width: colWidths[1], align: 'center' });
+  x += colWidths[1];
+  tocDoc.text('Page #', x, tocY + 12, { width: colWidths[2], align: 'center' });
+  tocY += headerHeight + 5;
+  
+  // TOC rows with accurate page numbers
+  tocDoc.fontSize(11).font('RegularFont').fillColor('#1F2937');
+  
+  tocEntries.forEach((entry, index) => {
+    // Check if we need a new page
+    if (tocY + rowHeight > tocDoc.page.height - 60) {
+      tocDoc.addPage();
+      tocY = tocMargin;
+      // Redraw header
+      tocDoc.rect(tocMargin, tocY, tocWidth, headerHeight).fill('#6366F1');
+      tocDoc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
+      x = tocMargin;
+      tocDoc.text('Page', x + 15, tocY + 12, { width: colWidths[0] - 30, align: 'left' });
+      x += colWidths[0];
+      tocDoc.text('Score', x, tocY + 12, { width: colWidths[1], align: 'center' });
+      x += colWidths[1];
+      tocDoc.text('Page #', x, tocY + 12, { width: colWidths[2], align: 'center' });
+      tocY += headerHeight + 5;
+    }
+    
+    // Alternate row background
+    if (index % 2 === 0) {
+      tocDoc.rect(tocMargin, tocY, tocWidth, rowHeight).fill('#F9FAFB');
+    }
+    
+    x = tocMargin;
+    
+    // Page name (left-aligned)
+    tocDoc.fillColor('#1F2937').text(entry.pageName, x + 15, tocY + 8, { 
+      width: colWidths[0] - 30, 
+      align: 'left' 
+    });
+    x += colWidths[0];
+    
+    // Score (center-aligned, colored)
+    let scoreColor = '#6B7280';
+    if (entry.score !== 'N/A') {
+      const scoreNum = parseFloat(entry.score);
+      if (scoreNum >= 70) scoreColor = '#10B981';
+      else if (scoreNum >= 50) scoreColor = '#F59E0B';
+      else scoreColor = '#EF4444';
+    }
+    tocDoc.fillColor(scoreColor).font('BoldFont').text(entry.score, x, tocY + 8, { 
+      width: colWidths[1], 
+      align: 'center' 
+    });
+    tocDoc.font('RegularFont');
+    x += colWidths[1];
+    
+    // Page number (center-aligned, blue) - using accurate startPage
+    tocDoc.fillColor('#3498DB').font('BoldFont').text(`${entry.startPage}`, x, tocY + 8, { 
+      width: colWidths[2], 
+      align: 'center' 
+    });
+    tocDoc.font('RegularFont');
+    
+    // Bottom border
+    tocDoc.strokeColor('#E5E7EB').lineWidth(0.5)
+      .moveTo(tocMargin, tocY + rowHeight)
+      .lineTo(tocMargin + tocWidth, tocY + rowHeight)
+      .stroke();
+    
+    tocY += rowHeight;
+  });
+  
+  tocDoc.end();
+  
+  // Wait for TOC page to be written
+  await new Promise((resolve, reject) => {
+    tocStream.on('finish', resolve);
+    tocStream.on('error', reject);
+  });
+  
+  // Add TOC page to merged PDF
+  const tocBytes = await fs.readFile(tocPagePath);
+  const tocDocLib = await PDFLib.load(tocBytes);
+  const [tocPage] = await mergedPdf.copyPages(tocDocLib, [0]);
+  mergedPdf.addPage(tocPage);
+  await fs.unlink(tocPagePath).catch(() => {});
+  
+  // STEP 4: Merge all individual PDFs in order
+  for (let i = 0; i < validPdfPaths.length; i++) {
+    const pdfPath = validPdfPaths[i];
+    const entry = tocEntries[i];
+    
+    try {
+      const pdfBytes = await fs.readFile(pdfPath);
+      const pdfDoc = await PDFLib.load(pdfBytes);
+      const pageCount = pdfDoc.getPageCount();
       
       // Copy all pages from this PDF to the merged PDF
-      const pageIndices = Array.from({ length: pdfPageCount }, (_, i) => i);
+      const pageIndices = Array.from({ length: pageCount }, (_, i) => i);
       const copiedPages = await mergedPdf.copyPages(pdfDoc, pageIndices);
       copiedPages.forEach((page) => {
         mergedPdf.addPage(page);
       });
       
-      console.log(`   ✅ Merged PDF: ${path.basename(pdfPath)} (${pdfPageCount} pages)`);
+      console.log(`   ✅ Merged: ${entry.pageName} - starts at page ${entry.startPage} (${pageCount} pages)`);
     } catch (error) {
       console.error(`   ❌ Failed to merge ${pdfPath}:`, error.message);
       // Continue with other PDFs even if one fails
