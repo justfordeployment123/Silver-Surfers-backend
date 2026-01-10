@@ -8,7 +8,7 @@ import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import PDFDocument from 'pdfkit';
-import { PDFDocument as PDFLib } from 'pdf-lib';
+import { PDFDocument as PDFLib, StandardFonts, rgb } from 'pdf-lib';
 import { InternalLinksExtractor } from '../../internal_links/internal_links.js';
 import { runLighthouseAudit } from '../../load_and_audit/audit.js';
 import { runLighthouseLiteAudit } from '../../load_and_audit/audit-module-with-lite.js';
@@ -230,6 +230,12 @@ async function mergePDFsByPlatform(options) {
   coverDoc.fontSize(11).font('RegularFont').fillColor('#95A5A6')
     .text(`Generated: ${genDate}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
   
+  // Add page number to cover page (page 1)
+  const coverPageHeight = coverDoc.page.height;
+  const coverPageWidth = coverDoc.page.width;
+  coverDoc.fontSize(10).font('RegularFont').fillColor('#6B7280')
+    .text('1', (coverPageWidth - 100) / 2, coverPageHeight - 30, { width: 100, align: 'center' });
+  
   coverDoc.end();
   
   // Wait for cover page to be written
@@ -424,6 +430,12 @@ async function mergePDFsByPlatform(options) {
     tocY += rowHeight;
   });
   
+  // Add page number to TOC page (page 2) at the bottom
+  const tocPageHeight = tocDoc.page.height;
+  const tocPageWidth = tocDoc.page.width;
+  tocDoc.fontSize(10).font('RegularFont').fillColor('#6B7280')
+    .text('2', (tocPageWidth - 100) / 2, tocPageHeight - 30, { width: 100, align: 'center' });
+  
   tocDoc.end();
   
   // Wait for TOC page to be written
@@ -461,6 +473,52 @@ async function mergePDFsByPlatform(options) {
       console.error(`   ❌ Failed to merge ${pdfPath}:`, error.message);
       // Continue with other PDFs even if one fails
     }
+  }
+  
+  // STEP 5: Add page numbers to all pages (cover, TOC, and all content pages)
+  const pages = mergedPdf.getPages();
+  const helveticaFont = await mergedPdf.embedFont(StandardFonts.Helvetica);
+  const pageNumberColor = rgb(0.42, 0.45, 0.51); // #6B7280
+  
+  // Add page number to cover page (page 1)
+  if (pages.length > 0) {
+    const coverPage = pages[0];
+    const { width, height } = coverPage.getSize();
+    coverPage.drawText('1', {
+      x: width / 2 - 5,
+      y: height - 30,
+      size: 10,
+      font: helveticaFont,
+      color: pageNumberColor,
+    });
+  }
+  
+  // Add page number to TOC page (page 2)
+  if (pages.length > 1) {
+    const tocPage = pages[1];
+    const { width, height } = tocPage.getSize();
+    tocPage.drawText('2', {
+      x: width / 2 - 5,
+      y: height - 30,
+      size: 10,
+      font: helveticaFont,
+      color: pageNumberColor,
+    });
+  }
+  
+  // Add page numbers to all content pages (starting from page 3)
+  for (let i = 2; i < pages.length; i++) {
+    const page = pages[i];
+    const { width, height } = page.getSize();
+    const pageNumber = i + 1; // Page 3, 4, 5, etc.
+    
+    page.drawText(`${pageNumber}`, {
+      x: width / 2 - 5,
+      y: height - 30,
+      size: 10,
+      font: helveticaFont,
+      color: pageNumberColor,
+    });
   }
   
   // Save the merged PDF

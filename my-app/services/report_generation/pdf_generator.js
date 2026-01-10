@@ -205,11 +205,43 @@ export class ElderlyAccessibilityPDFGenerator {
         this.currentY = 40;
         this.pageWidth = 515; // Adjusted for margins
         this.margin = 40;
+        this.pageNumber = 0; // Track current page number (starts at 0, will be 1 after first content)
+        this.needsPageNumber = false; // Flag to track if current page needs page number
+    }
+
+    addPageNumberToCurrentPage() {
+        if (!this.doc.page) return; // No page available yet
+        
+        // Add page number at the bottom center of the current page
+        const pageHeight = this.doc.page.height;
+        const pageWidth = this.doc.page.width;
+        
+        // Save current Y position
+        const savedY = this.currentY;
+        
+        // Draw page number at bottom (centered)
+        this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280')
+            .text(`${this.pageNumber}`, (pageWidth - 100) / 2, pageHeight - 30, { 
+                width: 100, 
+                align: 'center' 
+            });
+        
+        // Restore Y position
+        this.currentY = savedY;
     }
 
     addPage() {
+        // Before creating a new page, add page number to the current page (if it needs one)
+        if (this.pageNumber > 0 && this.needsPageNumber) {
+            this.addPageNumberToCurrentPage();
+        }
+        
+        // Create new page
         this.doc.addPage();
+        this.pageNumber++;
         this.currentY = this.margin;
+        this.needsPageNumber = true;
+        // Don't add page number here - it will be added when content is done or before next addPage()
     }
 
     drawColorBar(category, y = null) {
@@ -1150,7 +1182,15 @@ addOverallScoreDisplay(scoreData) {
             console.log('Generating senior-friendly accessibility report...');
             console.log(`Overall Score Calculated: ${scoreData.finalScore.toFixed(0)}`);
 
+            // Start with first page
+            this.pageNumber = 1;
+            this.needsPageNumber = true;
+            
+            // Add intro page - page number will be added after content
             this.addIntroPage(reportData, scoreData, options.planType || 'pro');
+            // Add page number to first page after intro content is complete
+            this.addPageNumberToCurrentPage();
+            
             this.addScoreCalculationPage(reportData, scoreData);
             this.addSummaryPage(reportData);
 
@@ -1203,6 +1243,12 @@ addOverallScoreDisplay(scoreData) {
                 this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
                 this.currentY += 40;
             }
+            
+            // Ensure page number is added to the last page before ending
+            if (this.needsPageNumber) {
+                this.addPageNumberToCurrentPage();
+            }
+            
             this.doc.end();
 
             return new Promise((resolve, reject) => {
