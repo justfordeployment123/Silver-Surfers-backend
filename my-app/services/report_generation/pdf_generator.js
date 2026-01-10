@@ -156,7 +156,7 @@ const CATEGORY_COLORS = {
 };
 
 // Function to calculate the weighted "Senior Friendliness" score
-function calculateSeniorFriendlinessScore(report) {
+export function calculateSeniorFriendlinessScore(report) {
     const categoryId = 'senior-friendly';
     const categoryConfig = customConfig.categories[categoryId];
     if (!categoryConfig) {
@@ -190,7 +190,7 @@ function calculateSeniorFriendlinessScore(report) {
     const finalScore = (totalWeightedScore / totalWeight) * 100;
     return { finalScore, totalWeightedScore, totalWeight };
 }
-class ElderlyAccessibilityPDFGenerator {
+export class ElderlyAccessibilityPDFGenerator {
     constructor(options = {}) {
         this.imagePaths = options.imagePaths || {};
         this.doc = new PDFDocument({

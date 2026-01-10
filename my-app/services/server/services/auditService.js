@@ -8,10 +8,11 @@ import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import PDFDocument from 'pdfkit';
+import { PDFDocument as PDFLib } from 'pdf-lib';
 import { InternalLinksExtractor } from '../../internal_links/internal_links.js';
 import { runLighthouseAudit } from '../../load_and_audit/audit.js';
 import { runLighthouseLiteAudit } from '../../load_and_audit/audit-module-with-lite.js';
-import { generateSeniorAccessibilityReport } from '../../report_generation/pdf_generator.js';
+import { generateSeniorAccessibilityReport, calculateSeniorFriendlinessScore, ElderlyAccessibilityPDFGenerator } from '../../report_generation/pdf_generator.js';
 import { createAllHighlightedImages } from '../../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../../report_generation/pdf-generator-lite.js';
 import { 
@@ -172,6 +173,311 @@ async function generateSummaryPDF(pageResults, outputPath) {
   });
 }
 
+// Helper function to merge multiple PDFs into one combined PDF per platform
+async function mergePDFsByPlatform(options) {
+  const { pdfPaths, device, email_address, outputDir, reports } = options;
+  
+  if (!pdfPaths || pdfPaths.length === 0) {
+    throw new Error('No PDF paths provided for merging');
+  }
+  
+  const deviceCapitalized = device.charAt(0).toUpperCase() + device.slice(1);
+  const outputPath = path.join(outputDir, `combined-${device}-report.pdf`);
+  
+  // Create a new PDF document for the combined report
+  const mergedPdf = await PDFLib.create();
+  
+  // Add a cover page using PDFKit (easier for text formatting)
+  // We'll create a simple cover page PDF first, then merge it
+  const coverPagePath = path.join(outputDir, `cover-${device}-${Date.now()}.pdf`);
+  const coverDoc = new PDFDocument({ margin: 40, size: 'A4' });
+  const coverStream = fsSync.createWriteStream(coverPagePath);
+  coverDoc.pipe(coverStream);
+  
+  coverDoc.registerFont('RegularFont', 'Helvetica');
+  coverDoc.registerFont('BoldFont', 'Helvetica-Bold');
+  
+  let coverY = 40;
+  const coverMargin = 40;
+  const coverWidth = 515;
+  
+  // Cover page content
+  coverDoc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+    .text(`Combined ${deviceCapitalized} Audit Report`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 60;
+  
+  coverDoc.fontSize(14).font('RegularFont').fillColor('#7F8C8D')
+    .text(`Generated for: ${email_address}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 30;
+  
+  coverDoc.fontSize(12).font('RegularFont').fillColor('#7F8C8D')
+    .text(`Platform: ${deviceCapitalized}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 20;
+  
+  coverDoc.fontSize(12).font('RegularFont').fillColor('#7F8C8D')
+    .text(`Total Pages Audited: ${reports.length}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 40;
+  
+  // Calculate average score
+  const avgScore = reports.length > 0 
+    ? reports.reduce((sum, r) => sum + (r.score || 0), 0) / reports.length 
+    : 0;
+  coverDoc.fontSize(16).font('BoldFont').fillColor('#3498DB')
+    .text(`Average Score: ${avgScore.toFixed(1)}%`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 40;
+  
+  const genDate = new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#95A5A6')
+    .text(`Generated: ${genDate}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  
+  coverDoc.end();
+  
+  // Wait for cover page to be written
+  await new Promise((resolve, reject) => {
+    coverStream.on('finish', resolve);
+    coverStream.on('error', reject);
+  });
+  
+  // Load cover page and add to merged PDF
+  const coverBytes = await fs.readFile(coverPagePath);
+  const coverDocLib = await PDFLib.load(coverBytes);
+  const [coverPage] = await mergedPdf.copyPages(coverDocLib, [0]);
+  mergedPdf.addPage(coverPage);
+  
+  // Clean up temporary cover page file
+  await fs.unlink(coverPagePath).catch(() => {});
+  
+  // Merge all individual PDFs
+  for (const pdfPath of pdfPaths) {
+    try {
+      if (!await fs.access(pdfPath).then(() => true).catch(() => false)) {
+        console.warn(`⚠️ PDF not found, skipping: ${pdfPath}`);
+        continue;
+      }
+      
+      const pdfBytes = await fs.readFile(pdfPath);
+      const pdfDoc = await PDFLib.load(pdfBytes);
+      const pdfPageCount = pdfDoc.getPageCount();
+      
+      // Copy all pages from this PDF to the merged PDF
+      const pageIndices = Array.from({ length: pdfPageCount }, (_, i) => i);
+      const copiedPages = await mergedPdf.copyPages(pdfDoc, pageIndices);
+      copiedPages.forEach((page) => {
+        mergedPdf.addPage(page);
+      });
+      
+      console.log(`   ✅ Merged PDF: ${path.basename(pdfPath)} (${pdfPageCount} pages)`);
+    } catch (error) {
+      console.error(`   ❌ Failed to merge ${pdfPath}:`, error.message);
+      // Continue with other PDFs even if one fails
+    }
+  }
+  
+  // Save the merged PDF
+  const mergedPdfBytes = await mergedPdf.save();
+  await fs.writeFile(outputPath, mergedPdfBytes);
+  
+  return outputPath;
+}
+
+// Helper function to generate combined PDF summary for all pages of a platform
+// Note: This is a fallback if PDF merging fails - it creates a summary table instead
+async function generateCombinedPlatformReport(options) {
+  const { reports, device, email_address, outputDir, planType, individualPdfPaths } = options;
+  
+  if (!reports || reports.length === 0) {
+    throw new Error('No reports provided for combined PDF generation');
+  }
+  
+  const deviceCapitalized = device.charAt(0).toUpperCase() + device.slice(1);
+  const outputPath = path.join(outputDir, `combined-${device}-report.pdf`);
+  
+  // Create a new PDF document
+  const doc = new PDFDocument({
+    margin: 40,
+    size: 'A4'
+  });
+  
+  const writeStream = fsSync.createWriteStream(outputPath);
+  doc.pipe(writeStream);
+  
+  // Register fonts
+  doc.registerFont('RegularFont', 'Helvetica');
+  doc.registerFont('BoldFont', 'Helvetica-Bold');
+  
+  let currentY = 40;
+  const margin = 40;
+  const pageWidth = 515;
+  
+  // Cover Page
+  doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+    .text(`Combined ${deviceCapitalized} Audit Report`, margin, currentY, { width: pageWidth, align: 'center' });
+  currentY += 60;
+  
+  doc.fontSize(14).font('RegularFont').fillColor('#7F8C8D')
+    .text(`Generated for: ${email_address}`, margin, currentY, { width: pageWidth, align: 'center' });
+  currentY += 30;
+  
+  doc.fontSize(12).font('RegularFont').fillColor('#7F8C8D')
+    .text(`Platform: ${deviceCapitalized}`, margin, currentY, { width: pageWidth, align: 'center' });
+  currentY += 20;
+  
+  doc.fontSize(12).font('RegularFont').fillColor('#7F8C8D')
+    .text(`Total Pages Audited: ${reports.length}`, margin, currentY, { width: pageWidth, align: 'center' });
+  currentY += 40;
+  
+  // Calculate average score
+  const avgScore = reports.length > 0 
+    ? reports.reduce((sum, r) => sum + (r.score || 0), 0) / reports.length 
+    : 0;
+  doc.fontSize(16).font('BoldFont').fillColor('#3498DB')
+    .text(`Average Score: ${avgScore.toFixed(1)}%`, margin, currentY, { width: pageWidth, align: 'center' });
+  currentY += 40;
+  
+  doc.fontSize(11).font('RegularFont').fillColor('#95A5A6')
+    .text(`Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`, margin, currentY, { width: pageWidth, align: 'center' });
+  
+  // Table of Contents / Summary Page
+  doc.addPage();
+  currentY = margin;
+  
+  doc.fontSize(20).font('BoldFont').fillColor('#2C3E50')
+    .text('Pages Summary', margin, currentY, { width: pageWidth });
+  currentY += 40;
+  
+  // Summary table
+  const headerHeight = 30;
+  const rowHeight = 25;
+  const colWidths = [50, 280, 90, 95]; // #, URL, Score, Status
+  
+  // Header
+  doc.rect(margin, currentY, pageWidth, headerHeight).fill('#6366F1');
+  doc.fontSize(11).font('BoldFont').fillColor('#FFFFFF');
+  let x = margin;
+  doc.text('#', x + 10, currentY + 10, { width: colWidths[0] - 20, align: 'center' });
+  x += colWidths[0];
+  doc.text('Page URL', x + 10, currentY + 10, { width: colWidths[1] - 20, align: 'left' });
+  x += colWidths[1];
+  doc.text('Score', x + 10, currentY + 10, { width: colWidths[2] - 20, align: 'center' });
+  x += colWidths[2];
+  doc.text('Status', x + 10, currentY + 10, { width: colWidths[3] - 20, align: 'center' });
+  currentY += headerHeight;
+  
+  // Rows
+  doc.fontSize(10).font('RegularFont').fillColor('#1F2937');
+  
+  for (let i = 0; i < reports.length; i++) {
+    const report = reports[i];
+    
+    if (currentY + rowHeight > doc.page.height - 60) {
+      doc.addPage();
+      currentY = margin;
+      // Redraw header
+      doc.rect(margin, currentY, pageWidth, headerHeight).fill('#6366F1');
+      doc.fontSize(11).font('BoldFont').fillColor('#FFFFFF');
+      x = margin;
+      doc.text('#', x + 10, currentY + 10, { width: colWidths[0] - 20, align: 'center' });
+      x += colWidths[0];
+      doc.text('Page URL', x + 10, currentY + 10, { width: colWidths[1] - 20, align: 'left' });
+      x += colWidths[1];
+      doc.text('Score', x + 10, currentY + 10, { width: colWidths[2] - 20, align: 'center' });
+      x += colWidths[2];
+      doc.text('Status', x + 10, currentY + 10, { width: colWidths[3] - 20, align: 'center' });
+      currentY += headerHeight;
+    }
+    
+    // Alternate row background
+    if (i % 2 === 0) {
+      doc.rect(margin, currentY, pageWidth, rowHeight).fill('#F9FAFB');
+    }
+    
+    x = margin;
+    
+    // # column
+    doc.fillColor('#1F2937').text(`${i + 1}`, x + 10, currentY + 7, { width: colWidths[0] - 20, align: 'center' });
+    x += colWidths[0];
+    
+    // URL column (truncate if too long)
+    let displayUrl = report.url;
+    try {
+      const urlObj = new URL(report.url);
+      displayUrl = (urlObj.pathname || urlObj.hostname).substring(0, 50);
+    } catch (e) {
+      displayUrl = report.url.substring(0, 50);
+    }
+    doc.fillColor('#1F2937').text(displayUrl, x + 10, currentY + 7, { width: colWidths[1] - 20, align: 'left' });
+    x += colWidths[1];
+    
+    // Score column
+    const scoreText = report.score !== null && report.score !== undefined ? `${Math.round(report.score)}%` : 'N/A';
+    doc.fillColor('#1F2937').text(scoreText, x, currentY + 7, { width: colWidths[2], align: 'center' });
+    x += colWidths[2];
+    
+    // Status column
+    let statusText = 'N/A';
+    let statusColor = '#6B7280';
+    if (report.score !== null && report.score !== undefined) {
+      if (report.score >= 70) {
+        statusText = 'Pass';
+        statusColor = '#10B981';
+      } else if (report.score >= 50) {
+        statusText = 'Warning';
+        statusColor = '#F59E0B';
+      } else {
+        statusText = 'Fail';
+        statusColor = '#EF4444';
+      }
+    }
+    doc.fillColor(statusColor).font('BoldFont').text(statusText, x, currentY + 7, { width: colWidths[3], align: 'center' });
+    doc.font('RegularFont'); // Reset
+    
+    // Bottom border
+    doc.strokeColor('#E5E7EB').lineWidth(0.5)
+      .moveTo(margin, currentY + rowHeight)
+      .lineTo(margin + pageWidth, currentY + rowHeight)
+      .stroke();
+    
+    currentY += rowHeight;
+  }
+  
+  // Note about detailed reports
+  if (currentY > doc.page.height - 100) {
+    doc.addPage();
+    currentY = margin;
+  }
+  currentY += 30;
+  
+  doc.fontSize(12).font('BoldFont').fillColor('#34495E')
+    .text('Detailed Reports', margin, currentY, { width: pageWidth });
+  currentY += 25;
+  
+  doc.fontSize(10).font('RegularFont').fillColor('#4B5563')
+    .text('Individual detailed audit reports for each page have been generated separately. Each detailed report contains:', margin, currentY, { width: pageWidth, lineGap: 5 });
+  currentY += 40;
+  
+  const details = [
+    'Complete score calculation breakdown',
+    'Category-by-category audit summary',
+    'Detailed findings for each audit',
+    'Specific recommendations for improvements'
+  ];
+  
+  details.forEach(detail => {
+    doc.fontSize(10).font('RegularFont').fillColor('#4B5563')
+      .text(`• ${detail}`, margin + 20, currentY, { width: pageWidth - 40 });
+    currentY += 20;
+  });
+  
+  doc.end();
+  
+  return new Promise((resolve, reject) => {
+    writeStream.on('finish', () => {
+      resolve(outputPath);
+    });
+    writeStream.on('error', reject);
+  });
+}
+
 // Signal backend function
 const signalBackend = async (payload) => {
   const backendEndpoint = 'http://localhost:8000/api/audit-status';
@@ -279,71 +585,59 @@ export const runFullAuditProcess = async (job) => {
       console.log(`📱 Non-pro/onetime plan (${effectivePlanId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
     }
 
-    // Track all page results for summary generation
+    // Track all page results for summary generation and group by platform
     const pageResults = [];
+    const reportsByPlatform = {}; // { device: [{ jsonReportPath, url, imagePaths, score }] }
 
     for (const link of linksToAudit) {
       for (const device of devicesToAudit) {
         console.log(`--- Starting full ${device} audit for: ${link} ---`);
         let jsonReportPath = null;
         let imagePaths = {};
+        let auditScore = null;
 
         try {
           const auditResult = await runLighthouseAudit({ url: link, device, format: 'json' });
           if (auditResult.success) {
             jsonReportPath = auditResult.reportPath;
+            
+            // Read the JSON report to get the score
+            try {
+              const reportData = JSON.parse(await fs.readFile(jsonReportPath, 'utf8'));
+              const { calculateSeniorFriendlinessScore } = await import('../../report_generation/pdf_generator.js');
+              const scoreData = calculateSeniorFriendlinessScore(reportData);
+              auditScore = scoreData.finalScore;
+            } catch (e) {
+              console.warn(`Could not extract score from report: ${e.message}`);
+            }
+            
             console.log(`📸 Starting image generation for ${link} (${device})...`);
             imagePaths = await createAllHighlightedImages(jsonReportPath, jobFolder);
             console.log(`✅ Image generation completed for ${link} (${device})`);
 
-            // Always use unified report generator, pass planType
-            console.log(`📄 Starting PDF generation for ${link} (${device}) with plan: ${effectivePlanId}`);
-            console.log(`   Output directory: ${finalReportFolder}`);
-            try {
-              // CRITICAL FIX: Add small delay before CPU-intensive PDF generation to yield to event loop
-              // This prevents blocking other Express requests during PDF generation
-              await new Promise(resolve => setImmediate(resolve));
-              
-              // Add timeout to PDF generation (2 minutes max)
-              const pdfPromise = generateSeniorAccessibilityReport({
-                inputFile: jsonReportPath,
-                url: link,
-                email_address: email,
-                device: device,
-                imagePaths,
-                outputDir: finalReportFolder,
-                formFactor: device,
-                planType: effectivePlanId
-              });
-              const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('PDF generation timeout after 2 minutes')), 120000)
-              );
-              const pdfResult = await Promise.race([pdfPromise, timeoutPromise]);
-              console.log(`✅ PDF generated for ${link} (${device}) [Plan: ${effectivePlanId}]`);
-              
-              // Track page result for summary CSV
-              if (pdfResult && pdfResult.reportPath) {
-                const filename = path.basename(pdfResult.reportPath);
-                const score = pdfResult.score !== undefined ? parseFloat(pdfResult.score) : null;
-                pageResults.push({
-                  filename,
-                  platform: device.charAt(0).toUpperCase() + device.slice(1), // Capitalize first letter
-                  score,
-                  url: link
-                });
-              }
-              
-              // Store the score in the database if available
-              if (pdfResult && pdfResult.score !== undefined && record) {
-                record.score = parseFloat(pdfResult.score);
-                await record.save().catch((err) => console.error('Failed to save score:', err));
-                console.log(`📊 Score ${pdfResult.score}% saved to database for ${link} (${device})`);
-              }
-            } catch (pdfError) {
-              console.error(`❌ PDF generation failed for ${link} (${device}):`, pdfError.message);
-              console.error(`   Stack:`, pdfError.stack);
-              throw pdfError; // Re-throw to trigger catch block
+            // Store report data for combined PDF generation
+            if (!reportsByPlatform[device]) {
+              reportsByPlatform[device] = [];
             }
+            
+            // Copy JSON report to a persistent location (we'll delete it later after combined PDF generation)
+            const persistentJsonPath = path.join(finalReportFolder, `report-${device}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
+            await fs.copyFile(jsonReportPath, persistentJsonPath);
+            
+            reportsByPlatform[device].push({
+              jsonReportPath: persistentJsonPath,
+              url: link,
+              imagePaths: imagePaths,
+              score: auditScore
+            });
+
+            // Track page result for summary
+            pageResults.push({
+              filename: path.basename(link),
+              platform: device.charAt(0).toUpperCase() + device.slice(1),
+              score: auditScore,
+              url: link
+            });
           } else {
             console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);
           }
@@ -351,12 +645,95 @@ export const runFullAuditProcess = async (job) => {
           console.error(`An unexpected error occurred while auditing ${link} (${device}):`, pageError.message);
           console.error(`Stack trace:`, pageError.stack);
         } finally {
-          if (jsonReportPath) await fs.unlink(jsonReportPath).catch((e) => console.error(e.message));
+          // Don't delete JSON report yet - we need it for combined PDF generation
+          // Only delete temporary image files
           if (imagePaths && typeof imagePaths === 'object') {
             for (const imgPath of Object.values(imagePaths)) {
-              if (imgPath) await fs.unlink(imgPath).catch((e) => console.error(e.message));
+              if (imgPath && imgPath.startsWith(jobFolder)) {
+                await fs.unlink(imgPath).catch((e) => console.error(e.message));
+              }
             }
           }
+        }
+      }
+    }
+
+    // Generate combined PDFs per platform
+    // Strategy: Generate one comprehensive PDF per platform with all pages' reports
+    console.log(`\n=== GENERATING COMBINED PDFs BY PLATFORM ===`);
+    for (const [device, reports] of Object.entries(reportsByPlatform)) {
+      if (reports.length === 0) continue;
+      
+      console.log(`📄 Generating combined ${device} report with ${reports.length} page(s)...`);
+      
+      // Generate individual PDFs first (for detailed reports and compatibility)
+      const individualPdfPaths = [];
+      for (const report of reports) {
+        try {
+          await new Promise(resolve => setImmediate(resolve));
+          
+          const pdfResult = await generateSeniorAccessibilityReport({
+            inputFile: report.jsonReportPath,
+            url: report.url,
+            email_address: email,
+            device: device,
+            imagePaths: report.imagePaths,
+            outputDir: finalReportFolder,
+            formFactor: device,
+            planType: effectivePlanId
+          });
+          
+          if (pdfResult && pdfResult.reportPath) {
+            individualPdfPaths.push(pdfResult.reportPath);
+            console.log(`✅ Individual PDF generated for ${report.url} (${device})`);
+          }
+        } catch (indError) {
+          console.error(`❌ Failed to generate individual PDF for ${report.url} (${device}):`, indError.message);
+        }
+      }
+      
+      // Now generate a combined PDF per platform by merging individual PDFs
+      if (individualPdfPaths.length > 0) {
+        try {
+          const combinedPdfPath = await mergePDFsByPlatform({
+            pdfPaths: individualPdfPaths,
+            device: device,
+            email_address: email,
+            outputDir: finalReportFolder,
+            reports: reports
+          });
+          console.log(`✅ Combined ${device} PDF generated: ${combinedPdfPath}`);
+          console.log(`   Merged ${individualPdfPaths.length} individual PDFs into one ${device} report`);
+        } catch (mergeError) {
+          console.error(`❌ Failed to merge ${device} PDFs:`, mergeError.message);
+          // Fallback: generate summary PDF if merge fails
+          try {
+            const summaryPdfPath = await generateCombinedPlatformReport({
+              reports: reports,
+              device: device,
+              email_address: email,
+              outputDir: finalReportFolder,
+              planType: effectivePlanId,
+              individualPdfPaths: individualPdfPaths
+            });
+            console.log(`✅ Generated summary PDF as fallback: ${summaryPdfPath}`);
+          } catch (summaryError) {
+            console.error(`❌ Failed to generate summary PDF:`, summaryError.message);
+          }
+        }
+      }
+      
+      // Store average score in database if available
+      if (reports.length > 0 && record) {
+        const avgScore = reports.reduce((sum, r) => sum + (r.score || 0), 0) / reports.length;
+        record.score = parseFloat(avgScore.toFixed(2));
+        await record.save().catch((err) => console.error('Failed to save score:', err));
+      }
+      
+      // Clean up persistent JSON files after PDF generation
+      for (const report of reports) {
+        if (report.jsonReportPath && report.jsonReportPath.startsWith(finalReportFolder)) {
+          await fs.unlink(report.jsonReportPath).catch((e) => console.error(e.message));
         }
       }
     }
