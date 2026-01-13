@@ -262,3 +262,4 @@ function getScoreBar(score) {
 
 export default FleschKincaidAudit;
 
+

@@ -53,3 +53,4 @@ class ColorGatherer extends Gatherer {
 
 export default ColorGatherer;
 
+

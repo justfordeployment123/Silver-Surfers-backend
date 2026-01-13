@@ -110,3 +110,4 @@ async def perform_accessibility_audit(page, url: str, is_lite: bool = False):
 3. **Phase 3**: Make Lighthouse primary, custom audits as fallback
 4. **Phase 4**: Remove custom audits if Lighthouse works perfectly
 
+

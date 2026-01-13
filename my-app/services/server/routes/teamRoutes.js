@@ -32,3 +32,4 @@ router.post('/subscription/team/accept', authRequired, teamController.acceptInvi
 export default router;
 
 
+

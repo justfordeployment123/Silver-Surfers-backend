@@ -91,3 +91,4 @@ for (const textItem of collectedText) {
 }
 export default TextAudit;
 
+

@@ -41,3 +41,4 @@ docker-compose up -d python-scanner
 
 The Lighthouse module should now be found correctly!
 
+

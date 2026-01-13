@@ -75,3 +75,4 @@ class TextGatherer extends Gatherer {
 }
 export default TextGatherer;
 
+

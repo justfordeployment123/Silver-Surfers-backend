@@ -6,9 +6,9 @@ import Stripe from 'stripe';
 import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
 import { SUBSCRIPTION_PLANS, getPlanById } from '../subscriptionPlans.js';
-import { sendOneTimePurchaseEmail } from '../email.js';
+import { sendOneTimePurchaseEmail, sendSubscriptionCancellationEmail } from '../email.js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2024-06-20' });
 
 export async function getSubscription(req, res) {
   try {
@@ -194,21 +194,37 @@ export async function createPortalSession(req, res) {
   try {
     const userId = req.user.id;
     const user = await User.findById(userId);
-    
-    if (!user || !user.stripeCustomerId) {
-      return res.status(404).json({ error: 'No Stripe customer found.' });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const session = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
-      return_url: `${frontendUrl}/subscription`,
-    });
+    if (!user.stripeCustomerId) {
+      return res.status(400).json({ error: 'No Stripe customer found. Please create a subscription first.' });
+    }
 
-    res.json({ url: session.url });
+    try {
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripeCustomerId,
+        return_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription`,
+      });
+
+      return res.json({ url: session.url });
+    } catch (portalError) {
+      console.error('Stripe Customer Portal error:', portalError.message);
+      
+      if (portalError.type === 'StripeInvalidRequestError' && 
+          portalError.message.includes('No configuration provided')) {
+        return res.status(400).json({ 
+          error: 'Customer Portal not configured. Please contact support or use the direct upgrade option.',
+          details: 'Stripe Customer Portal needs to be configured in the Stripe dashboard.'
+        });
+      }
+      
+      throw portalError;
+    }
   } catch (err) {
-    console.error('Portal session error:', err);
-    res.status(500).json({ error: 'Failed to create portal session.' });
+    console.error('Create portal session error:', err);
+    return res.status(500).json({ error: 'Failed to create portal session.' });
   }
 }
 
@@ -217,45 +233,72 @@ export async function upgradeSubscription(req, res) {
     const { planId, billingCycle = 'monthly' } = req.body;
     const userId = req.user.id;
 
+    if (!planId) {
+      return res.status(400).json({ error: 'Plan ID is required.' });
+    }
+
     const plan = getPlanById(planId);
     if (!plan) {
       return res.status(400).json({ error: 'Invalid plan ID.' });
     }
 
-    const subscription = await Subscription.findOne({
-      user: userId,
-      status: { $in: ['active', 'trialing'] }
+    const currentSubscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
     });
 
-    if (!subscription) {
+    if (!currentSubscription) {
       return res.status(404).json({ error: 'No active subscription found.' });
     }
 
-    const priceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
-    if (!priceId) {
+    const newPriceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
+    if (!newPriceId) {
       return res.status(400).json({ error: 'Price ID not configured for this plan.' });
     }
 
-    await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-      items: [{
-        id: subscription.stripeSubscriptionItemId,
-        price: priceId,
-      }],
-      metadata: {
-        userId: userId,
-        planId: planId,
-        billingCycle: billingCycle
+    const user = await User.findById(userId);
+    if (!user || !user.stripeCustomerId) {
+      return res.status(404).json({ error: 'User or Stripe customer not found.' });
+    }
+
+    const successUrlBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      customer: user.stripeCustomerId,
+      line_items: [{ price: newPriceId, quantity: 1 }],
+      subscription_data: {
+        metadata: { 
+          userId: userId,
+          planId: planId,
+          billingCycle: billingCycle,
+          isUpgrade: 'true',
+          oldSubscriptionId: currentSubscription.stripeSubscriptionId
+        },
       },
+      metadata: { 
+        userId: userId, 
+        planId: planId, 
+        billingCycle: billingCycle,
+        isUpgrade: 'true',
+        oldSubscriptionId: currentSubscription.stripeSubscriptionId
+      },
+      success_url: `${successUrlBase}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${successUrlBase}/subscription?canceled=1`,
+      allow_promotion_codes: true,
+      billing_address_collection: 'required',
     });
 
-    subscription.planId = planId;
-    subscription.limits = plan.limits;
-    await subscription.save();
+    console.log(`User ${userId} initiated upgrade to plan ${planId} with checkout session`);
 
-    res.json({ message: 'Subscription upgraded successfully.', subscription });
+    return res.json({ 
+      message: 'Checkout session created for upgrade.',
+      url: session.url
+    });
   } catch (err) {
-    console.error('Upgrade subscription error:', err);
-    res.status(500).json({ error: 'Failed to upgrade subscription.' });
+    console.error('Subscription upgrade error:', err);
+    return res.status(500).json({ error: 'Failed to create upgrade checkout session.' });
   }
 }
 
@@ -263,32 +306,67 @@ export async function cancelSubscription(req, res) {
   try {
     const { cancelAtPeriodEnd = true } = req.body;
     const userId = req.user.id;
+    const userEmail = req.user.email;
 
-    const subscription = await Subscription.findOne({
-      user: userId,
-      status: { $in: ['active', 'trialing'] }
+    const subscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
     });
 
     if (!subscription) {
       return res.status(404).json({ error: 'No active subscription found.' });
     }
 
-    await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-      cancel_at_period_end: cancelAtPeriodEnd,
-    });
+    const plan = getPlanById(subscription.planId);
+    const planName = plan?.name || 'Unknown Plan';
 
-    subscription.cancelAtPeriodEnd = cancelAtPeriodEnd;
-    await subscription.save();
+    if (cancelAtPeriodEnd) {
+      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        cancel_at_period_end: true
+      });
+      
+      await Subscription.findByIdAndUpdate(subscription._id, {
+        cancelAtPeriodEnd: true
+      });
 
-    res.json({ 
-      message: cancelAtPeriodEnd 
-        ? 'Subscription will be cancelled at the end of the billing period.' 
-        : 'Subscription cancellation cancelled.',
-      subscription 
-    });
+      try {
+        const currentPeriodEnd = subscription.currentPeriodEnd || (subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null);
+        await sendSubscriptionCancellationEmail(
+          userEmail, 
+          planName, 
+          true, 
+          currentPeriodEnd
+        );
+        console.log(`📧 Subscription cancellation email sent to ${userEmail}`);
+      } catch (emailErr) {
+        console.error('Failed to send cancellation email:', emailErr);
+      }
+
+      return res.json({ message: 'Subscription will be canceled at the end of the current period.' });
+    } else {
+      await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+      
+      await Subscription.findByIdAndUpdate(subscription._id, {
+        status: 'canceled',
+        canceledAt: new Date()
+      });
+
+      try {
+        await sendSubscriptionCancellationEmail(
+          userEmail, 
+          planName, 
+          false
+        );
+        console.log(`📧 Immediate subscription cancellation email sent to ${userEmail}`);
+      } catch (emailErr) {
+        console.error('Failed to send immediate cancellation email:', emailErr);
+      }
+
+      return res.json({ message: 'Subscription canceled immediately.' });
+    }
   } catch (err) {
     console.error('Cancel subscription error:', err);
-    res.status(500).json({ error: 'Failed to cancel subscription.' });
+    return res.status(500).json({ error: 'Failed to cancel subscription.' });
   }
 }
 
@@ -299,82 +377,173 @@ export async function getPlans(req, res) {
       name: plan.name,
       description: plan.description,
       price: plan.price,
-      monthlyPriceId: plan.monthlyPriceId,
-      yearlyPriceId: plan.yearlyPriceId,
+      monthlyPrice: plan.monthlyPrice,
+      yearlyPrice: plan.yearlyPrice,
+      currency: plan.currency,
+      type: plan.type,
+      isOneTime: plan.isOneTime,
       limits: plan.limits,
-      features: plan.features,
-      type: plan.type
+      icon: plan.icon,
+      gradient: plan.gradient,
+      popular: plan.popular,
+      contactSales: plan.contactSales
     }));
 
-    res.json({ plans });
+    return res.json({ plans });
   } catch (err) {
     console.error('Get plans error:', err);
-    res.status(500).json({ error: 'Failed to get plans.' });
+    return res.status(500).json({ error: 'Failed to get plans.' });
   }
 }
 
 export async function paymentSuccess(req, res) {
   try {
     const { session_id } = req.query;
-    if (!session_id) {
-      return res.status(400).json({ error: 'Session ID is required.' });
+    if (!session_id) return res.status(400).json({ error: 'session_id is required' });
+
+    const session = await stripe.checkout.sessions.retrieve(String(session_id));
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Payment not completed yet.' });
     }
 
-    const session = await stripe.checkout.sessions.retrieve(session_id);
+    const userId = session.metadata?.userId;
+    const planId = session.metadata?.planId;
     
-    if (session.metadata?.type === 'one-time') {
-      const userId = session.metadata.userId;
-      const user = await User.findById(userId);
+    if (!userId || userId !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized access to this payment.' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const alreadyProcessed = user.purchaseHistory?.some(
+      purchase => purchase.sessionId === session.id
+    );
+
+    if (!alreadyProcessed && session.metadata?.type === 'one-time') {
+      console.log(`💳 Manually processing one-time payment for session: ${session.id}`);
       
-      if (user) {
-        // Check if already processed
-        const alreadyProcessed = session.metadata.processed === 'true';
-        
-        if (!alreadyProcessed) {
-          // Grant one-time scan credit
-          await User.findByIdAndUpdate(userId, {
-            $inc: { oneTimeScans: 1 }
-          });
-
-          // Mark as processed
-          await stripe.checkout.sessions.update(session_id, {
-            metadata: { ...session.metadata, processed: 'true' }
-          });
-
-          // Send confirmation email
-          try {
-            await sendOneTimePurchaseEmail({
-              to: user.email,
-              firstName: user.firstName || '',
-              lastName: user.lastName || ''
-            });
-          } catch (emailErr) {
-            console.error('Failed to send one-time purchase email:', emailErr);
-          }
-        }
+      const plan = getPlanById(planId);
+      
+      if (!user.oneTimeScans) {
+        user.oneTimeScans = 0;
+      }
+      user.oneTimeScans += 1;
+      
+      if (!user.purchaseHistory) {
+        user.purchaseHistory = [];
+      }
+      user.purchaseHistory.push({
+        date: new Date(),
+        planId: planId,
+        planName: plan?.name || 'One-Time Report',
+        amount: session.amount_total,
+        sessionId: session.id,
+        type: 'one-time'
+      });
+      
+      await user.save();
+      
+      console.log(`✅ One-time scan credit granted to user ${user.email} (manual processing)`);
+      
+      try {
+        await sendOneTimePurchaseEmail(user.email, plan?.name || 'One-Time Report');
+        console.log(`📧 One-time purchase email sent to ${user.email}`);
+      } catch (emailError) {
+        console.error('Failed to send confirmation email:', emailError);
       }
     }
 
-    res.json({ success: true, session });
+    return res.json({ 
+      message: 'Payment successful! Your one-time scan credit has been added.',
+      oneTimeScans: user.oneTimeScans || 0,
+      purchaseDetails: {
+        planId: session.metadata?.planId,
+        amount: session.amount_total,
+        date: new Date(session.created * 1000)
+      }
+    });
   } catch (err) {
     console.error('Payment success error:', err);
-    res.status(500).json({ error: 'Failed to process payment success.' });
+    return res.status(500).json({ error: 'Failed to confirm payment.' });
   }
 }
 
 export async function subscriptionSuccess(req, res) {
   try {
     const { session_id } = req.query;
-    if (!session_id) {
-      return res.status(400).json({ error: 'Session ID is required.' });
+    if (!session_id) return res.status(400).json({ error: 'session_id is required' });
+
+    const session = await stripe.checkout.sessions.retrieve(String(session_id));
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Payment not completed yet.' });
     }
 
-    const session = await stripe.checkout.sessions.retrieve(session_id);
-    res.json({ success: true, session });
+    const subscription = await stripe.subscriptions.retrieve(session.subscription);
+    const userId = session.metadata?.userId;
+    const planId = session.metadata?.planId;
+    const isUpgrade = session.metadata?.isUpgrade === 'true';
+    const oldSubscriptionId = session.metadata?.oldSubscriptionId;
+
+    if (!userId || !planId) {
+      return res.status(400).json({ error: 'Missing metadata.' });
+    }
+
+    const plan = getPlanById(planId);
+    if (!plan) {
+      return res.status(400).json({ error: 'Invalid plan.' });
+    }
+
+    if (isUpgrade && oldSubscriptionId) {
+      try {
+        console.log(`🔄 Canceling old subscription ${oldSubscriptionId} for upgrade`);
+        await stripe.subscriptions.cancel(oldSubscriptionId);
+        await Subscription.deleteOne({ stripeSubscriptionId: oldSubscriptionId });
+        console.log(`✅ Old subscription canceled successfully`);
+      } catch (cancelError) {
+        console.error('Failed to cancel old subscription:', cancelError);
+      }
+    }
+
+    await Subscription.findOneAndUpdate(
+      { stripeSubscriptionId: subscription.id },
+      {
+        user: userId,
+        stripeSubscriptionId: subscription.id,
+        stripeCustomerId: subscription.customer,
+        status: subscription.status,
+        planId: planId,
+        priceId: subscription.items.data[0].price.id,
+        currentPeriodStart: new Date(subscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
+        trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+        limits: plan.limits,
+        usage: {
+          scansThisMonth: 0,
+          lastResetDate: new Date(),
+          totalScans: 0
+        }
+      },
+      { upsert: true, new: true }
+    );
+
+    await User.findByIdAndUpdate(userId, {
+      'subscription.status': subscription.status,
+      'subscription.planId': planId,
+      'subscription.priceId': subscription.items.data[0].price.id,
+      'subscription.currentPeriodStart': new Date(subscription.current_period_start * 1000),
+      'subscription.currentPeriodEnd': new Date(subscription.current_period_end * 1000)
+    });
+
+    return res.json({ message: 'Subscription activated successfully.' });
   } catch (err) {
     console.error('Subscription success error:', err);
-    res.status(500).json({ error: 'Failed to process subscription success.' });
+    return res.status(500).json({ error: 'Failed to activate subscription.' });
   }
 }
+
 
 
