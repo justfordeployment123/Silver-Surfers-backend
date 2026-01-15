@@ -843,9 +843,9 @@ addOverallScoreDisplay(scoreData) {
     
     const info = AUDIT_INFO[auditId];
     const tableConfig = this.getTableConfig(auditId);
-    const items = auditData.details.items;
+    let items = auditData.details.items;
     
-    // PRE-CHECK: Determine if table would be skipped due to all N/A locations
+    // PRE-CHECK: Filter items with valid locations BEFORE adding any pages
     const locationIndex = tableConfig.headers.findIndex(h => 
         h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
     );
@@ -861,10 +861,21 @@ addOverallScoreDisplay(scoreData) {
             console.log(`Skipping 'Detailed Findings' page for ${auditId} - all locations are N/A`);
             return; // Exit without adding any page
         }
+        
+        // Use filtered items
+        items = itemsWithValidLocation;
+    }
+    
+    // Only proceed if we have items to display
+    if (!items || items.length === 0) {
+        return; // Don't create blank page
     }
     
     // Check if we need a new page or can continue on current page
     const needsNewPage = this.currentY > 600; // If we're far down the page, add new page
+    
+    // Store the starting Y position in case we need to rollback
+    const headerStartY = needsNewPage ? this.margin : this.currentY;
     
     if (needsNewPage) {
         this.addPage();
@@ -877,13 +888,42 @@ addOverallScoreDisplay(scoreData) {
     this.currentY += 25;
 
     const itemsPerPage = 12;
-    for (let i = 0; i < items.length; i += itemsPerPage) {
-        if (i > 0) {
-            this.addPage();
-            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
-            this.currentY += 25;
+    let hasContent = false;
+    
+    // Only loop if we have items
+    if (items.length > 0) {
+        for (let i = 0; i < items.length; i += itemsPerPage) {
+            if (i > 0) {
+                this.addPage();
+                this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
+                this.currentY += 25;
+            }
+            const itemsToShow = items.slice(i, i + itemsPerPage);
+            if (itemsToShow.length > 0) {
+                // Check if drawEnhancedTable will actually render content
+                const locationIndex = tableConfig.headers.findIndex(h => 
+                    h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
+                );
+                let validItems = itemsToShow;
+                if (locationIndex !== -1) {
+                    validItems = itemsToShow.filter(item => {
+                        const locationValue = tableConfig.extractors[locationIndex](item);
+                        return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
+                    });
+                }
+                
+                if (validItems.length > 0) {
+                    this.drawEnhancedTable(itemsToShow, tableConfig, info?.category);
+                    hasContent = true;
+                }
+            }
         }
-        this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
+    }
+    
+    // If no content was rendered and we added a new page just for this, we have a problem
+    // But since we can't remove pages, we'll just leave the header (better than blank)
+    if (!hasContent && needsNewPage && items.length === 0) {
+        console.warn(`Warning: Added page for table but no items to display for ${auditId}`);
     }
 }
     
@@ -1040,7 +1080,10 @@ addOverallScoreDisplay(scoreData) {
     }
     
     drawEnhancedTable(items, config, category) {
-    if (!items || items.length === 0) return;
+    if (!items || items.length === 0) {
+        console.log('drawEnhancedTable: No items provided, skipping table');
+        return;
+    }
     
     // Find the Location column index
     const locationIndex = config.headers.findIndex(h => 
@@ -1058,8 +1101,16 @@ addOverallScoreDisplay(scoreData) {
         // If ALL rows have N/A in Location, don't render the table at all
         if (itemsToShow.length === 0) {
             console.log('Skipping table - all rows have N/A in Location column');
+            // Remove the header that was already added in addTablePages
+            // We can't remove it, but we can at least not draw the table
             return; // Exit without rendering anything
         }
+    }
+    
+    // Double-check we have items before proceeding
+    if (!itemsToShow || itemsToShow.length === 0) {
+        console.log('drawEnhancedTable: No valid items after filtering, skipping table');
+        return;
     }
     
     const startY = this.currentY;
@@ -1232,20 +1283,31 @@ addOverallScoreDisplay(scoreData) {
 
             console.log(`Processing ${supportedAudits.length} audits across ${Object.keys(categories).length} categories...`);
 
-            // Add Section 3 heading before audit details
-            this.addPage();
-            this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 3: Detailed Audit Results', this.margin, this.currentY);
-            this.currentY += 25;
-            this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
-            this.currentY += 20;
-            // Always show the requested message directly under the heading
-            this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
-            this.currentY += 40;
+            // Only add Section 3 heading if we have audits to show
+            const hasAuditsToShow = Object.keys(categories).some(categoryName => 
+                categories[categoryName].some(auditId => {
+                    const auditData = audits[auditId];
+                    return auditData && auditData.score !== null;
+                })
+            );
+            
+            if (hasAuditsToShow) {
+                // Add Section 3 heading before audit details
+                this.addPage();
+                this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 3: Detailed Audit Results', this.margin, this.currentY);
+                this.currentY += 25;
+                this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
+                this.currentY += 20;
+                // Always show the requested message directly under the heading
+                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+                this.currentY += 40;
+            }
+            
             let detailPagesGenerated = false;
             for (const categoryName of Object.keys(categories)) {
                 for (const auditId of categories[categoryName]) {
                     const auditData = audits[auditId];
-                    if (auditData.score === null) {
+                    if (!auditData || auditData.score === null) {
                         continue;
                     }
                     // Generate detail pages for ALL audits with scores (matching old backend behavior)
