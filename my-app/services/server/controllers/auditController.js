@@ -134,16 +134,40 @@ export async function precheckUrl(req, res) {
 }
 
 export async function startAudit(req, res) {
-  const { email, url, selectedDevice, firstName, lastName } = req.body || {};
+  const { email, url, selectedDevice, firstName, lastName, creditType } = req.body || {};
   if (!email || !url) {
     return res.status(400).json({ error: 'Email and URL are required.' });
   }
 
   const userId = req.user.id;
-  const isOneTimeScan = req.hasOneTimeScans;
+  const hasOneTimeScans = req.hasOneTimeScans;
   const subscription = req.subscription;
 
-  console.log(`📊 Full audit requested for ${firstName} ${lastName} (${email}) - Device: ${selectedDevice || 'all'}`);
+  // Determine which credit type to use:
+  // 1. If creditType is explicitly provided, use it
+  // 2. If user has subscription and no selectedDevice (Pro plan), use subscription
+  // 3. If user has subscription and selectedDevice (Starter plan), use subscription
+  // 4. If user has one-time scans and selectedDevice, use one-time
+  // 5. Default to subscription if available, otherwise one-time
+  let isOneTimeScan = false;
+  if (creditType === 'oneTime') {
+    isOneTimeScan = true;
+  } else if (creditType === 'subscription') {
+    isOneTimeScan = false;
+  } else {
+    // Auto-detect: if has subscription and no device selected (Pro), use subscription
+    // If has subscription and device selected (Starter), use subscription
+    // If no subscription but has one-time scans and device selected, use one-time
+    if (subscription && subscription.status === 'active') {
+      isOneTimeScan = false; // Use subscription
+    } else if (hasOneTimeScans && selectedDevice) {
+      isOneTimeScan = true; // Use one-time scan
+    } else if (hasOneTimeScans) {
+      isOneTimeScan = true; // Default to one-time if no subscription
+    }
+  }
+
+  console.log(`📊 Full audit requested for ${firstName} ${lastName} (${email}) - Credit Type: ${isOneTimeScan ? 'oneTime' : 'subscription'}, Device: ${selectedDevice || 'all'}`);
 
   // Handle one-time scans
   if (isOneTimeScan) {
@@ -180,12 +204,25 @@ export async function startAudit(req, res) {
     }
   } else {
     // Handle subscription scans
+    if (!subscription || subscription.status !== 'active') {
+      return res.status(403).json({ 
+        error: 'No active subscription found. Please subscribe to a plan.' 
+      });
+    }
+
     const currentUsage = subscription.usage?.scansThisMonth || 0;
     const monthlyLimit = subscription.limits?.scansPerMonth;
     
     if (monthlyLimit !== -1 && currentUsage >= monthlyLimit) {
       return res.status(403).json({ 
         error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
+      });
+    }
+
+    // For Starter plan, require device selection
+    if (subscription.planId === 'starter' && !selectedDevice) {
+      return res.status(400).json({ 
+        error: 'Device selection is required for Starter plan. Please select desktop, mobile, or tablet.' 
       });
     }
 
