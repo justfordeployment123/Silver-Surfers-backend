@@ -205,57 +205,10 @@ export class ElderlyAccessibilityPDFGenerator {
         this.currentY = 40;
         this.pageWidth = 515; // Adjusted for margins
         this.margin = 40;
-        this.pageNumber = 0; // Track current page number (starts at 0, will be 1 after first content)
-    }
-
-    addPageNumberToCurrentPage() {
-        if (!this.doc.page) return; // No page available yet
-        
-        try {
-            // Get current page dimensions
-            const pageHeight = this.doc.page.height;
-            const pageWidth = this.doc.page.width;
-            
-            // Save current graphics state and position
-            const savedY = this.currentY;
-            
-            // CRITICAL: Temporarily set currentY to a safe position to prevent page breaks
-            // Then use absolute positioning for the page number
-            this.currentY = pageHeight - 50; // Move to safe position
-            
-            // Calculate center position for page number
-            const pageNumText = `${this.pageNumber}`;
-            this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280');
-            const textWidth = this.doc.widthOfString(pageNumText);
-            const xPos = (pageWidth - textWidth) / 2;
-            const yPos = pageHeight - 30;
-            
-            // Write page number using absolute coordinates
-            // Use text() with explicit x, y to avoid triggering page breaks
-            this.doc.text(pageNumText, xPos, yPos, {
-                width: pageWidth,
-                align: 'center',
-                continued: false // Ensure this doesn't continue to next page
-            });
-            
-            // Restore Y position
-            this.currentY = savedY;
-        } catch (error) {
-            console.error('Error adding page number:', error);
-            // Don't throw - just log and continue
-        }
     }
 
     addPage() {
-        // Add page number to current page BEFORE creating new page
-        // This ensures every page gets numbered when we move to the next
-        if (this.pageNumber > 0) {
-            this.addPageNumberToCurrentPage();
-        }
-        
-        // Create new page
         this.doc.addPage();
-        this.pageNumber++;
         this.currentY = this.margin;
     }
 
@@ -577,30 +530,46 @@ addOverallScoreDisplay(scoreData) {
     drawCategoryCards(categories) {
         const cardWidth = (this.pageWidth - 15) / 2; // 2 columns with gap
         const cardGap = 15;
-        const pageBottom = this.doc.page.height - 60; // Leave space for page number
+        const categoryIcons = {
+            'Security for Older Adults': '🔒',
+            'Technical Accessibility': '⚙️',
+            'Performance for Older Adults': '⚡',
+            'Cognitive Accessibility': '🧠',
+            'Vision Accessibility': '👁️',
+            'Motor Accessibility': '👆'
+        };
         
         const categoryNames = Object.keys(categories);
         let cardIndex = 0;
         
-        // Helper function to draw a single card
-        const drawCard = (cardX, cardY, categoryName, categoryAudits) => {
+        categoryNames.forEach((categoryName, index) => {
+            const column = cardIndex % 2;
+            const cardX = this.margin + (column * (cardWidth + cardGap));
+            
+            // Check if we need a new page
+            if (this.currentY > 650) {
+                this.addPage();
+                cardIndex = 0;
+            }
+            
+            const categoryAudits = categories[categoryName];
             const auditCount = categoryAudits.length;
-            const cardHeight = 60 + (auditCount * 30); // Header + audits
+            const cardHeight = 60 + (auditCount * 30); // Header + audits (increased spacing)
             
             // Draw card background
-            this.doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 8)
+            this.doc.roundedRect(cardX, this.currentY, cardWidth, cardHeight, 8)
                 .fill('#FFFFFF')
                 .stroke('#E5E7EB');
             
-            // Category header
+            // Category header (without emoji since they don't render properly in PDFKit)
             this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6')
-                .text(categoryName, cardX + 12, cardY + 15, { width: cardWidth - 24 });
+                .text(categoryName, cardX + 12, this.currentY + 15, { width: cardWidth - 24 });
             
-            let auditY = cardY + 45;
+            let auditY = this.currentY + 45;
             
             // Draw each audit
             categoryAudits.forEach(audit => {
-                const score = audit.data.score !== null && audit.data.score !== undefined ? audit.data.score : 0;
+                const score = audit.data.score;
                 let scoreText = 'Poor';
                 let bgColor = '#FEE2E2';
                 let textColor = '#991B1B';
@@ -619,11 +588,11 @@ addOverallScoreDisplay(scoreData) {
                     textColor = '#92400E';
                 }
                 
-                // Audit name
+                // Audit name - increased font size for better visibility
                 this.doc.fontSize(10).font('RegularFont').fillColor('#1F2937')
                     .text(audit.info.title, cardX + 12, auditY, { width: cardWidth - 100 });
                 
-                // Score badge
+                // Score badge - increased size and font for better visibility
                 const badgeWidth = 85;
                 const badgeHeight = 20;
                 const badgeX = cardX + cardWidth - badgeWidth - 12;
@@ -631,56 +600,21 @@ addOverallScoreDisplay(scoreData) {
                 this.doc.fontSize(9).font('BoldFont').fillColor(textColor)
                     .text(scoreText, badgeX, auditY + 2, { width: badgeWidth, align: 'center' });
                 
-                auditY += 30;
+                auditY += 30; // Increased spacing between items
             });
             
-            return cardHeight;
-        };
-        
-        categoryNames.forEach((categoryName) => {
-            const categoryAudits = categories[categoryName];
-            if (!categoryAudits || categoryAudits.length === 0) {
-                return; // Skip empty categories
-            }
-            
-            const auditCount = categoryAudits.length;
-            const cardHeight = 60 + (auditCount * 30);
-            const column = cardIndex % 2;
-            const cardX = this.margin + (column * (cardWidth + cardGap));
-            
-            // Check if card fits on current page - check BEFORE drawing
-            if (this.currentY + cardHeight > pageBottom) {
-                // Card doesn't fit, need new page
-                this.addPage();
-                cardIndex = 0; // Reset to left column
-                const newCardX = this.margin;
-                const drawnHeight = drawCard(newCardX, this.currentY, categoryName, categoryAudits);
-                
-                // Move to next position
-                this.currentY += drawnHeight + 15;
-                cardIndex = 1; // Next will be right column
+            // Move to next position
+            if (column === 1) {
+                this.currentY += cardHeight + 15;
+                cardIndex = 0;
             } else {
-                // Card fits, draw it
-                const drawnHeight = drawCard(cardX, this.currentY, categoryName, categoryAudits);
-                
-                // Move to next position
-                if (column === 1) {
-                    // Finished a row, move down
-                    this.currentY += drawnHeight + 15;
-                    cardIndex = 0;
-                } else {
-                    // Move to right column
-                    cardIndex++;
-                }
+                cardIndex++;
             }
         });
         
-        // If we ended on left column, ensure we're ready for next content
+        // If we ended on left column, move down
         if (cardIndex === 1) {
-            // We have a card on the left, next will be on right, so we're fine
-            // But if next content starts, it should be on a new row
-            // Actually, we should move down if we want to start fresh
-            // For now, leave it - the next section will handle its own positioning
+            this.currentY += 100; // Approximate height of last card
         }
         
         this.currentY += 20;
@@ -689,13 +623,9 @@ addOverallScoreDisplay(scoreData) {
    addAuditDetailPage(auditId, auditData) {
     console.log(`[DEBUG] Processing audit: ${auditId}, Score: ${auditData.score}, Type: ${typeof auditData.score}`);
 
+    this.addPage();
     const info = AUDIT_INFO[auditId];
-    if (!info) {
-        console.warn(`[WARNING] No audit info found for ${auditId}, skipping detail page`);
-        return; // Don't create a page if we don't have info
-    }
-    
-    this.addPage(); // Only add page if we have info to display
+    if (!info) return;
     
     // Title with score badge on the right
     const score = auditData.score ?? 0;
@@ -835,15 +765,14 @@ addOverallScoreDisplay(scoreData) {
     addImagePage(auditId) {
         const imageFile = this.imagePaths[auditId];
         if (!imageFile || !fs.existsSync(imageFile)) {
-            return; // Don't create page if no image
-        }
-        const info = AUDIT_INFO[auditId];
-        if (!info) {
-            return; // Don't create page if no info
+            return;
         }
         this.addPage();
-        this.drawColorBar(info.category);
-        this.addHeading(`Visual Analysis: ${info.title}`, 18, '#2C3E50');
+        const info = AUDIT_INFO[auditId];
+        if (info) {
+            this.drawColorBar(info.category);
+            this.addHeading(`Visual Analysis: ${info.title}`, 18, '#2C3E50');
+        }
         try {
             this.doc.image(imageFile, this.margin, this.currentY, { fit: [this.pageWidth, 650], align: 'center' });
         } catch (error) {
@@ -853,20 +782,13 @@ addOverallScoreDisplay(scoreData) {
     }
     
     addTablePages(auditId, auditData) {
-    if (!auditData.details?.items || auditData.details.items.length === 0) {
-        return; // No items, exit early
-    }
+    if (!auditData.details?.items || auditData.details.items.length === 0) return;
     
     const info = AUDIT_INFO[auditId];
-    if (!info) {
-        return; // No info, exit early
-    }
-    
     const tableConfig = this.getTableConfig(auditId);
-    let items = auditData.details.items;
+    const items = auditData.details.items;
     
-    // CRITICAL: Filter items with valid locations BEFORE adding any pages
-    // This prevents blank pages with just headers
+    // PRE-CHECK: Determine if table would be skipped due to all N/A locations
     const locationIndex = tableConfig.headers.findIndex(h => 
         h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
     );
@@ -882,18 +804,9 @@ addOverallScoreDisplay(scoreData) {
             console.log(`Skipping 'Detailed Findings' page for ${auditId} - all locations are N/A`);
             return; // Exit without adding any page
         }
-        
-        // Use filtered items
-        items = itemsWithValidLocation;
     }
     
-    // Final check: Only proceed if we have items to display
-    if (!items || items.length === 0) {
-        console.log(`Skipping table pages for ${auditId} - no valid items after filtering`);
-        return; // Don't create blank page
-    }
-    
-    // Now we know we have valid items, proceed with page setup
+    // Check if we need a new page or can continue on current page
     const needsNewPage = this.currentY > 600; // If we're far down the page, add new page
     
     if (needsNewPage) {
@@ -907,19 +820,13 @@ addOverallScoreDisplay(scoreData) {
     this.currentY += 25;
 
     const itemsPerPage = 12;
-    
-    // Loop through valid items (we know they exist now)
     for (let i = 0; i < items.length; i += itemsPerPage) {
         if (i > 0) {
             this.addPage();
             this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
             this.currentY += 25;
         }
-        const itemsToShow = items.slice(i, i + itemsPerPage);
-        if (itemsToShow.length > 0) {
-            // Now we can safely call drawEnhancedTable - items are pre-validated
-            this.drawEnhancedTable(itemsToShow, tableConfig, info?.category);
-        }
+        this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
     }
 }
     
@@ -1076,18 +983,26 @@ addOverallScoreDisplay(scoreData) {
     }
     
     drawEnhancedTable(items, config, category) {
-    if (!items || items.length === 0) {
-        console.log('drawEnhancedTable: No items provided, skipping table');
-        return;
-    }
+    if (!items || items.length === 0) return;
     
-    // NOTE: Items are already pre-validated in addTablePages before pages are created
-    // So we can safely use items as-is without additional filtering
-    const itemsToShow = items;
+    // Find the Location column index
+    const locationIndex = config.headers.findIndex(h => 
+        h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
+    );
     
-    if (!itemsToShow || itemsToShow.length === 0) {
-        console.log('drawEnhancedTable: No valid items, skipping table');
-        return;
+    // Filter out rows where "Location" column has N/A
+    let itemsToShow = items;
+    if (locationIndex !== -1) {
+        itemsToShow = items.filter(item => {
+            const locationValue = config.extractors[locationIndex](item);
+            return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
+        });
+        
+        // If ALL rows have N/A in Location, don't render the table at all
+        if (itemsToShow.length === 0) {
+            console.log('Skipping table - all rows have N/A in Location column');
+            return; // Exit without rendering anything
+        }
     }
     
     const startY = this.currentY;
@@ -1235,12 +1150,7 @@ addOverallScoreDisplay(scoreData) {
             console.log('Generating senior-friendly accessibility report...');
             console.log(`Overall Score Calculated: ${scoreData.finalScore.toFixed(0)}`);
 
-            // Start with first page
-            this.pageNumber = 1;
-            
-            // Add intro page - page number will be added when next page is created
             this.addIntroPage(reportData, scoreData, options.planType || 'pro');
-            
             this.addScoreCalculationPage(reportData, scoreData);
             this.addSummaryPage(reportData);
 
@@ -1258,31 +1168,20 @@ addOverallScoreDisplay(scoreData) {
 
             console.log(`Processing ${supportedAudits.length} audits across ${Object.keys(categories).length} categories...`);
 
-            // Only add Section 3 heading if we have audits to show
-            const hasAuditsToShow = Object.keys(categories).some(categoryName => 
-                categories[categoryName].some(auditId => {
-                    const auditData = audits[auditId];
-                    return auditData && auditData.score !== null;
-                })
-            );
-            
-            if (hasAuditsToShow) {
-                // Add Section 3 heading before audit details
-                this.addPage();
-                this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 3: Detailed Audit Results', this.margin, this.currentY);
-                this.currentY += 25;
-                this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
-                this.currentY += 20;
-                // Always show the requested message directly under the heading
-                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
-                this.currentY += 40;
-            }
-            
+            // Add Section 3 heading before audit details
+            this.addPage();
+            this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 3: Detailed Audit Results', this.margin, this.currentY);
+            this.currentY += 25;
+            this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
+            this.currentY += 20;
+            // Always show the requested message directly under the heading
+            this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+            this.currentY += 40;
             let detailPagesGenerated = false;
             for (const categoryName of Object.keys(categories)) {
                 for (const auditId of categories[categoryName]) {
                     const auditData = audits[auditId];
-                    if (!auditData || auditData.score === null) {
+                    if (auditData.score === null) {
                         continue;
                     }
                     // Generate detail pages for ALL audits with scores (matching old backend behavior)
@@ -1304,12 +1203,6 @@ addOverallScoreDisplay(scoreData) {
                 this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
                 this.currentY += 40;
             }
-            
-            // Add page number to the last page before ending
-            if (this.pageNumber > 0) {
-                this.addPageNumberToCurrentPage();
-            }
-            
             this.doc.end();
 
             return new Promise((resolve, reject) => {
