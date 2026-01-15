@@ -206,43 +206,57 @@ export class ElderlyAccessibilityPDFGenerator {
         this.pageWidth = 515; // Adjusted for margins
         this.margin = 40;
         this.pageNumber = 0; // Track current page number (starts at 0, will be 1 after first content)
-        this.needsPageNumber = false; // Flag to track if current page needs page number
     }
 
     addPageNumberToCurrentPage() {
         if (!this.doc.page) return; // No page available yet
         
-        // Add page number at the bottom center of the current page
-        const pageHeight = this.doc.page.height;
-        const pageWidth = this.doc.page.width;
-        
-        // Save current Y position
-        const savedY = this.currentY;
-        
-        // Draw page number at bottom (centered)
-        this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280')
-            .text(`${this.pageNumber}`, (pageWidth - 100) / 2, pageHeight - 30, { 
-                width: 100, 
-                align: 'center' 
+        try {
+            // Get current page dimensions
+            const pageHeight = this.doc.page.height;
+            const pageWidth = this.doc.page.width;
+            
+            // Save current graphics state and position
+            const savedY = this.currentY;
+            
+            // CRITICAL: Temporarily set currentY to a safe position to prevent page breaks
+            // Then use absolute positioning for the page number
+            this.currentY = pageHeight - 50; // Move to safe position
+            
+            // Calculate center position for page number
+            const pageNumText = `${this.pageNumber}`;
+            this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280');
+            const textWidth = this.doc.widthOfString(pageNumText);
+            const xPos = (pageWidth - textWidth) / 2;
+            const yPos = pageHeight - 30;
+            
+            // Write page number using absolute coordinates
+            // Use text() with explicit x, y to avoid triggering page breaks
+            this.doc.text(pageNumText, xPos, yPos, {
+                width: pageWidth,
+                align: 'center',
+                continued: false // Ensure this doesn't continue to next page
             });
-        
-        // Restore Y position
-        this.currentY = savedY;
+            
+            // Restore Y position
+            this.currentY = savedY;
+        } catch (error) {
+            console.error('Error adding page number:', error);
+            // Don't throw - just log and continue
+        }
     }
 
     addPage() {
-        // Before creating a new page, add page number to the current page (if it needs one)
-        if (this.pageNumber > 0 && this.needsPageNumber) {
+        // Add page number to current page BEFORE creating new page
+        // This ensures every page gets numbered when we move to the next
+        if (this.pageNumber > 0) {
             this.addPageNumberToCurrentPage();
-            this.needsPageNumber = false; // Mark as added to prevent duplicates
         }
         
         // Create new page
         this.doc.addPage();
         this.pageNumber++;
         this.currentY = this.margin;
-        this.needsPageNumber = true;
-        // Don't add page number here - it will be added when content is done or before next addPage()
     }
 
     drawColorBar(category, y = null) {
@@ -1260,11 +1274,9 @@ addOverallScoreDisplay(scoreData) {
 
             // Start with first page
             this.pageNumber = 1;
-            this.needsPageNumber = true;
             
-            // Add intro page - page number will be added automatically by addPage() when next page is created
+            // Add intro page - page number will be added when next page is created
             this.addIntroPage(reportData, scoreData, options.planType || 'pro');
-            // Don't add page number here - it will be added when addPage() is called next time
             
             this.addScoreCalculationPage(reportData, scoreData);
             this.addSummaryPage(reportData);
@@ -1330,10 +1342,9 @@ addOverallScoreDisplay(scoreData) {
                 this.currentY += 40;
             }
             
-            // Ensure page number is added to the last page before ending
-            if (this.needsPageNumber) {
+            // Add page number to the last page before ending
+            if (this.pageNumber > 0) {
                 this.addPageNumberToCurrentPage();
-                this.needsPageNumber = false; // Mark as added
             }
             
             this.doc.end();
