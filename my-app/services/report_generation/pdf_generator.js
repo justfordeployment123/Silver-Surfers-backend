@@ -829,8 +829,7 @@ addOverallScoreDisplay(scoreData) {
         }
         this.addPage();
         this.drawColorBar(info.category);
-            this.addHeading(`Visual Analysis: ${info.title}`, 18, '#2C3E50');
-        }
+        this.addHeading(`Visual Analysis: ${info.title}`, 18, '#2C3E50');
         try {
             this.doc.image(imageFile, this.margin, this.currentY, { fit: [this.pageWidth, 650], align: 'center' });
         } catch (error) {
