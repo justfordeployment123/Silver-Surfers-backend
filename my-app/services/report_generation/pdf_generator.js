@@ -234,6 +234,7 @@ export class ElderlyAccessibilityPDFGenerator {
         // Before creating a new page, add page number to the current page (if it needs one)
         if (this.pageNumber > 0 && this.needsPageNumber) {
             this.addPageNumberToCurrentPage();
+            this.needsPageNumber = false; // Mark as added to prevent duplicates
         }
         
         // Create new page
@@ -562,46 +563,30 @@ addOverallScoreDisplay(scoreData) {
     drawCategoryCards(categories) {
         const cardWidth = (this.pageWidth - 15) / 2; // 2 columns with gap
         const cardGap = 15;
-        const categoryIcons = {
-            'Security for Older Adults': '🔒',
-            'Technical Accessibility': '⚙️',
-            'Performance for Older Adults': '⚡',
-            'Cognitive Accessibility': '🧠',
-            'Vision Accessibility': '👁️',
-            'Motor Accessibility': '👆'
-        };
+        const pageBottom = this.doc.page.height - 60; // Leave space for page number
         
         const categoryNames = Object.keys(categories);
         let cardIndex = 0;
         
-        categoryNames.forEach((categoryName, index) => {
-            const column = cardIndex % 2;
-            const cardX = this.margin + (column * (cardWidth + cardGap));
-            
-            // Check if we need a new page
-            if (this.currentY > 650) {
-                this.addPage();
-                cardIndex = 0;
-            }
-            
-            const categoryAudits = categories[categoryName];
+        // Helper function to draw a single card
+        const drawCard = (cardX, cardY, categoryName, categoryAudits) => {
             const auditCount = categoryAudits.length;
-            const cardHeight = 60 + (auditCount * 30); // Header + audits (increased spacing)
+            const cardHeight = 60 + (auditCount * 30); // Header + audits
             
             // Draw card background
-            this.doc.roundedRect(cardX, this.currentY, cardWidth, cardHeight, 8)
+            this.doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 8)
                 .fill('#FFFFFF')
                 .stroke('#E5E7EB');
             
-            // Category header (without emoji since they don't render properly in PDFKit)
+            // Category header
             this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6')
-                .text(categoryName, cardX + 12, this.currentY + 15, { width: cardWidth - 24 });
+                .text(categoryName, cardX + 12, cardY + 15, { width: cardWidth - 24 });
             
-            let auditY = this.currentY + 45;
+            let auditY = cardY + 45;
             
             // Draw each audit
             categoryAudits.forEach(audit => {
-                const score = audit.data.score;
+                const score = audit.data.score !== null && audit.data.score !== undefined ? audit.data.score : 0;
                 let scoreText = 'Poor';
                 let bgColor = '#FEE2E2';
                 let textColor = '#991B1B';
@@ -620,11 +605,11 @@ addOverallScoreDisplay(scoreData) {
                     textColor = '#92400E';
                 }
                 
-                // Audit name - increased font size for better visibility
+                // Audit name
                 this.doc.fontSize(10).font('RegularFont').fillColor('#1F2937')
                     .text(audit.info.title, cardX + 12, auditY, { width: cardWidth - 100 });
                 
-                // Score badge - increased size and font for better visibility
+                // Score badge
                 const badgeWidth = 85;
                 const badgeHeight = 20;
                 const badgeX = cardX + cardWidth - badgeWidth - 12;
@@ -632,21 +617,56 @@ addOverallScoreDisplay(scoreData) {
                 this.doc.fontSize(9).font('BoldFont').fillColor(textColor)
                     .text(scoreText, badgeX, auditY + 2, { width: badgeWidth, align: 'center' });
                 
-                auditY += 30; // Increased spacing between items
+                auditY += 30;
             });
             
-            // Move to next position
-            if (column === 1) {
-                this.currentY += cardHeight + 15;
-                cardIndex = 0;
+            return cardHeight;
+        };
+        
+        categoryNames.forEach((categoryName) => {
+            const categoryAudits = categories[categoryName];
+            if (!categoryAudits || categoryAudits.length === 0) {
+                return; // Skip empty categories
+            }
+            
+            const auditCount = categoryAudits.length;
+            const cardHeight = 60 + (auditCount * 30);
+            const column = cardIndex % 2;
+            const cardX = this.margin + (column * (cardWidth + cardGap));
+            
+            // Check if card fits on current page - check BEFORE drawing
+            if (this.currentY + cardHeight > pageBottom) {
+                // Card doesn't fit, need new page
+                this.addPage();
+                cardIndex = 0; // Reset to left column
+                const newCardX = this.margin;
+                const drawnHeight = drawCard(newCardX, this.currentY, categoryName, categoryAudits);
+                
+                // Move to next position
+                this.currentY += drawnHeight + 15;
+                cardIndex = 1; // Next will be right column
             } else {
-                cardIndex++;
+                // Card fits, draw it
+                const drawnHeight = drawCard(cardX, this.currentY, categoryName, categoryAudits);
+                
+                // Move to next position
+                if (column === 1) {
+                    // Finished a row, move down
+                    this.currentY += drawnHeight + 15;
+                    cardIndex = 0;
+                } else {
+                    // Move to right column
+                    cardIndex++;
+                }
             }
         });
         
-        // If we ended on left column, move down
+        // If we ended on left column, ensure we're ready for next content
         if (cardIndex === 1) {
-            this.currentY += 100; // Approximate height of last card
+            // We have a card on the left, next will be on right, so we're fine
+            // But if next content starts, it should be on a new row
+            // Actually, we should move down if we want to start fresh
+            // For now, leave it - the next section will handle its own positioning
         }
         
         this.currentY += 20;
@@ -655,9 +675,13 @@ addOverallScoreDisplay(scoreData) {
    addAuditDetailPage(auditId, auditData) {
     console.log(`[DEBUG] Processing audit: ${auditId}, Score: ${auditData.score}, Type: ${typeof auditData.score}`);
 
-    this.addPage();
     const info = AUDIT_INFO[auditId];
-    if (!info) return;
+    if (!info) {
+        console.warn(`[WARNING] No audit info found for ${auditId}, skipping detail page`);
+        return; // Don't create a page if we don't have info
+    }
+    
+    this.addPage(); // Only add page if we have info to display
     
     // Title with score badge on the right
     const score = auditData.score ?? 0;
@@ -797,12 +821,14 @@ addOverallScoreDisplay(scoreData) {
     addImagePage(auditId) {
         const imageFile = this.imagePaths[auditId];
         if (!imageFile || !fs.existsSync(imageFile)) {
-            return;
+            return; // Don't create page if no image
+        }
+        const info = AUDIT_INFO[auditId];
+        if (!info) {
+            return; // Don't create page if no info
         }
         this.addPage();
-        const info = AUDIT_INFO[auditId];
-        if (info) {
-            this.drawColorBar(info.category);
+        this.drawColorBar(info.category);
             this.addHeading(`Visual Analysis: ${info.title}`, 18, '#2C3E50');
         }
         try {
@@ -1186,10 +1212,9 @@ addOverallScoreDisplay(scoreData) {
             this.pageNumber = 1;
             this.needsPageNumber = true;
             
-            // Add intro page - page number will be added after content
+            // Add intro page - page number will be added automatically by addPage() when next page is created
             this.addIntroPage(reportData, scoreData, options.planType || 'pro');
-            // Add page number to first page after intro content is complete
-            this.addPageNumberToCurrentPage();
+            // Don't add page number here - it will be added when addPage() is called next time
             
             this.addScoreCalculationPage(reportData, scoreData);
             this.addSummaryPage(reportData);
@@ -1247,6 +1272,7 @@ addOverallScoreDisplay(scoreData) {
             // Ensure page number is added to the last page before ending
             if (this.needsPageNumber) {
                 this.addPageNumberToCurrentPage();
+                this.needsPageNumber = false; // Mark as added
             }
             
             this.doc.end();
