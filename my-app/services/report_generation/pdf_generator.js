@@ -553,8 +553,28 @@ addOverallScoreDisplay(scoreData) {
             }
             
             const categoryAudits = categories[categoryName];
-            const auditCount = categoryAudits.length;
-            const cardHeight = 60 + (auditCount * 30); // Header + audits (increased spacing)
+            
+            // Score badge dimensions
+            const badgeWidth = 85;
+            const badgeHeight = 20;
+            const badgeX = cardX + cardWidth - badgeWidth - 12;
+            const textLeftPadding = 12;
+            const textRightPadding = 8; // Gap between text and badge
+            const textWidth = badgeX - (cardX + textLeftPadding) - textRightPadding;
+            
+            // Calculate actual card height based on text wrapping
+            let totalAuditHeight = 0;
+            categoryAudits.forEach(audit => {
+                const textHeight = this.doc.heightOfString(audit.info.title, { 
+                    width: textWidth, 
+                    fontSize: 10,
+                    lineGap: 2 
+                });
+                const auditItemHeight = Math.max(textHeight + 4, badgeHeight + 4); // At least badge height + padding
+                totalAuditHeight += auditItemHeight + 6; // Add spacing between items
+            });
+            
+            const cardHeight = 60 + totalAuditHeight; // Header + dynamic audit heights
             
             // Draw card background
             this.doc.roundedRect(cardX, this.currentY, cardWidth, cardHeight, 8)
@@ -588,19 +608,30 @@ addOverallScoreDisplay(scoreData) {
                     textColor = '#92400E';
                 }
                 
-                // Audit name - increased font size for better visibility
+                // Calculate text height for this specific audit title
+                const textHeight = this.doc.heightOfString(audit.info.title, { 
+                    width: textWidth, 
+                    fontSize: 10,
+                    lineGap: 2 
+                });
+                const auditItemHeight = Math.max(textHeight + 4, badgeHeight + 4);
+                
+                // Audit name - with proper width and height constraints to allow wrapping
                 this.doc.fontSize(10).font('RegularFont').fillColor('#1F2937')
-                    .text(audit.info.title, cardX + 12, auditY, { width: cardWidth - 100 });
+                    .text(audit.info.title, cardX + textLeftPadding, auditY, { 
+                        width: textWidth,
+                        height: auditItemHeight,
+                        lineGap: 2,
+                        ellipsis: false // Allow full text to wrap
+                    });
                 
-                // Score badge - increased size and font for better visibility
-                const badgeWidth = 85;
-                const badgeHeight = 20;
-                const badgeX = cardX + cardWidth - badgeWidth - 12;
-                this.doc.roundedRect(badgeX, auditY - 2, badgeWidth, badgeHeight, 4).fill(bgColor);
+                // Score badge - vertically centered with text
+                const badgeY = auditY + Math.max(0, (auditItemHeight - badgeHeight) / 2);
+                this.doc.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 4).fill(bgColor);
                 this.doc.fontSize(9).font('BoldFont').fillColor(textColor)
-                    .text(scoreText, badgeX, auditY + 2, { width: badgeWidth, align: 'center' });
+                    .text(scoreText, badgeX, badgeY + 2, { width: badgeWidth, align: 'center' });
                 
-                auditY += 30; // Increased spacing between items
+                auditY += auditItemHeight + 6; // Move to next item with spacing
             });
             
             // Move to next position
