@@ -853,13 +853,20 @@ addOverallScoreDisplay(scoreData) {
     }
     
     addTablePages(auditId, auditData) {
-    if (!auditData.details?.items || auditData.details.items.length === 0) return;
+    if (!auditData.details?.items || auditData.details.items.length === 0) {
+        return; // No items, exit early
+    }
     
     const info = AUDIT_INFO[auditId];
+    if (!info) {
+        return; // No info, exit early
+    }
+    
     const tableConfig = this.getTableConfig(auditId);
     let items = auditData.details.items;
     
-    // PRE-CHECK: Filter items with valid locations BEFORE adding any pages
+    // CRITICAL: Filter items with valid locations BEFORE adding any pages
+    // This prevents blank pages with just headers
     const locationIndex = tableConfig.headers.findIndex(h => 
         h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
     );
@@ -880,16 +887,14 @@ addOverallScoreDisplay(scoreData) {
         items = itemsWithValidLocation;
     }
     
-    // Only proceed if we have items to display
+    // Final check: Only proceed if we have items to display
     if (!items || items.length === 0) {
+        console.log(`Skipping table pages for ${auditId} - no valid items after filtering`);
         return; // Don't create blank page
     }
     
-    // Check if we need a new page or can continue on current page
+    // Now we know we have valid items, proceed with page setup
     const needsNewPage = this.currentY > 600; // If we're far down the page, add new page
-    
-    // Store the starting Y position in case we need to rollback
-    const headerStartY = needsNewPage ? this.margin : this.currentY;
     
     if (needsNewPage) {
         this.addPage();
@@ -902,42 +907,19 @@ addOverallScoreDisplay(scoreData) {
     this.currentY += 25;
 
     const itemsPerPage = 12;
-    let hasContent = false;
     
-    // Only loop if we have items
-    if (items.length > 0) {
-        for (let i = 0; i < items.length; i += itemsPerPage) {
-            if (i > 0) {
-                this.addPage();
-                this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
-                this.currentY += 25;
-            }
-            const itemsToShow = items.slice(i, i + itemsPerPage);
-            if (itemsToShow.length > 0) {
-                // Check if drawEnhancedTable will actually render content
-                const locationIndex = tableConfig.headers.findIndex(h => 
-                    h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
-                );
-                let validItems = itemsToShow;
-                if (locationIndex !== -1) {
-                    validItems = itemsToShow.filter(item => {
-                        const locationValue = tableConfig.extractors[locationIndex](item);
-                        return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
-                    });
-                }
-                
-                if (validItems.length > 0) {
-                    this.drawEnhancedTable(itemsToShow, tableConfig, info?.category);
-                    hasContent = true;
-                }
-            }
+    // Loop through valid items (we know they exist now)
+    for (let i = 0; i < items.length; i += itemsPerPage) {
+        if (i > 0) {
+            this.addPage();
+            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
+            this.currentY += 25;
         }
-    }
-    
-    // If no content was rendered and we added a new page just for this, we have a problem
-    // But since we can't remove pages, we'll just leave the header (better than blank)
-    if (!hasContent && needsNewPage && items.length === 0) {
-        console.warn(`Warning: Added page for table but no items to display for ${auditId}`);
+        const itemsToShow = items.slice(i, i + itemsPerPage);
+        if (itemsToShow.length > 0) {
+            // Now we can safely call drawEnhancedTable - items are pre-validated
+            this.drawEnhancedTable(itemsToShow, tableConfig, info?.category);
+        }
     }
 }
     
@@ -1099,31 +1081,12 @@ addOverallScoreDisplay(scoreData) {
         return;
     }
     
-    // Find the Location column index
-    const locationIndex = config.headers.findIndex(h => 
-        h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
-    );
+    // NOTE: Items are already pre-validated in addTablePages before pages are created
+    // So we can safely use items as-is without additional filtering
+    const itemsToShow = items;
     
-    // Filter out rows where "Location" column has N/A
-    let itemsToShow = items;
-    if (locationIndex !== -1) {
-        itemsToShow = items.filter(item => {
-            const locationValue = config.extractors[locationIndex](item);
-            return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
-        });
-        
-        // If ALL rows have N/A in Location, don't render the table at all
-        if (itemsToShow.length === 0) {
-            console.log('Skipping table - all rows have N/A in Location column');
-            // Remove the header that was already added in addTablePages
-            // We can't remove it, but we can at least not draw the table
-            return; // Exit without rendering anything
-        }
-    }
-    
-    // Double-check we have items before proceeding
     if (!itemsToShow || itemsToShow.length === 0) {
-        console.log('drawEnhancedTable: No valid items after filtering, skipping table');
+        console.log('drawEnhancedTable: No valid items, skipping table');
         return;
     }
     
