@@ -294,7 +294,7 @@ export async function startAudit(req, res) {
     }
   }
 
-  // Precheck and normalize URL
+  // Precheck and normalize URL (lenient - allows valid URL format even if fetch times out)
   const { candidateUrls } = buildCandidateUrls(url);
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
   let normalizedUrl = null;
@@ -307,9 +307,15 @@ export async function startAudit(req, res) {
     }
   }
   
-  // If no URL worked, reject the request
+  // If fetch failed but URL format is valid, allow it through (some sites block automated requests)
+  if (!normalizedUrl && isValidUrlFormat(candidateUrls[0])) {
+    normalizedUrl = candidateUrls[0];
+    console.log(`⚠️ startAudit: Fetch failed but URL format valid, proceeding with: ${normalizedUrl}`);
+  }
+  
+  // If URL format is also invalid, reject the request
   if (!normalizedUrl) {
-    return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
+    return res.status(400).json({ error: 'Invalid URL format. Please check the URL and try again.' });
   }
 
   // Create persistent audit job
@@ -383,7 +389,7 @@ export async function quickAudit(req, res) {
   // Quick scan is now FREE - no authentication or subscription limits required
   console.log(`🆓 FREE Quick scan requested for ${firstName} ${lastName} (${email}) on ${url}`);
 
-  // Precheck and normalize URL
+  // Precheck and normalize URL (lenient - allows valid URL format even if fetch times out)
   const { candidateUrls } = buildCandidateUrls(url);
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
   let normalizedUrl = null;
@@ -396,9 +402,15 @@ export async function quickAudit(req, res) {
     }
   }
   
-  // If no URL worked, reject the request
+  // If fetch failed but URL format is valid, allow it through (some sites block automated requests)
+  if (!normalizedUrl && isValidUrlFormat(candidateUrls[0])) {
+    normalizedUrl = candidateUrls[0];
+    console.log(`⚠️ quickAudit: Fetch failed but URL format valid, proceeding with: ${normalizedUrl}`);
+  }
+  
+  // If URL format is also invalid, reject the request
   if (!normalizedUrl) {
-    return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
+    return res.status(400).json({ error: 'Invalid URL format. Please check the URL and try again.' });
   }
 
   // Create persistent audit job
