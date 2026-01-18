@@ -9,6 +9,21 @@ import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
 import { authRequired } from '../auth.js';
 
+// Helper: validate URL format
+function isValidUrlFormat(url) {
+  try {
+    const urlObj = new URL(url);
+    // Check if it's http or https and has a valid hostname
+    return (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') && 
+           urlObj.hostname && 
+           urlObj.hostname.length > 0 &&
+           !urlObj.hostname.startsWith('.') &&
+           !urlObj.hostname.endsWith('.');
+  } catch {
+    return false;
+  }
+}
+
 // Helper: normalize URL (prefer https). Returns {candidateUrls, input}
 function buildCandidateUrls(input) {
   const raw = (input || '').trim();
@@ -150,13 +165,28 @@ export async function precheckUrl(req, res) {
     }
   }
   
-  // If all attempts failed
-  console.log(`❌ All precheck attempts failed for ${input}`);
+  // If all fetch attempts failed, check if URL format is valid
+  // Some sites (like Best Buy) may block automated requests but are still valid
+  const firstCandidate = candidateUrls[0];
+  if (isValidUrlFormat(firstCandidate)) {
+    console.log(`⚠️ Precheck fetch failed, but URL format is valid. Allowing through: ${firstCandidate}`);
+    return res.json({ 
+      success: true, 
+      input, 
+      normalizedUrl: firstCandidate, 
+      finalUrl: firstCandidate, 
+      status: null, 
+      redirected: false,
+      warning: 'URL format validated but connection test timed out. Audit will proceed - some sites may block automated checks.'
+    });
+  }
   
+  // If URL format is also invalid, reject
+  console.log(`❌ All precheck attempts failed for ${input} - invalid URL format`);
   return res.status(400).json({ 
     success: false, 
     input, 
-    error: 'URL not reachable. Please check the domain and try again.'
+    error: 'Invalid URL format. Please check the URL and try again.'
   });
 }
 
