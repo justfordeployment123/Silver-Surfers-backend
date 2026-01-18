@@ -8,7 +8,7 @@ import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import PDFDocument from 'pdfkit';
-import { PDFDocument as PDFLib, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument as PDFLib } from 'pdf-lib';
 import { InternalLinksExtractor } from '../../internal_links/internal_links.js';
 import { runLighthouseAudit } from '../../load_and_audit/audit.js';
 import { runLighthouseLiteAudit } from '../../load_and_audit/audit-module-with-lite.js';
@@ -230,7 +230,6 @@ async function mergePDFsByPlatform(options) {
   coverDoc.fontSize(11).font('RegularFont').fillColor('#95A5A6')
     .text(`Generated: ${genDate}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
   
-  // Don't add page number here - it will be added later with pdf-lib for consistency
   coverDoc.end();
   
   // Wait for cover page to be written
@@ -425,7 +424,6 @@ async function mergePDFsByPlatform(options) {
     tocY += rowHeight;
   });
   
-  // Don't add page number here - it will be added later with pdf-lib for consistency
   tocDoc.end();
   
   // Wait for TOC page to be written
@@ -463,43 +461,6 @@ async function mergePDFsByPlatform(options) {
       console.error(`   ❌ Failed to merge ${pdfPath}:`, error.message);
       // Continue with other PDFs even if one fails
     }
-  }
-  
-  // STEP 5: Add page numbers to all pages (cover, TOC, and all content pages)
-  // Overlay new page numbers on top of any existing ones from individual PDFs
-  const pages = mergedPdf.getPages();
-  const helveticaFont = await mergedPdf.embedFont(StandardFonts.Helvetica);
-  const pageNumberColor = rgb(0.42, 0.45, 0.51); // #6B7280
-  const whiteColor = rgb(1, 1, 1); // White for covering old numbers
-  
-  // Add page numbers to ALL pages with continuous numbering
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i];
-    const { width, height } = page.getSize();
-    const pageNumber = i + 1; // Continuous numbering: 1, 2, 3, 4, etc.
-    
-    // Draw white rectangle to cover any existing page number (from individual PDFs)
-    // This ensures we don't have duplicate numbers
-    const rectWidth = 40;
-    const rectHeight = 15;
-    const rectX = width / 2 - rectWidth / 2;
-    const rectY = height - 35;
-    page.drawRectangle({
-      x: rectX,
-      y: rectY,
-      width: rectWidth,
-      height: rectHeight,
-      color: whiteColor,
-    });
-    
-    // Draw the new page number on top
-    page.drawText(`${pageNumber}`, {
-      x: width / 2 - 5,
-      y: height - 30,
-      size: 10,
-      font: helveticaFont,
-      color: pageNumberColor,
-    });
   }
   
   // Save the merged PDF
@@ -1375,5 +1336,3 @@ export const runQuickScanProcess = async (job) => {
         }
     }
 };
-
-

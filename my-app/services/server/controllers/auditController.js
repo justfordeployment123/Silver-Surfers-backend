@@ -29,22 +29,49 @@ function buildCandidateUrls(input) {
   };
 }
 
-async function tryFetch(url, timeoutMs = 8000) {
+async function tryFetch(url, timeoutMs = 15000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
+  
+  // Use a realistic browser User-Agent to avoid blocking
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1'
+  };
+  
+  const fetchOptions = { 
+    method: 'HEAD', 
+    redirect: 'follow', 
+    signal: controller.signal,
+    headers: headers
+  };
+  
   try {
     // Try HEAD first
-    let res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: controller.signal });
+    let res = await fetch(url, fetchOptions);
     if (!res.ok || res.status === 405) {
       // Some servers don't support HEAD well; try GET lightweight
-      res = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
+      res = await fetch(url, { 
+        method: 'GET', 
+        redirect: 'follow', 
+        signal: controller.signal,
+        headers: headers
+      });
     }
     const finalUrl = res.url || url;
     console.log(`🔍 Simple precheck: ${url} → ${finalUrl} (${res.status}) ✅`);
     return { ok: true, status: res.status, finalUrl, redirected: res.redirected };
   } catch (err) {
-    console.log(`❌ Precheck failed: ${url} - ${err?.message}`);
-    return { ok: false, error: err?.message || String(err) };
+    // Check if it was a timeout/abort or another error
+    const errorMsg = err.name === 'AbortError' 
+      ? `Request timeout after ${timeoutMs}ms` 
+      : err?.message || String(err);
+    console.log(`❌ Precheck failed: ${url} - ${errorMsg}`);
+    return { ok: false, error: errorMsg };
   } finally {
     clearTimeout(t);
   }
@@ -106,7 +133,7 @@ export async function precheckUrl(req, res) {
   for (const candidate of candidateUrls) {
     console.log(`🔍 Testing: ${candidate}`);
     
-    const result = await tryFetch(candidate, 8000);
+    const result = await tryFetch(candidate, 15000);
     
     if (result.ok) {
       console.log(`✅ Precheck success: ${candidate} → ${result.finalUrl}`);
@@ -243,7 +270,7 @@ export async function startAudit(req, res) {
   let normalizedUrl = null;
   
   for (const candidate of candidateUrls) {
-    const r = await tryFetch(candidate, 8000);
+    const r = await tryFetch(candidate, 15000);
     if (r.ok) { 
       normalizedUrl = r.finalUrl || candidate; 
       break; 
@@ -332,7 +359,7 @@ export async function quickAudit(req, res) {
   let normalizedUrl = null;
   
   for (const candidate of candidateUrls) {
-    const r = await tryFetch(candidate, 8000);
+    const r = await tryFetch(candidate, 15000);
     if (r.ok) { 
       normalizedUrl = r.finalUrl || candidate; 
       break; 
