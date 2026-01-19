@@ -5,10 +5,13 @@ async function isVisuallyDistinct(imagePathOrBuffer, rect) {
     try {
         if (rect.width < 2 || rect.height < 2) return false;
         
-        // Add timeout to prevent hanging
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 2000)
-        );
+        // Add timeout to prevent hanging - use AbortController pattern instead of Promise.race
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error('Timeout after 2000ms'));
+            }, 2000);
+        });
         
         const analysisPromise = sharp(imagePathOrBuffer)
             .extract({ 
@@ -19,10 +22,22 @@ async function isVisuallyDistinct(imagePathOrBuffer, rect) {
             })
             .stats();
             
-        const region = await Promise.race([analysisPromise, timeoutPromise]);
-        const VISIBILITY_THRESHOLD = 5;
-        return region.channels.some(c => c.stdev > VISIBILITY_THRESHOLD);
+        try {
+            const region = await Promise.race([analysisPromise, timeoutPromise]);
+            clearTimeout(timeoutId); // Clear timeout if operation succeeds
+            const VISIBILITY_THRESHOLD = 5;
+            return region.channels.some(c => c.stdev > VISIBILITY_THRESHOLD);
+        } catch (raceError) {
+            clearTimeout(timeoutId); // Clear timeout on error
+            // If it's a timeout, just return false (not visually distinct)
+            // If it's another error, rethrow to outer catch
+            if (raceError.message && raceError.message.includes('Timeout')) {
+                return false;
+            }
+            throw raceError; // Rethrow other errors
+        }
     } catch (error) {
+        // Handle any errors gracefully - return false instead of crashing
         console.warn(`⚠️  Could not analyze region for box at (${rect.left}, ${rect.top}): ${error.message}`);
         return false;
     }

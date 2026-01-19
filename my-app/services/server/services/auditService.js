@@ -13,7 +13,8 @@ import { InternalLinksExtractor } from '../../internal_links/internal_links.js';
 import { runLighthouseAudit } from '../../load_and_audit/audit.js';
 import { runLighthouseLiteAudit } from '../../load_and_audit/audit-module-with-lite.js';
 import { generateSeniorAccessibilityReport, calculateSeniorFriendlinessScore, ElderlyAccessibilityPDFGenerator } from '../../report_generation/pdf_generator.js';
-import { createAllHighlightedImages } from '../../drawing_boxes/draw_all.js';
+// Removed: createAllHighlightedImages - screenshots not used in reports
+// import { createAllHighlightedImages } from '../../drawing_boxes/draw_all.js';
 import { generateLiteAccessibilityReport } from '../../report_generation/pdf-generator-lite.js';
 import { 
   sendAuditReportEmail, 
@@ -801,9 +802,9 @@ export const runFullAuditProcess = async (job) => {
               console.warn(`Could not extract score from report: ${e.message}`);
             }
             
-            console.log(`📸 Starting image generation for ${link} (${device})...`);
-            imagePaths = await createAllHighlightedImages(jsonReportPath, jobFolder);
-            console.log(`✅ Image generation completed for ${link} (${device})`);
+            // Removed: Image generation - screenshots not used in PDF reports
+            // Images were generated but never embedded in PDFs and deleted immediately
+            imagePaths = {};
 
             // Store report data for combined PDF generation
             if (!reportsByPlatform[device]) {
@@ -835,15 +836,8 @@ export const runFullAuditProcess = async (job) => {
           console.error(`An unexpected error occurred while auditing ${link} (${device}):`, pageError.message);
           console.error(`Stack trace:`, pageError.stack);
         } finally {
-          // Don't delete JSON report yet - we need it for combined PDF generation
-          // Only delete temporary image files
-          if (imagePaths && typeof imagePaths === 'object') {
-            for (const imgPath of Object.values(imagePaths)) {
-              if (imgPath && imgPath.startsWith(jobFolder)) {
-                await fs.unlink(imgPath).catch((e) => console.error(e.message));
-              }
-            }
-          }
+          // JSON report needed for combined PDF generation - keep it
+          // Images are no longer generated, so no cleanup needed
         }
       }
     }
