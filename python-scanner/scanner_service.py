@@ -38,6 +38,18 @@ class AuditRequest(BaseModel):
     isLiteVersion: bool = False
 
 
+class PrecheckRequest(BaseModel):
+    url: str
+
+
+class PrecheckResponse(BaseModel):
+    success: bool
+    finalUrl: Optional[str] = None
+    status: Optional[int] = None
+    redirected: bool = False
+    error: Optional[str] = None
+
+
 class AuditResponse(BaseModel):
     success: bool
     reportPath: Optional[str] = None
@@ -1571,6 +1583,128 @@ async def perform_audit(request: AuditRequest):
             strategy="Python-Camoufox",
             attemptNumber=1,
             message=f"Audit failed: {error_msg}",
+        )
+
+
+def _precheck_url_sync(url: str) -> Dict[str, Any]:
+    """
+    Lightweight precheck: Just verify URL is reachable using Camoufox.
+    This is much faster than a full audit - just navigates and checks status.
+    """
+    try:
+        # Use Camoufox for anti-detection (sync API)
+        with Camoufox(headless=True) as browser:
+            page = browser.new_page()
+            
+            # Set basic viewport
+            page.set_viewport_size({"width": 1920, "height": 1080})
+            
+            # Set realistic user agent
+            context = page.context
+            context.set_extra_http_headers({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            })
+            
+            try:
+                # Navigate with a shorter timeout for precheck (30 seconds)
+                response = page.goto(url, wait_until="load", timeout=30000)
+                
+                # Get final URL after redirects
+                final_url = page.url
+                status_code = response.status if response else None
+                
+                # Check if redirected
+                redirected = final_url != url
+                
+                # Quick check: verify page has some content (not blocked)
+                content = page.content()
+                has_content = len(content) > 1000  # At least 1KB of content
+                
+                if not has_content:
+                    return {
+                        "success": False,
+                        "error": "Page loaded but has insufficient content (may be blocked)"
+                    }
+                
+                return {
+                    "success": True,
+                    "finalUrl": final_url,
+                    "status": status_code,
+                    "redirected": redirected
+                }
+            except Exception as nav_error:
+                error_msg = str(nav_error)
+                # Check if it's a timeout or connection error
+                if "timeout" in error_msg.lower() or "timeout" in str(type(nav_error)).lower():
+                    return {
+                        "success": False,
+                        "error": f"Request timeout: {error_msg}"
+                    }
+                elif "403" in error_msg or "forbidden" in error_msg.lower():
+                    # 403 might still mean the site is accessible, just blocked automated requests
+                    # But for precheck, we'll consider it a failure
+                    return {
+                        "success": False,
+                        "error": f"Access forbidden (403): Site may block automated requests"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Navigation failed: {error_msg}"
+                    }
+            finally:
+                page.close()
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Precheck failed: {str(e)}"
+        }
+
+
+@app.post("/precheck", response_model=PrecheckResponse)
+async def precheck_url(request: PrecheckRequest):
+    """
+    Lightweight async precheck endpoint using Camoufox.
+    Just verifies URL is reachable without doing a full audit.
+    """
+    try:
+        # Normalize URL
+        url = request.url
+        if not url.startswith(("http://", "https://")):
+            url = f"https://{url}"
+        
+        print(f"🔍 Precheck request for: {url}")
+        
+        # Run Camoufox precheck in thread pool (sync API)
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(
+                executor,
+                _precheck_url_sync,
+                url
+            )
+        
+        if result["success"]:
+            print(f"✅ Precheck success: {url} → {result.get('finalUrl', url)}")
+            return PrecheckResponse(
+                success=True,
+                finalUrl=result.get("finalUrl", url),
+                status=result.get("status"),
+                redirected=result.get("redirected", False)
+            )
+        else:
+            print(f"❌ Precheck failed: {url} - {result.get('error', 'Unknown error')}")
+            return PrecheckResponse(
+                success=False,
+                error=result.get("error", "Precheck failed")
+            )
+            
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Precheck error: {error_msg}")
+        return PrecheckResponse(
+            success=False,
+            error=error_msg
         )
 
 

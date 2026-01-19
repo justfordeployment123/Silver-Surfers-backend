@@ -8,21 +8,7 @@ import QuickScan from '../models/QuickScan.js';
 import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
 import { authRequired } from '../auth.js';
-
-// Helper: validate URL format
-function isValidUrlFormat(url) {
-  try {
-    const urlObj = new URL(url);
-    // Check if it's http or https and has a valid hostname
-    return (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') && 
-           urlObj.hostname && 
-           urlObj.hostname.length > 0 &&
-           !urlObj.hostname.startsWith('.') &&
-           !urlObj.hostname.endsWith('.');
-  } catch {
-    return false;
-  }
-}
+import { pythonPrecheck, isPythonScannerAvailable } from '../../load_and_audit/python-scanner-client.js';
 
 // Helper: normalize URL (prefer https). Returns {candidateUrls, input}
 function buildCandidateUrls(input) {
@@ -44,49 +30,41 @@ function buildCandidateUrls(input) {
   };
 }
 
-async function tryFetch(url, timeoutMs = 15000) {
+async function tryFetch(url, timeoutMs = 8000) {
+  // First, try Python/Camoufox precheck if available (bypasses bot protection)
+  const pythonAvailable = await isPythonScannerAvailable();
+  if (pythonAvailable) {
+    console.log(`🐍 Trying Python/Camoufox precheck for: ${url}`);
+    const pythonResult = await pythonPrecheck(url);
+    if (pythonResult.ok) {
+      console.log(`✅ Python precheck succeeded: ${url} → ${pythonResult.finalUrl}`);
+      return {
+        ok: true,
+        status: pythonResult.status,
+        finalUrl: pythonResult.finalUrl,
+        redirected: pythonResult.redirected
+      };
+    } else {
+      console.log(`⚠️ Python precheck failed, falling back to regular fetch: ${pythonResult.error}`);
+    }
+  }
+  
+  // Fallback to regular fetch if Python precheck unavailable or failed
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
-  
-  // Use a realistic browser User-Agent to avoid blocking
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1'
-  };
-  
-  const fetchOptions = { 
-    method: 'HEAD', 
-    redirect: 'follow', 
-    signal: controller.signal,
-    headers: headers
-  };
-  
   try {
     // Try HEAD first
-    let res = await fetch(url, fetchOptions);
+    let res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: controller.signal });
     if (!res.ok || res.status === 405) {
       // Some servers don't support HEAD well; try GET lightweight
-      res = await fetch(url, { 
-        method: 'GET', 
-        redirect: 'follow', 
-        signal: controller.signal,
-        headers: headers
-      });
+      res = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
     }
     const finalUrl = res.url || url;
     console.log(`🔍 Simple precheck: ${url} → ${finalUrl} (${res.status}) ✅`);
     return { ok: true, status: res.status, finalUrl, redirected: res.redirected };
   } catch (err) {
-    // Check if it was a timeout/abort or another error
-    const errorMsg = err.name === 'AbortError' 
-      ? `Request timeout after ${timeoutMs}ms` 
-      : err?.message || String(err);
-    console.log(`❌ Precheck failed: ${url} - ${errorMsg}`);
-    return { ok: false, error: errorMsg };
+    console.log(`❌ Precheck failed: ${url} - ${err?.message}`);
+    return { ok: false, error: err?.message || String(err) };
   } finally {
     clearTimeout(t);
   }
@@ -148,7 +126,7 @@ export async function precheckUrl(req, res) {
   for (const candidate of candidateUrls) {
     console.log(`🔍 Testing: ${candidate}`);
     
-    const result = await tryFetch(candidate, 15000);
+    const result = await tryFetch(candidate, 8000);
     
     if (result.ok) {
       console.log(`✅ Precheck success: ${candidate} → ${result.finalUrl}`);
@@ -165,28 +143,13 @@ export async function precheckUrl(req, res) {
     }
   }
   
-  // If all fetch attempts failed, check if URL format is valid
-  // Some sites (like Best Buy) may block automated requests but are still valid
-  const firstCandidate = candidateUrls[0];
-  if (isValidUrlFormat(firstCandidate)) {
-    console.log(`⚠️ Precheck fetch failed, but URL format is valid. Allowing through: ${firstCandidate}`);
-    return res.json({ 
-      success: true, 
-      input, 
-      normalizedUrl: firstCandidate, 
-      finalUrl: firstCandidate, 
-      status: null, 
-      redirected: false,
-      warning: 'URL format validated but connection test timed out. Audit will proceed - some sites may block automated checks.'
-    });
-  }
+  // If all attempts failed
+  console.log(`❌ All precheck attempts failed for ${input}`);
   
-  // If URL format is also invalid, reject
-  console.log(`❌ All precheck attempts failed for ${input} - invalid URL format`);
   return res.status(400).json({ 
     success: false, 
     input, 
-    error: 'Invalid URL format. Please check the URL and try again.'
+    error: 'URL not reachable. Please check the domain and try again.'
   });
 }
 
@@ -294,28 +257,22 @@ export async function startAudit(req, res) {
     }
   }
 
-  // Precheck and normalize URL (lenient - allows valid URL format even if fetch times out)
+  // Precheck and normalize URL
   const { candidateUrls } = buildCandidateUrls(url);
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
   let normalizedUrl = null;
   
   for (const candidate of candidateUrls) {
-    const r = await tryFetch(candidate, 15000);
+    const r = await tryFetch(candidate, 8000);
     if (r.ok) { 
       normalizedUrl = r.finalUrl || candidate; 
       break; 
     }
   }
   
-  // If fetch failed but URL format is valid, allow it through (some sites block automated requests)
-  if (!normalizedUrl && isValidUrlFormat(candidateUrls[0])) {
-    normalizedUrl = candidateUrls[0];
-    console.log(`⚠️ startAudit: Fetch failed but URL format valid, proceeding with: ${normalizedUrl}`);
-  }
-  
-  // If URL format is also invalid, reject the request
+  // If no URL worked, reject the request
   if (!normalizedUrl) {
-    return res.status(400).json({ error: 'Invalid URL format. Please check the URL and try again.' });
+    return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
   }
 
   // Create persistent audit job
@@ -389,28 +346,22 @@ export async function quickAudit(req, res) {
   // Quick scan is now FREE - no authentication or subscription limits required
   console.log(`🆓 FREE Quick scan requested for ${firstName} ${lastName} (${email}) on ${url}`);
 
-  // Precheck and normalize URL (lenient - allows valid URL format even if fetch times out)
+  // Precheck and normalize URL
   const { candidateUrls } = buildCandidateUrls(url);
   if (!candidateUrls.length) return res.status(400).json({ error: 'Invalid URL' });
   let normalizedUrl = null;
   
   for (const candidate of candidateUrls) {
-    const r = await tryFetch(candidate, 15000);
+    const r = await tryFetch(candidate, 8000);
     if (r.ok) { 
       normalizedUrl = r.finalUrl || candidate; 
       break; 
     }
   }
   
-  // If fetch failed but URL format is valid, allow it through (some sites block automated requests)
-  if (!normalizedUrl && isValidUrlFormat(candidateUrls[0])) {
-    normalizedUrl = candidateUrls[0];
-    console.log(`⚠️ quickAudit: Fetch failed but URL format valid, proceeding with: ${normalizedUrl}`);
-  }
-  
-  // If URL format is also invalid, reject the request
+  // If no URL worked, reject the request
   if (!normalizedUrl) {
-    return res.status(400).json({ error: 'Invalid URL format. Please check the URL and try again.' });
+    return res.status(400).json({ error: 'URL not reachable. Please check the domain and try again.' });
   }
 
   // Create persistent audit job

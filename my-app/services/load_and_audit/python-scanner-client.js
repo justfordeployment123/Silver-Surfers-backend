@@ -96,6 +96,58 @@ export async function tryPythonScanner(options) {
 }
 
 /**
+ * Lightweight precheck using Python/Camoufox scanner
+ * This is much faster than a full audit - just verifies URL is reachable
+ * @param {string} url - URL to precheck
+ * @returns {Promise<object>} Precheck result
+ */
+export async function pythonPrecheck(url) {
+    try {
+        console.log(`🐍 Python precheck for: ${url}`);
+        
+        const response = await axios.post(`${PYTHON_SCANNER_URL}/precheck`, {
+            url: url
+        }, {
+            timeout: 35000, // 35 seconds timeout (30s for navigation + buffer)
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.data && response.data.success) {
+            console.log(`✅ Python precheck succeeded: ${url} → ${response.data.finalUrl || url}`);
+            return {
+                ok: true,
+                finalUrl: response.data.finalUrl || url,
+                status: response.data.status,
+                redirected: response.data.redirected || false
+            };
+        } else {
+            console.log(`❌ Python precheck failed: ${response.data?.error || 'Unknown error'}`);
+            return {
+                ok: false,
+                error: response.data?.error || 'Python precheck failed'
+            };
+        }
+    } catch (error) {
+        // Check if Python service is available
+        if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+            console.log(`⚠️ Python scanner service not available at ${PYTHON_SCANNER_URL}`);
+            return {
+                ok: false,
+                error: 'Python scanner service not available'
+            };
+        }
+        
+        console.error(`❌ Python precheck error: ${error.message}`);
+        return {
+            ok: false,
+            error: error.message
+        };
+    }
+}
+
+/**
  * Check if Python scanner service is available
  * @returns {Promise<boolean>}
  */
