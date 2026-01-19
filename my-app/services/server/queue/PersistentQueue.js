@@ -104,8 +104,8 @@ class PersistentQueue {
       console.log(`🔄 Processing job ${job.taskId} in ${this.queueName}`);
       
       // CRITICAL FIX: Add timeout to prevent jobs from hanging forever
-      // Full audits can take up to 15 minutes, quick scans up to 5 minutes
-      const jobTimeout = this.jobType === 'full-audit' ? 20 * 60 * 1000 : 10 * 60 * 1000; // 20min or 10min
+      // Full audits can take up to 3 hours, quick scans up to 10 minutes
+      const jobTimeout = this.jobType === 'full-audit' ? 180 * 60 * 1000 : 10 * 60 * 1000; // 3 hours or 10min
       
       // Execute the job with timeout - Pass all relevant job data including custom fields
       const jobPromise = this.processFunction({
