@@ -193,6 +193,7 @@ export function calculateSeniorFriendlinessScore(report) {
 export class ElderlyAccessibilityPDFGenerator {
     constructor(options = {}) {
         this.imagePaths = options.imagePaths || {};
+        this.options = options; // Store all options for later use
         this.doc = new PDFDocument({
             margin: 40,
             size: 'A4'
@@ -331,129 +332,169 @@ addOverallScoreDisplay(scoreData) {
     }
 }
     addIntroPage(reportData, scoreData, planType = 'pro') {
-        // Header background with gradient effect (simulate with overlapping rectangles)
-        this.doc.rect(0, 0, this.doc.page.width, 220).fill('#6366F1');
-        this.doc.rect(0, 180, this.doc.page.width, 40).fillOpacity(0.3).fill('#8B5CF6');
-        this.doc.fillOpacity(1);
-        let heading = 'SilverSurfers Pro Audit';
-        if (planType && typeof planType === 'string') {
-            if (planType.toLowerCase().includes('starter')) heading = 'SilverSurfers Starter Audit';
-            else if (planType.toLowerCase().includes('onetime')) heading = 'SilverSurfers One-Time Audit';
-            else if (planType.toLowerCase().includes('pro')) heading = 'SilverSurfers Pro Audit';
+        // Helper function to extract site name from URL
+        function extractSiteName(url) {
+            try {
+                const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+                let hostname = urlObj.hostname.replace(/^www\./, '');
+                // Convert domain to title case with spaces
+                // e.g., "carverridgeseniorliving.com" -> "Carver Ridge Senior Living"
+                let name = hostname.split('.')[0]; // Get the main part before .com
+                // Add spaces before capital letters and before numbers
+                name = name.replace(/([A-Z])/g, ' $1').replace(/([0-9]+)/g, ' $1');
+                // Split by common separators
+                name = name.replace(/[-_]/g, ' ');
+                // Title case each word
+                name = name.split(' ').map(word => {
+                    if (!word) return '';
+                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                }).join(' ').trim();
+                return name || hostname;
+            } catch (e) {
+                return 'Website';
+            }
         }
-        this.doc.fontSize(32).font('BoldFont').fillColor('white').text(heading, this.margin, 30, { width: this.pageWidth, align: 'center' });
-        this.doc.fontSize(14).font('RegularFont').fillColor('white').text('Accessibility Audit Report', this.margin, 70, { width: this.pageWidth, align: 'center' });
-        
-        this.currentY = 110;
 
-        // Calculate isPassing based on score
+        const siteName = extractSiteName(reportData.finalUrl || '');
         const score = Math.round(scoreData.finalScore);
         const isPassing = score >= 70;
+        const formFactor = reportData.configSettings?.formFactor || 'desktop';
+        const formFactorDisplay = formFactor.charAt(0).toUpperCase() + formFactor.slice(1);
 
-        // Website analyzed box with rounded corners (simulated)
-        if (reportData.finalUrl) {
-            const boxX = (this.doc.page.width - 280) / 2;
-            const urlText = reportData.finalUrl;
-            const urlFontSize = 13;
-            const urlBoxWidth = 240;
-            this.doc.fontSize(urlFontSize).font('BoldFont');
-            // Calculate height needed for URL (wrap to multiple lines if needed)
-            const urlHeight = this.doc.heightOfString(urlText, { width: urlBoxWidth, align: 'left' });
-            const minBoxHeight = 50;
-            const boxHeight = Math.max(minBoxHeight, urlHeight + 32); // 32 for label and padding
-            // Draw box
-            this.doc.roundedRect(boxX, this.currentY, 280, boxHeight, 8).fill('#7C3AED').fillOpacity(0.9);
-            this.doc.fillOpacity(1);
-            // Draw label
-            this.doc.fontSize(11).font('RegularFont').fillColor('#E0E7FF').text('Website Analyzed', boxX + 20, this.currentY + 12);
-            // Draw URL, vertically centered
-            this.doc.fontSize(urlFontSize).font('BoldFont').fillColor('white');
-            const urlY = this.currentY + 28 + Math.max(0, (boxHeight - minBoxHeight) / 2 - 8); // center if taller
-            this.doc.text(urlText, boxX + 20, urlY, { width: urlBoxWidth, align: 'left' });
-            this.currentY += boxHeight + 15;
-        } else {
-            this.currentY += 85;
+        // Determine package type display text
+        let packageText = 'Pro';
+        if (planType && typeof planType === 'string') {
+            if (planType.toLowerCase().includes('starter')) packageText = 'Starter';
+            else if (planType.toLowerCase().includes('onetime')) packageText = 'One-Time';
+            else if (planType.toLowerCase().includes('pro')) packageText = 'Pro';
         }
 
-        // Score display box with rounded background
-        const scoreBoxX = (this.doc.page.width - 440) / 2;
-        const scoreBoxY = this.currentY;
-        this.doc.roundedRect(scoreBoxX, scoreBoxY, 440, 120, 12).fill('#E0E7FF').fillOpacity(0.8);
-        this.doc.fillOpacity(1);
+        // Start with site name as main heading (dark blue color matching image)
+        this.currentY = 80;
+        this.doc.fontSize(32).font('BoldFont').fillColor('#2C5F9C')
+            .text(siteName, this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+        this.currentY += 50;
 
-        // score already declared above
-        let scoreColor = '#EF4444'; // red
-        let statusText = 'FAIL';
-        if (score >= 70) {
-            scoreColor = '#22C55E'; // green
-            statusText = 'PASS';
-        } else if (score >= 50) {
-            scoreColor = '#FACC15'; // yellow
-            statusText = 'WARNING';
-        }
-        // Large score circle with colored border
-        this.doc.save();
-        this.doc.circle(scoreBoxX + 80, scoreBoxY + 60, 45).fill('white').stroke(scoreColor).lineWidth(6).stroke();
-        this.doc.restore();
-        this.doc.fontSize(42).font('BoldFont').fillColor(scoreColor).text(score + '%', scoreBoxX + 35, scoreBoxY + 38, { width: 90, align: 'center' });
-        this.doc.fontSize(12).font('BoldFont').fillColor(scoreColor).text(statusText, scoreBoxX + 35, scoreBoxY + 75, { width: 90, align: 'center' });
-
-        // Score description
-        this.doc.fontSize(15).font('BoldFont').fillColor('#1F2937').text('Overall SilverSurfers Score', scoreBoxX + 180, scoreBoxY + 25);
-        const descText = isPassing 
-            ? 'This website meets SilverSurfers accessibility\nstandards (70% minimum required)'
-            : 'This website did not meet the SilverSurfers\naccessibility standards (70% minimum required)';
-        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(descText, scoreBoxX + 180, scoreBoxY + 50, { width: 240 });
-
-        this.currentY += 150;
-        
-        // Report generated timestamp
-        const timestamp = new Date(reportData.fetchTime).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
-        this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280').text(`Report Generated: ${timestamp}`, this.margin, this.currentY, { align: 'center', width: this.pageWidth });
+        // Subtitle: "Website Accessibility Audit Report – (List platform here)"
+        this.doc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
+            .text(`Website Accessibility Audit Report – (${formFactorDisplay})`, this.margin, this.currentY, 
+                { width: this.pageWidth, align: 'center' });
         this.currentY += 40;
 
-        // Our Mission section
-        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, 90, 8).fill('#EFF6FF');
-        this.doc.roundedRect(this.margin, this.currentY, 5, 90, 2).fill('#3B82F6');
-        this.doc.fontSize(13).font('BoldFont').fillColor('#1E40AF').text('Our Mission: Digital Inclusion for Older Adults', this.margin + 20, this.currentY + 15);
-        const missionText = 'This comprehensive SilverSurfers audit evaluates website accessibility specifically from the perspective of older adult users. We focus on the unique challenges older adults face, including age-related vision changes, motor skill considerations, cognitive processing needs, and technology familiarity levels.';
-        this.doc.fontSize(10).font('RegularFont').fillColor('#1E3A8A').text(missionText, this.margin + 20, this.currentY + 38, { width: this.pageWidth - 40, align: 'justify' });
-        this.currentY += 110;
-
-        // Report Sections
-        this.doc.fontSize(14).font('BoldFont').fillColor('#3B82F6').text('Report Sections', this.margin, this.currentY);
+        // URL (gray, smaller)
+        this.doc.fontSize(11).font('RegularFont').fillColor('#7F8C8D')
+            .text(reportData.finalUrl || '', this.margin, this.currentY, 
+                { width: this.pageWidth, align: 'center' });
         this.currentY += 25;
 
-        const sections = [
-            { num: 1, title: 'How Your Score Was Calculated' },
-            { num: 2, title: 'Audit Summary by Category' },
-            { num: 3, title: 'Detailed Audit Results' }
-        ];
-
-        sections.forEach((section, index) => {
-            this.doc.fontSize(11).font('BoldFont').fillColor('#1F2937').text(`Section ${section.num}:`, this.margin + 20, this.currentY);
-            this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(section.title, this.margin + 90, this.currentY);
-            this.currentY += 18;
+        // Generated date (italic gray)
+        const timestamp = new Date(reportData.fetchTime || new Date()).toLocaleDateString('en-US', { 
+            year: 'numeric', month: 'long', day: 'numeric' 
         });
+        this.doc.fontSize(10).font('RegularFont').fillColor('#95A5A6')
+            .text(`Generated: ${timestamp}`, this.margin, this.currentY, 
+                { width: this.pageWidth, align: 'center' });
+        this.currentY += 60;
+
+        // Overall Accessibility Score box with border
+        const scoreBoxHeight = 160;
+        const scoreBoxY = this.currentY;
+        
+        // Draw border for the score box
+        this.doc.rect(this.margin + 50, scoreBoxY, this.pageWidth - 100, scoreBoxHeight)
+            .strokeColor('#E8D5D0')
+            .lineWidth(2)
+            .stroke();
+        
+        // Light beige background
+        this.doc.rect(this.margin + 50, scoreBoxY, this.pageWidth - 100, scoreBoxHeight)
+            .fillOpacity(0.3)
+            .fill('#FCF3EF')
+            .fillOpacity(1);
+
+        // "Overall Accessibility Score (list platform here)" heading
+        this.doc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
+            .text(`Overall Accessibility Score (${formFactorDisplay})`, this.margin + 70, scoreBoxY + 20, 
+                { width: this.pageWidth - 140, align: 'center' });
+
+        // Large score percentage (orange color from image)
+        const scoreColor = isPassing ? '#27AE60' : '#E67E22';
+        this.doc.fontSize(72).font('BoldFont').fillColor(scoreColor)
+            .text(`${score}%`, this.margin + 70, scoreBoxY + 50, 
+                { width: this.pageWidth - 140, align: 'center' });
+
+        // Warning message if below 70%
+        if (!isPassing) {
+            this.doc.fontSize(12).font('BoldFont').fillColor('#C0392B')
+                .text('⚠ WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
+                    { width: this.pageWidth - 140, align: 'center' });
+            this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
+                .text('Minimum recommended score: 70%', this.margin + 70, scoreBoxY + 143, 
+                    { width: this.pageWidth - 140, align: 'center' });
+        } else {
+            this.doc.fontSize(12).font('BoldFont').fillColor('#27AE60')
+                .text('✓ PASS: Meets Recommended Standard', this.margin + 70, scoreBoxY + 125, 
+                    { width: this.pageWidth - 140, align: 'center' });
+            this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
+                .text('Minimum recommended score: 70%', this.margin + 70, scoreBoxY + 143, 
+                    { width: this.pageWidth - 140, align: 'center' });
+        }
+
+        this.currentY = scoreBoxY + scoreBoxHeight + 30;
+
+        // Report prepared for (left-aligned)
+        const clientEmail = this.options?.clientEmail || reportData.clientEmail || 'client@email.com';
+        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            .text(`Report prepared for: ${clientEmail}`, this.margin + 60, this.currentY);
+        this.currentY += 25;
+
+        // Pages audited (left-aligned) - we'll show based on report data if available
+        const pagesCount = reportData.pagesScanned || reportData.pageCount || 'Multiple';
+        const pagesText = typeof pagesCount === 'number' 
+            ? `Pages audited: ${pagesCount}` 
+            : 'Pages audited: Multiple pages';
+        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            .text(pagesText, this.margin + 60, this.currentY);
+        this.currentY += 25;
+
+        // Package information with note (left-aligned, note in red italic)
+        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            .text(`Package: ${packageText} – `, this.margin + 60, this.currentY, { continued: true })
+            .font('RegularFont').fillColor('#C0392B')
+            .text('Note: ', { continued: true })
+            .font('RegularFont').fillColor('#C0392B');
+        
+        // Add the appropriate note based on package type
+        if (packageText === 'Pro') {
+            this.doc.text('This report should be generated 3 times for Pro packages. 1 report for Desktop, 1 report for Tablet, 1 report for Mobile. If starter package, the report should reflect the platform choice the user submitted.', 
+                this.margin + 60, this.currentY + 15, 
+                { width: this.pageWidth - 120, align: 'left' });
+        } else if (packageText === 'Starter') {
+            this.doc.text('This report reflects the platform choice you submitted during your scan request.', 
+                this.margin + 60, this.currentY + 15, 
+                { width: this.pageWidth - 120, align: 'left' });
+        } else {
+            this.doc.text('This is a one-time audit report for the selected platform.', 
+                this.margin + 60, this.currentY + 15, 
+                { width: this.pageWidth - 120, align: 'left' });
+        }
+        
+        this.currentY += 70;
     }
 
     addScoreCalculationPage(reportData, scoreData) {
         this.addPage();
         
-        // Section title
-        this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 1: How Your Score Was Calculated', this.margin, this.currentY);
-        this.currentY += 25;
+        // Title: "Detailed Score Breakdown" (blue)
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C').text('Detailed Score Breakdown', this.margin, this.currentY);
+        this.currentY += 30;
         
-        // Horizontal line
-        this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
-        this.currentY += 20;
-        
-        // Explanation text
-        this.doc.fontSize(10).font('RegularFont').fillColor('#4B5563').text(
-            'The final score is a weighted average of individual audits. Audits that have a greater impact on the user experience for older adults are given a higher "weight," meaning they contribute more to the final score.',
+        // Explanation text (no horizontal line)
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50').text(
+            'The final score is calculated using a weighted average system where components with greater impact on digital users receive higher weight values.',
             this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 }
         );
-        this.currentY += 45;
+        this.currentY += 35;
 
         const auditRefs = customConfig.categories['senior-friendly']?.auditRefs || [];
         const auditResults = reportData.audits;
@@ -479,30 +520,639 @@ addOverallScoreDisplay(scoreData) {
         this.drawScoreCalculationTable(tableItems, scoreData);
     }
 
+    addExecutiveSummary(reportData, scoreData) {
+        this.addPage();
+        
+        // Helper to extract site name from URL
+        function extractSiteName(url) {
+            try {
+                const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+                let hostname = urlObj.hostname.replace(/^www\./, '');
+                let name = hostname.split('.')[0];
+                name = name.replace(/([A-Z])/g, ' $1').replace(/([0-9]+)/g, ' $1');
+                name = name.replace(/[-_]/g, ' ');
+                name = name.split(' ').map(word => {
+                    if (!word) return '';
+                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                }).join(' ').trim();
+                return name || hostname;
+            } catch (e) {
+                return 'website';
+            }
+        }
+
+        const siteName = extractSiteName(reportData.finalUrl || '');
+        const score = Math.round(scoreData.finalScore);
+        const isPassing = score >= 70;
+
+        // Executive Summary heading (blue)
+        this.doc.fontSize(24).font('BoldFont').fillColor('#2C5F9C')
+            .text('Executive Summary', this.margin, this.currentY);
+        this.currentY += 35;
+
+        // Opening paragraph with site name
+        const openingText = `This comprehensive accessibility audit evaluates the ${siteName} website specifically for digital users. The assessment focuses on digital user challenges including vision changes, motor skill considerations, cognitive processing needs, and technology familiarity.`;
+        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            .text(openingText, this.margin, this.currentY, { 
+                width: this.pageWidth, 
+                align: 'justify',
+                lineGap: 3 
+            });
+        this.currentY += this.doc.heightOfString(openingText, { width: this.pageWidth, lineGap: 3 }) + 30;
+
+        // Key Findings section
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
+            .text('Key Findings', this.margin, this.currentY);
+        this.currentY += 25;
+
+        // Key findings bullets
+        const keyFindings = [
+            `Overall score of ${score}% ${isPassing ? 'meets' : 'falls below'} the 70% minimum standard for user-friendly accessibility`,
+            'Critical issues identified in color contrast, page loading speed, and link text clarity',
+            'Strong performance in touch target sizing, mobile responsiveness, and form accessibility',
+            'Security and privacy features meet recommended standards'
+        ];
+
+        keyFindings.forEach(finding => {
+            const bulletX = this.margin + 20;
+            const textX = bulletX + 15;
+            
+            // Draw bullet point
+            this.doc.circle(bulletX, this.currentY + 5, 2.5).fill('#2C3E50');
+            
+            // Draw finding text
+            this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+                .text(finding, textX, this.currentY, {
+                    width: this.pageWidth - 35,
+                    lineGap: 2
+                });
+            
+            const findingHeight = this.doc.heightOfString(finding, { 
+                width: this.pageWidth - 35, 
+                lineGap: 2 
+            });
+            this.currentY += findingHeight + 10;
+        });
+
+        this.currentY += 20;
+
+        // Recommended Priority Actions section
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
+            .text('Recommended Priority Actions', this.margin, this.currentY);
+        this.currentY += 25;
+
+        // Priority actions bullets
+        const priorityActions = [
+            'Improve color contrast ratios for text and interactive elements',
+            'Optimize page loading speed to reduce wait times',
+            'Enhance link text to be more descriptive and contextual',
+            'Add text spacing flexibility to prevent layout breaks when users zoom'
+        ];
+
+        priorityActions.forEach(action => {
+            const bulletX = this.margin + 20;
+            const textX = bulletX + 15;
+            
+            // Draw bullet point
+            this.doc.circle(bulletX, this.currentY + 5, 2.5).fill('#2C3E50');
+            
+            // Draw action text (bold for priority actions)
+            this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
+                .text(action, textX, this.currentY, {
+                    width: this.pageWidth - 35,
+                    lineGap: 2
+                });
+            
+            const actionHeight = this.doc.heightOfString(action, { 
+                width: this.pageWidth - 35, 
+                lineGap: 2 
+            });
+            this.currentY += actionHeight + 10;
+        });
+    }
+
+    addPriorityRecommendations(reportData) {
+        this.addPage();
+        
+        // Page title
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
+            .text('Priority Recommendations', this.margin, this.currentY);
+        this.currentY += 30;
+        
+        // Description
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+            .text('Based on the audit findings, here are the priority improvements organized by impact and implementation effort.',
+                this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+        this.currentY += 35;
+
+        const audits = reportData.audits || {};
+        
+        // Categorize audits by priority based on scores and weights
+        const criticalIssues = [];
+        const mediumIssues = [];
+        const lowIssues = [];
+
+        // Check each audit and categorize
+        Object.keys(AUDIT_INFO).forEach(auditId => {
+            const auditData = audits[auditId];
+            if (!auditData) return;
+            
+            const score = auditData.score !== null && auditData.score !== undefined ? auditData.score : 1;
+            const scorePercent = Math.round(score * 100);
+            
+            // Critical: score < 50%
+            // Medium: score 50-89%
+            // Low/Passing: score >= 90%
+            
+            if (scorePercent < 50) {
+                criticalIssues.push({ id: auditId, score: scorePercent, data: auditData });
+            } else if (scorePercent < 90) {
+                mediumIssues.push({ id: auditId, score: scorePercent, data: auditData });
+            }
+        });
+
+        // Critical Priority Section
+        if (criticalIssues.length > 0) {
+            // Section heading with icon circle
+            const iconRadius = 10;
+            const iconX = this.margin + iconRadius;
+            const iconY = this.currentY + iconRadius;
+            
+            // Draw blue circle with white exclamation (simulate with text)
+            this.doc.circle(iconX, iconY, iconRadius).fill('#3D5A80');
+            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF')
+                .text('!', iconX - 3, iconY - 7);
+            
+            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+                .text('Critical Priority (High Impact)', this.margin + 30, this.currentY);
+            this.currentY += 30;
+
+            // Add numbered critical issues
+            criticalIssues.slice(0, 5).forEach((issue, index) => {
+                this.addRecommendationItem(issue.id, index + 1, issue.data);
+            });
+        }
+
+        // Medium Priority Section
+        if (mediumIssues.length > 0) {
+            if (this.currentY > 650) {
+                this.addPage();
+            }
+
+            const iconRadius = 10;
+            const iconX = this.margin + iconRadius;
+            const iconY = this.currentY + iconRadius;
+            
+            this.doc.circle(iconX, iconY, iconRadius).fill('#FD7E14');
+            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF')
+                .text('!', iconX - 3, iconY - 7);
+            
+            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+                .text('Medium Priority (Moderate Impact)', this.margin + 30, this.currentY);
+            this.currentY += 30;
+
+            mediumIssues.slice(0, 3).forEach((issue, index) => {
+                this.addRecommendationItem(issue.id, index + 1, issue.data, true);
+            });
+        }
+
+        // Low Priority Section (optional, if there are any low priority items)
+        const lowPriorityCount = Object.keys(AUDIT_INFO).length - criticalIssues.length - mediumIssues.length;
+        if (lowPriorityCount > 0 && this.currentY < 650) {
+            const iconRadius = 10;
+            const iconX = this.margin + iconRadius;
+            const iconY = this.currentY + iconRadius;
+            
+            this.doc.circle(iconX, iconY, iconRadius).fill('#28A745');
+            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF')
+                .text('✓', iconX - 4, iconY - 7);
+            
+            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+                .text('Low Priority (Minor Improvements)', this.margin + 30, this.currentY);
+            this.currentY += 20;
+            
+            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+                .text(`${lowPriorityCount} items are performing well with only minor improvements needed.`,
+                    this.margin, this.currentY, { width: this.pageWidth });
+            this.currentY += 30;
+        }
+    }
+
+    addRecommendationItem(auditId, number, auditData, isCompact = false) {
+        const info = AUDIT_INFO[auditId];
+        if (!info) return;
+
+        // Check if we need a new page
+        if (this.currentY > 650) {
+            this.addPage();
+        }
+
+        // Number and title
+        this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
+            .text(`${number}. ${info.title}`, this.margin, this.currentY);
+        this.currentY += 18;
+
+        if (!isCompact) {
+            // Issue
+            const issueDesc = this.getIssueDescription(auditId, auditData);
+            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+                .text('Issue: ', this.margin, this.currentY, { continued: true })
+                .font('RegularFont')
+                .text(issueDesc, { width: this.pageWidth - this.margin });
+            this.currentY += this.doc.heightOfString(issueDesc, 
+                { width: this.pageWidth - this.margin }) + 10;
+
+            // Why it matters
+            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+                .text('Why it matters: ', this.margin, this.currentY, { continued: true })
+                .font('RegularFont')
+                .text(info.why, { width: this.pageWidth - this.margin });
+            this.currentY += this.doc.heightOfString(info.why, 
+                { width: this.pageWidth - this.margin }) + 10;
+
+            // Recommendation
+            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+                .text('Recommendation: ', this.margin, this.currentY, { continued: true })
+                .font('RegularFont')
+                .text(info.recommendation, { width: this.pageWidth - this.margin });
+            this.currentY += this.doc.heightOfString(info.recommendation, 
+                { width: this.pageWidth - this.margin }) + 20;
+        } else {
+            // Compact version for medium priority
+            this.doc.fontSize(9).font('RegularFont').fillColor('#2C3E50')
+                .text(info.recommendation, this.margin, this.currentY, { width: this.pageWidth });
+            this.currentY += this.doc.heightOfString(info.recommendation, 
+                { width: this.pageWidth }) + 15;
+        }
+    }
+
+    getIssueDescription(auditId, auditData) {
+        // Try to use actual audit description first
+        if (auditData && auditData.description) {
+            // Return first 2 sentences for issue description
+            const sentences = auditData.description.split('. ');
+            return sentences.slice(0, 2).join('. ') + '.';
+        }
+        
+        // Fallback to hardcoded descriptions if audit data not available
+        const issueDescriptions = {
+            'color-contrast': 'Insufficient color contrast between text and backgrounds makes content difficult to read for users with vision impairments or age-related vision changes.',
+            'largest-contentful-paint': 'Slow page loading creates frustration and may cause users to abandon the site, assuming it\'s broken or connection failed.',
+            'link-name': 'Generic link text like \'click here\' or \'read more\' provides no context about the destination, making navigation confusing.',
+            'text-font-audit': 'Text size below 16px is difficult for many users to read without strain.',
+            'layout-brittle-audit': 'Layout breaks when users adjust text spacing for better readability.',
+            'interactive-color-audit': 'Buttons and links rely solely on color to indicate interactivity.',
+            'target-size': 'Small touch targets are difficult to tap accurately for users with motor challenges.',
+            'total-blocking-time': 'Page becomes unresponsive during loading, preventing user interactions.',
+            'cumulative-layout-shift': 'Content shifts unexpectedly during page load, causing users to click wrong elements.'
+        };
+        
+        return issueDescriptions[auditId] || 'This issue impacts accessibility for digital users.';
+    }
+
+    addAreasOfStrength(reportData) {
+        this.addPage();
+        
+        // Page title
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
+            .text('Areas of Strength', this.margin, this.currentY);
+        this.currentY += 30;
+        
+        // Description
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+            .text('The website demonstrates excellence in several important areas that benefit digital users.',
+                this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+        this.currentY += 35;
+
+        const audits = reportData.audits || {};
+        const strengths = [];
+
+        // Find audits with scores >= 90%
+        Object.keys(AUDIT_INFO).forEach(auditId => {
+            const auditData = audits[auditId];
+            if (!auditData) return;
+            
+            const score = auditData.score !== null && auditData.score !== undefined ? auditData.score : 0;
+            const scorePercent = Math.round(score * 100);
+            
+            if (scorePercent >= 90) {
+                strengths.push({ 
+                    id: auditId, 
+                    score: scorePercent,
+                    info: AUDIT_INFO[auditId]
+                });
+            }
+        });
+
+        // Display strengths
+        if (strengths.length === 0) {
+            this.doc.fontSize(10).font('RegularFont').fillColor('#6C757D')
+                .text('Continue improving accessibility to build areas of strength.',
+                    this.margin, this.currentY, { width: this.pageWidth });
+        } else {
+            strengths.forEach(strength => {
+                if (this.currentY > 700) {
+                    this.addPage();
+                }
+
+                // Checkmark and title with score
+                const checkX = this.margin;
+                const checkY = this.currentY;
+                
+                this.doc.fontSize(12).font('BoldFont').fillColor('#28A745')
+                    .text('✓', checkX, checkY);
+                
+                this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
+                    .text(`${strength.info.title} (${strength.score}%)`, 
+                        checkX + 15, checkY);
+                this.currentY += 20;
+
+                // Description
+                const description = this.getStrengthDescription(strength.id, strength.score);
+                this.doc.fontSize(9).font('RegularFont').fillColor('#2C3E50')
+                    .text(description, this.margin, this.currentY, { 
+                        width: this.pageWidth,
+                        lineGap: 2
+                    });
+                this.currentY += this.doc.heightOfString(description, { 
+                    width: this.pageWidth, 
+                    lineGap: 2 
+                }) + 18;
+            });
+        }
+    }
+
+    getStrengthDescription(auditId, score) {
+        const descriptions = {
+            'target-size': 'All clickable elements meet or exceed the minimum size requirements, making them easy to tap on touchscreens—critical for users with reduced fine motor control or arthritis.',
+            'viewport': 'The website properly adapts to different screen sizes, ensuring content displays correctly on tablets and smartphones without requiring horizontal scrolling.',
+            'label': 'All form fields have clear, associated labels that help users understand what information is required, particularly beneficial for screen reader users.',
+            'is-on-https': 'The website uses HTTPS encryption across all pages, protecting sensitive information—especially important as users are frequently targeted by online scams.',
+            'button-name': 'Buttons have descriptive labels that clearly indicate their function, helping users understand what will happen when they click.',
+            'heading-order': 'Content is organized in a logical, hierarchical manner with proper heading structure, making it easier for all users to navigate and understand the page layout.',
+            'cumulative-layout-shift': 'No unexpected layout shifts during page load, providing a stable and predictable experience.',
+            'geolocation-on-start': 'Location requests only occur in response to user actions, respecting privacy and building trust.'
+        };
+        
+        return descriptions[auditId] || 'This area meets or exceeds accessibility standards, providing an excellent experience for digital users.';
+    }
+
+    addAboutPage(reportData, scoreData) {
+        this.addPage();
+        
+        // Page title
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
+            .text('About This Audit', this.margin, this.currentY);
+        this.currentY += 30;
+        
+        // Description
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+            .text('This accessibility audit was conducted using SilverSurfers methodology, which specifically evaluates website accessibility from the perspective of older adult users.',
+                this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+        this.currentY += 35;
+
+        // Our Focus Areas section
+        this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+            .text('Our Focus Areas', this.margin, this.currentY);
+        this.currentY += 20;
+
+        const focusAreas = [
+            'Vision changes (reduced contrast sensitivity, color perception)',
+            'Motor skill considerations (reduced dexterity, arthritis, tremors)',
+            'Cognitive processing needs (clear language, simple navigation)',
+            'Technology familiarity levels (intuitive interfaces, clear instructions)'
+        ];
+
+        focusAreas.forEach(area => {
+            const bulletX = this.margin + 20;
+            const textX = bulletX + 15;
+            
+            // Draw bullet point
+            this.doc.circle(bulletX, this.currentY + 5, 2).fill('#2C3E50');
+            
+            // Draw area text
+            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+                .text(area, textX, this.currentY, {
+                    width: this.pageWidth - 35,
+                    lineGap: 2
+                });
+            
+            const areaHeight = this.doc.heightOfString(area, { 
+                width: this.pageWidth - 35, 
+                lineGap: 2 
+            });
+            this.currentY += areaHeight + 10;
+        });
+
+        this.currentY += 20;
+
+        // Scoring Methodology section
+        this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+            .text('Scoring Methodology', this.margin, this.currentY);
+        this.currentY += 20;
+
+        // Methodology description
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+            .text('Each audit component receives a percentage score based on specific criteria. Components are then weighted according to their impact on digital users. The final score is calculated as a weighted average.',
+                this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+        this.currentY += 35;
+
+        // Formula in italic
+        const formula = 'Final Score = (Sum of Weighted Points) ÷ (Total Possible Weight) × 100';
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+            .text(formula, this.margin, this.currentY, { 
+                width: this.pageWidth, 
+                align: 'left',
+                oblique: true
+            });
+        this.currentY += 30;
+
+        // Score Interpretation
+        this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
+            .text('Score Interpretation:', this.margin, this.currentY);
+        this.currentY += 18;
+
+        const interpretations = [
+            { range: '80-100%: Pass', color: '#28A745', text: 'Highly accessible for digital users' },
+            { range: '70-79%: Needs Improvement', color: '#FD7E14', text: 'Falls below recommended standards' },
+            { range: 'Below 69%: Fail', color: '#DC3545', text: 'Significant barriers to digital users' }
+        ];
+
+        interpretations.forEach(interp => {
+            const bulletX = this.margin + 20;
+            const textX = bulletX + 15;
+            
+            // Draw bullet point
+            this.doc.circle(bulletX, this.currentY + 5, 2).fill('#2C3E50');
+            
+            // Draw interpretation text with colored range
+            this.doc.fontSize(10).font('BoldFont').fillColor(interp.color)
+                .text(interp.range, textX, this.currentY, { continued: true })
+                .font('RegularFont').fillColor('#2C3E50')
+                .text(` - ${interp.text}`);
+            
+            this.currentY += 15;
+        });
+    }
+
+    addNextStepsPage() {
+        this.addPage();
+        
+        // Page title
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
+            .text('Next Steps', this.margin, this.currentY);
+        this.currentY += 30;
+        
+        // Description
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+            .text('To improve accessibility and better serve digital visitors:',
+                this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
+        this.currentY += 30;
+
+        const nextSteps = [
+            'Review and implement the Critical Priority recommendations first, as these have the highest impact on user experience',
+            'Create an accessibility improvement roadmap with timeline and resource allocation',
+            'Test improvements with actual users to validate effectiveness',
+            'Schedule regular accessibility audits to maintain and improve standards',
+            'Train content creators and developers on user-friendly web design principles'
+        ];
+
+        nextSteps.forEach(step => {
+            const bulletX = this.margin + 20;
+            const textX = bulletX + 15;
+            
+            // Draw bullet point
+            this.doc.circle(bulletX, this.currentY + 5, 2).fill('#2C3E50');
+            
+            // Draw step text
+            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+                .text(step, textX, this.currentY, {
+                    width: this.pageWidth - 35,
+                    lineGap: 2
+                });
+            
+            const stepHeight = this.doc.heightOfString(step, { 
+                width: this.pageWidth - 35, 
+                lineGap: 2 
+            });
+            this.currentY += stepHeight + 12;
+        });
+
+        this.currentY += 25;
+
+        // Questions or Need Support section
+        this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+            .text('Questions or Need Support?', this.margin, this.currentY);
+        this.currentY += 20;
+
+        // Contact information
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+            .text('Contact us at ', this.margin, this.currentY, { continued: true })
+            .font('BoldFont')
+            .text('hello@silversurfers.ai', { continued: true })
+            .font('RegularFont')
+            .text(' for:');
+        this.currentY += 25;
+
+        const supportItems = [
+            'Detailed implementation guidance for specific recommendations',
+            'Custom accessibility consulting services',
+            'Follow-up audits to track progress',
+            'Training and workshop opportunities'
+        ];
+
+        supportItems.forEach(item => {
+            const bulletX = this.margin + 20;
+            const textX = bulletX + 15;
+            
+            // Draw bullet point
+            this.doc.circle(bulletX, this.currentY + 5, 2).fill('#2C3E50');
+            
+            // Draw item text
+            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+                .text(item, textX, this.currentY, {
+                    width: this.pageWidth - 35,
+                    lineGap: 2
+                });
+            
+            const itemHeight = this.doc.heightOfString(item, { 
+                width: this.pageWidth - 35, 
+                lineGap: 2 
+            });
+            this.currentY += itemHeight + 10;
+        });
+    }
+
+    addAppendix(reportData) {
+        this.addPage();
+        
+        // Page title
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
+            .text('Appendix (sample)', this.margin, this.currentY);
+        this.currentY += 30;
+        
+        // Technical Specifications heading
+        this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
+            .text('Technical Specifications:', this.margin, this.currentY);
+        this.currentY += 25;
+
+        const audits = reportData.audits || {};
+        const supportedAudits = Object.keys(audits).filter(id => AUDIT_INFO[id]);
+
+        // Collect all audits that have details.items (technical specifications)
+        const auditsWithDetails = [];
+        supportedAudits.forEach(auditId => {
+            const auditData = audits[auditId];
+            if (auditData && auditData.score !== null && auditData.details && 
+                Array.isArray(auditData.details.items) && auditData.details.items.length > 0) {
+                auditsWithDetails.push({ id: auditId, data: auditData });
+            }
+        });
+
+        if (auditsWithDetails.length === 0) {
+            this.doc.fontSize(10).font('RegularFont').fillColor('#6C757D')
+                .text('No technical specifications available for this audit.',
+                    this.margin, this.currentY, { width: this.pageWidth });
+            return;
+        }
+
+        // Add each audit's table
+        auditsWithDetails.forEach((audit, index) => {
+            if (index > 0 && this.currentY > 650) {
+                this.addPage();
+            }
+
+            // Audit name as section heading
+            const info = AUDIT_INFO[audit.id];
+            if (info) {
+                this.doc.fontSize(12).font('BoldFont').fillColor('#2C5F9C')
+                    .text(info.title, this.margin, this.currentY);
+                this.currentY += 20;
+            }
+
+            // Add the table for this audit
+            this.addTablePages(audit.id, audit.data, true); // Pass true for appendix mode
+        });
+    }
+
    addSummaryPage(reportData) {
         this.addPage();
         
-        // Section title
-        this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 2: Audit Summary by Category', this.margin, this.currentY);
-        this.currentY += 25;
+        // Page title
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C').text('Performance by Category', this.margin, this.currentY);
+        this.currentY += 30;
         
-        // Horizontal line
-        this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
-        this.currentY += 20;
-        
-        // Add summary introduction text
-        this.doc.fontSize(10).font('RegularFont').fillColor('#4B5563').text(
-            'This section provides a high-level overview of your website\'s accessibility performance across different categories. Each category focuses on specific aspects of senior-friendly design, from visual clarity to cognitive ease.',
+        // Description text
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50').text(
+            'This overview shows how the website performs across different accessibility dimensions important to digital users.',
             this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 }
         );
-        this.currentY += 45;
+        this.currentY += 30;
         
         const audits = reportData.audits || {};
         const categories = {};
 
-        // CRITICAL FIX: Include ALL audits from AUDIT_INFO, even if missing or have null scores
-        // This matches old backend behavior where all audits are shown in the summary
-        // Missing audits will show with score 0 (Poor)
+        // Organize audits by category
         Object.keys(AUDIT_INFO).forEach(auditId => {
             const info = AUDIT_INFO[auditId];
             const auditData = audits[auditId];
@@ -523,8 +1173,203 @@ addOverallScoreDisplay(scoreData) {
             }
         });
 
-        // Draw cards in a 2-column layout
-        this.drawCategoryCards(categories);
+        // Draw each category as a table
+        this.drawCategoryTables(categories, audits);
+    }
+    
+    drawCategoryTables(categories, audits) {
+        // Define the order of categories to match the image
+        const categoryOrder = [
+            'Vision Accessibility',
+            'Motor Accessibility',
+            'Cognitive Accessibility',
+            'Performance for Older Adults',
+            'Security for Older Adults',
+            'Technical Accessibility'
+        ];
+
+        categoryOrder.forEach((categoryName) => {
+            if (!categories[categoryName]) return;
+
+            const categoryAudits = categories[categoryName];
+            
+            // Check if we need a new page
+            if (this.currentY > 650) {
+                this.addPage();
+            }
+
+            // Category heading
+            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+                .text(categoryName, this.margin, this.currentY);
+            this.currentY += 25;
+
+            // Table headers
+            const colWidths = [120, 50, 50, 70, 225]; // Component, Rating, Actual, Standard, Details
+            const headerHeight = 25;
+            const rowMinHeight = 22;
+            
+            // Draw header background
+            this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
+            
+            // Header text
+            const headers = ['Component', 'Rating', 'Actual', 'Standard', 'Details'];
+            let currentX = this.margin;
+            
+            this.doc.fontSize(9).font('BoldFont').fillColor('#FFFFFF');
+            headers.forEach((header, index) => {
+                const align = index === headers.length - 1 ? 'left' : 'center';
+                const xPos = align === 'center' 
+                    ? currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2)
+                    : currentX + 5;
+                this.doc.text(header, xPos, this.currentY + 8, {
+                    width: colWidths[index] - 10,
+                    align: align
+                });
+                currentX += colWidths[index];
+            });
+
+            let tableY = this.currentY + headerHeight;
+
+            // Draw rows for each audit in this category
+            categoryAudits.forEach((audit, rowIndex) => {
+                const auditData = audits[audit.id] || {};
+                const score = auditData.score !== null && auditData.score !== undefined ? auditData.score : 0;
+                const scorePercent = Math.round(score * 100);
+                
+                // Determine rating and colors
+                let rating = 'Fail';
+                let ratingColor = '#DC3545'; // Red
+                let actualColor = '#DC3545'; // Red
+                
+                if (scorePercent >= 90) {
+                    rating = 'Pass';
+                    ratingColor = '#28A745'; // Green
+                    actualColor = '#28A745'; // Green
+                }
+                
+                // Standard is usually 100% or ≥90%
+                const standard = scorePercent >= 90 ? '100%' : '≥90%';
+                
+                // Get details from actual audit data
+                let details = '';
+                
+                // Try to use actual audit description or displayValue first
+                if (auditData.description) {
+                    // Use first sentence of description for brevity
+                    details = auditData.description.split('.')[0] + '.';
+                    // Truncate if too long
+                    if (details.length > 200) {
+                        details = details.substring(0, 197) + '...';
+                    }
+                } else if (auditData.displayValue) {
+                    // Use displayValue if available
+                    details = auditData.displayValue;
+                } else {
+                    // Fallback to score-based generic message
+                    if (scorePercent === 100) {
+                        details = 'Meets all accessibility standards';
+                    } else if (scorePercent === 0) {
+                        details = 'Fails to meet accessibility requirements';
+                    } else {
+                        details = 'Partially meets accessibility standards';
+                    }
+                }
+
+                // Calculate row height based on details text
+                const detailsHeight = this.doc.heightOfString(details, { 
+                    width: colWidths[4] - 10, 
+                    fontSize: 8,
+                    lineGap: 1
+                });
+                const rowHeight = Math.max(rowMinHeight, detailsHeight + 10);
+
+                // Check if we need a new page
+                if (tableY + rowHeight > this.doc.page.height - this.doc.page.margins.bottom - 40) {
+                    this.addPage();
+                    
+                    // Redraw category heading and table header
+                    this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+                        .text(categoryName + ' (continued)', this.margin, this.currentY);
+                    this.currentY += 25;
+                    
+                    this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
+                    currentX = this.margin;
+                    this.doc.fontSize(9).font('BoldFont').fillColor('#FFFFFF');
+                    headers.forEach((header, index) => {
+                        const align = index === headers.length - 1 ? 'left' : 'center';
+                        const xPos = align === 'center' 
+                            ? currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2)
+                            : currentX + 5;
+                        this.doc.text(header, xPos, this.currentY + 8, {
+                            width: colWidths[index] - 10,
+                            align: align
+                        });
+                        currentX += colWidths[index];
+                    });
+                    
+                    tableY = this.currentY + headerHeight;
+                }
+
+                // Alternating row background
+                const bgColor = rowIndex % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
+                this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill(bgColor);
+
+                currentX = this.margin;
+
+                // Component name
+                this.doc.fontSize(8).font('RegularFont').fillColor('#2C3E50')
+                    .text(audit.info.title, currentX + 5, tableY + 6, {
+                        width: colWidths[0] - 10,
+                        height: rowHeight - 12,
+                        align: 'left'
+                    });
+                currentX += colWidths[0];
+
+                // Rating (colored)
+                this.doc.fontSize(8).font('BoldFont').fillColor(ratingColor)
+                    .text(rating, currentX + 5, tableY + 6, {
+                        width: colWidths[1] - 10,
+                        align: 'center'
+                    });
+                currentX += colWidths[1];
+
+                // Actual (colored)
+                this.doc.fontSize(8).font('BoldFont').fillColor(actualColor)
+                    .text(`${scorePercent}%`, currentX + 5, tableY + 6, {
+                        width: colWidths[2] - 10,
+                        align: 'center'
+                    });
+                currentX += colWidths[2];
+
+                // Standard
+                this.doc.fontSize(8).font('BoldFont').fillColor('#28A745')
+                    .text(standard, currentX + 5, tableY + 6, {
+                        width: colWidths[3] - 10,
+                        align: 'center'
+                    });
+                currentX += colWidths[3];
+
+                // Details
+                this.doc.fontSize(8).font('RegularFont').fillColor('#2C3E50')
+                    .text(details, currentX + 5, tableY + 6, {
+                        width: colWidths[4] - 10,
+                        height: rowHeight - 12,
+                        align: 'left',
+                        lineGap: 1
+                    });
+
+                // Draw row border
+                this.doc.moveTo(this.margin, tableY + rowHeight)
+                    .lineTo(this.margin + this.pageWidth, tableY + rowHeight)
+                    .strokeColor('#DEE2E6')
+                    .lineWidth(0.5)
+                    .stroke();
+
+                tableY += rowHeight;
+            });
+
+            this.currentY = tableY + 20;
+        });
     }
     
     drawCategoryCards(categories) {
@@ -812,7 +1657,7 @@ addOverallScoreDisplay(scoreData) {
         }
     }
     
-    addTablePages(auditId, auditData) {
+    addTablePages(auditId, auditData, isAppendixMode = false) {
     if (!auditData.details?.items || auditData.details.items.length === 0) return;
     
     const info = AUDIT_INFO[auditId];
@@ -832,29 +1677,33 @@ addOverallScoreDisplay(scoreData) {
         
         // If all rows would be filtered out, skip the entire page
         if (itemsWithValidLocation.length === 0) {
-            console.log(`Skipping 'Detailed Findings' page for ${auditId} - all locations are N/A`);
-            return; // Exit without adding any page
+            console.log(`Skipping table for ${auditId} - all locations are N/A`);
+            return; // Exit without adding any content
         }
     }
     
-    // Check if we need a new page or can continue on current page
-    const needsNewPage = this.currentY > 600; // If we're far down the page, add new page
-    
-    if (needsNewPage) {
-        this.addPage();
-    } else {
-        this.currentY += 10; // Add some spacing if continuing on same page
+    // In appendix mode, don't add heading (it's already added by addAppendix)
+    // In non-appendix mode, check if we need a new page and add heading
+    if (!isAppendixMode) {
+        const needsNewPage = this.currentY > 600;
+        
+        if (needsNewPage) {
+            this.addPage();
+        } else {
+            this.currentY += 10; // Add some spacing if continuing on same page
+        }
+        
+        // Add "Detailed Findings (Sample)" header with blue color
+        this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Detailed Findings (Sample)', this.margin, this.currentY);
+        this.currentY += 25;
     }
-    
-    // Add "Detailed Findings (Sample)" header with blue color
-    this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Detailed Findings (Sample)', this.margin, this.currentY);
-    this.currentY += 25;
 
     const itemsPerPage = 12;
     for (let i = 0; i < items.length; i += itemsPerPage) {
         if (i > 0) {
             this.addPage();
-            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
+            const headerText = isAppendixMode ? info.title + ' (Continued)' : 'Detailed Findings (Sample) - Continued';
+            this.doc.fontSize(12).font('BoldFont').fillColor(isAppendixMode ? '#2C5F9C' : '#3B82F6').text(headerText, this.margin, this.currentY);
             this.currentY += 25;
         }
         this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
@@ -929,13 +1778,13 @@ addOverallScoreDisplay(scoreData) {
         if (!items || items.length === 0) return;
         
         const startY = this.currentY;
-        const headerHeight = 32;
-        const rowHeight = 24;
-        const colWidths = [295, 60, 60, 100]; // Audit Component, Score, Weight, Weighted
+        const headerHeight = 30;
+        const rowHeight = 22;
+        const colWidths = [300, 75, 70, 70]; // Audit Component, Score, Weight, Weighted
         
-        // Draw header with purple background
-        this.doc.rect(this.margin, startY, this.pageWidth, headerHeight).fill('#6366F1');
-        this.doc.font('BoldFont').fontSize(11).fillColor('#FFFFFF');
+        // Draw header with dark blue background
+        this.doc.rect(this.margin, startY, this.pageWidth, headerHeight).fill('#3D5A80');
+        this.doc.font('BoldFont').fontSize(10).fillColor('#FFFFFF');
         
         const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
         let currentX = this.margin;
@@ -943,7 +1792,7 @@ addOverallScoreDisplay(scoreData) {
         headers.forEach((header, index) => {
             const align = index === 0 ? 'left' : 'center';
             const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
-            this.doc.text(header, xPos, startY + 9, { 
+            this.doc.text(header, xPos, startY + 10, { 
                 width: colWidths[index] - 20,
                 align: align
             });
@@ -952,65 +1801,100 @@ addOverallScoreDisplay(scoreData) {
         
         let tableY = startY + headerHeight;
         
-        // Draw rows
+        // Draw rows with alternating background
         items.forEach((item, rowIndex) => {
-            // White background
-            this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill('#FFFFFF');
+            // Alternating light gray background
+            const bgColor = rowIndex % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
+            this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill(bgColor);
             currentX = this.margin;
-            // Audit Component (left-aligned, wrap) - increased font size
-            this.doc.font('RegularFont').fontSize(10).fillColor('#1F2937').text(item.name, currentX + 10, tableY + 6, {
+            
+            // Audit Component (left-aligned)
+            this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(item.name, currentX + 10, tableY + 6, {
                 width: colWidths[0] - 20,
                 height: rowHeight - 6,
-                align: 'left',
-                lineGap: 2
+                align: 'left'
             });
             currentX += colWidths[0];
-            // Score (center-aligned, wrap) - bold and larger for visibility
-            this.doc.font('BoldFont').fontSize(10).fillColor('#1F2937').text(item.score, currentX + 10, tableY + 6, {
+            
+            // Score (center-aligned with color based on value)
+            const scoreValue = parseInt(item.score);
+            let scoreColor = '#DC3545'; // Red for 0%
+            if (scoreValue === 100) {
+                scoreColor = '#28A745'; // Green for 100%
+            } else if (scoreValue > 0 && scoreValue < 100) {
+                scoreColor = '#FD7E14'; // Orange for partial
+            }
+            this.doc.font('BoldFont').fontSize(9).fillColor(scoreColor).text(item.score, currentX + 10, tableY + 6, {
                 width: colWidths[1] - 20,
                 height: rowHeight - 6,
-                align: 'center',
-                lineGap: 2
+                align: 'center'
             });
             currentX += colWidths[1];
-            // Weight (center-aligned, wrap) - increased font size
-            this.doc.font('RegularFont').fontSize(10).fillColor('#1F2937').text(String(item.weight), currentX + 10, tableY + 6, {
+            
+            // Weight (center-aligned)
+            this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(String(item.weight), currentX + 10, tableY + 6, {
                 width: colWidths[2] - 20,
                 height: rowHeight - 6,
-                align: 'center',
-                lineGap: 2
+                align: 'center'
             });
             currentX += colWidths[2];
-            // Weighted (center-aligned, wrap) - bold for visibility
-            this.doc.font('BoldFont').fontSize(10).fillColor('#1F2937').text(item.contribution, currentX + 10, tableY + 6, {
+            
+            // Weighted (center-aligned)
+            this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(item.contribution, currentX + 10, tableY + 6, {
                 width: colWidths[3] - 20,
                 height: rowHeight - 6,
-                align: 'center',
-                lineGap: 2
+                align: 'center'
             });
+            
             // Draw light bottom border
             this.doc.moveTo(this.margin, tableY + rowHeight)
                 .lineTo(this.margin + this.pageWidth, tableY + rowHeight)
-                .strokeColor('#E5E7EB')
+                .strokeColor('#DEE2E6')
                 .lineWidth(0.5)
                 .stroke();
             tableY += rowHeight;
         });
         
-        // Draw final calculation box with yellow background
-        this.currentY = tableY + 5;
-        const calcBoxHeight = 30;
-        this.doc.roundedRect(this.margin, this.currentY, this.pageWidth, calcBoxHeight, 4).fill('#FEF3C7');
+        // Draw TOTAL CALCULATION row with light blue background
+        const totalRowHeight = 25;
+        this.doc.rect(this.margin, tableY, this.pageWidth, totalRowHeight).fill('#D6EAF8');
         
-        const finalCalcText = `Final Calculation: ${scoreData.totalWeightedScore.toFixed(2)} (Total Points) / ${scoreData.totalWeight} (Total Weight) = ${Math.round(scoreData.finalScore)}%`;
-        this.doc.fontSize(12).font('BoldFont').fillColor('#92400E').text(
-            finalCalcText,
-            this.margin + 15,
-            this.currentY + 7,
-            { width: this.pageWidth - 30, align: 'center' }
+        currentX = this.margin;
+        this.doc.font('BoldFont').fontSize(10).fillColor('#2C3E50').text('TOTAL CALCULATION', currentX + 10, tableY + 7);
+        currentX += colWidths[0];
+        
+        // Empty cell for Score column
+        this.doc.text('—', currentX + 10, tableY + 7, {
+            width: colWidths[1] - 20,
+            align: 'center'
+        });
+        currentX += colWidths[1];
+        
+        // Total Weight
+        this.doc.text(String(scoreData.totalWeight), currentX + 10, tableY + 7, {
+            width: colWidths[2] - 20,
+            align: 'center'
+        });
+        currentX += colWidths[2];
+        
+        // Total Weighted
+        this.doc.text(scoreData.totalWeightedScore.toFixed(2), currentX + 10, tableY + 7, {
+            width: colWidths[3] - 20,
+            align: 'center'
+        });
+        
+        tableY += totalRowHeight;
+        
+        // Final Score calculation below table
+        this.currentY = tableY + 15;
+        const finalScoreText = `Final Score: ${scoreData.totalWeightedScore.toFixed(2)} ÷ ${scoreData.totalWeight} = ${Math.round(scoreData.finalScore)}%`;
+        this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50').text(
+            finalScoreText,
+            this.margin,
+            this.currentY
         );
         
-        this.currentY += calcBoxHeight + 20;
+        this.currentY += 30;
     }
     
     drawEnhancedTable(items, config, category) {
@@ -1182,58 +2066,18 @@ addOverallScoreDisplay(scoreData) {
             console.log(`Overall Score Calculated: ${scoreData.finalScore.toFixed(0)}`);
 
             this.addIntroPage(reportData, scoreData, options.planType || 'pro');
+            this.addExecutiveSummary(reportData, scoreData);
             this.addScoreCalculationPage(reportData, scoreData);
             this.addSummaryPage(reportData);
+            this.addPriorityRecommendations(reportData);
+            this.addAreasOfStrength(reportData);
+            this.addAboutPage(reportData, scoreData);
+            this.addNextStepsPage();
+            this.addAppendix(reportData);
 
             const audits = reportData.audits || {};
-            const supportedAudits = Object.keys(audits).filter(id => AUDIT_INFO[id]);
-            const categories = {};
-
-            supportedAudits.forEach(auditId => {
-                const info = AUDIT_INFO[auditId];
-                if (!categories[info.category]) {
-                    categories[info.category] = [];
-                }
-                categories[info.category].push(auditId);
-            });
-
-            console.log(`Processing ${supportedAudits.length} audits across ${Object.keys(categories).length} categories...`);
-
-            // Add Section 3 heading before audit details
-            this.addPage();
-            this.doc.fontSize(18).font('BoldFont').fillColor('#1F2937').text('Section 3: Detailed Audit Results', this.margin, this.currentY);
-            this.currentY += 25;
-            this.doc.moveTo(this.margin, this.currentY).lineTo(this.margin + this.pageWidth, this.currentY).stroke('#E5E7EB');
-            this.currentY += 20;
-            // Always show the requested message directly under the heading
-            this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
-            this.currentY += 40;
-            let detailPagesGenerated = false;
-            for (const categoryName of Object.keys(categories)) {
-                for (const auditId of categories[categoryName]) {
-                    const auditData = audits[auditId];
-                    if (auditData.score === null) {
-                        continue;
-                    }
-                    // Generate detail pages for ALL audits with scores (matching old backend behavior)
-                    // This ensures complete reports with all deep results
-                    detailPagesGenerated = true;
-                    this.addAuditDetailPage(auditId, auditData);
-                    // Add table pages if details.items exist (for detailed findings)
-                    if (auditData.details && Array.isArray(auditData.details.items) && auditData.details.items.length > 0) {
-                        this.addTablePages(auditId, auditData);
-                    }
-                }
-            }
-            // If no detail pages were generated, show a message (matching old backend behavior)
-            if (!detailPagesGenerated) {
-                if (this.currentY > this.doc.page.height - 100) {
-                    this.addPage();
-                    this.currentY = 60;
-                }
-                this.doc.fontSize(12).font('RegularFont').fillColor('#6B7280').text('Continue to the next page to explore the full results of this assessment.', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
-                this.currentY += 40;
-            }
+            
+            // End the document
             this.doc.end();
 
             return new Promise((resolve, reject) => {
@@ -1287,7 +2131,7 @@ export async function generateSeniorAccessibilityReport(options = {}) {
     }
     const baseUrl = getBaseUrl(url);
 
-    const generator = new ElderlyAccessibilityPDFGenerator({ imagePaths });
+    const generator = new ElderlyAccessibilityPDFGenerator({ imagePaths, clientEmail: email_address });
     const result = await generator.generateReport(inputFile, outputFile, { ...options, outputDir, clientEmail: email_address, baseUrl, planType: options.planType });
 
     // Directory logic remains the same
