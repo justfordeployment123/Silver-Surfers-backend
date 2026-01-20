@@ -109,11 +109,11 @@ async function generateSummaryPDF(pageResults, outputPath) {
       let resultStatus = 'N/A';
       let resultColor = '#6B7280';
       if (result.score !== null && result.score !== undefined) {
-        if (result.score >= 70) {
+        if (result.score >= 80) {
           resultStatus = 'Pass';
           resultColor = '#10B981'; // Green
-        } else if (result.score >= 50) {
-          resultStatus = 'Warning';
+        } else if (result.score >= 70) {
+          resultStatus = 'Needs Improvement';
           resultColor = '#F59E0B'; // Orange
         } else {
           resultStatus = 'Fail';
@@ -228,7 +228,7 @@ async function mergePDFsByPlatform(options) {
   const avgScore = reports.length > 0 
     ? reports.reduce((sum, r) => sum + (r.score || 0), 0) / reports.length 
     : 0;
-  const isPassing = avgScore >= 70;
+  const isPassing = avgScore >= 80;
 
   // Cover page content matching individual report format
   coverY = 80;
@@ -270,9 +270,19 @@ async function mergePDFsByPlatform(options) {
     .text(`Overall Accessibility Score (${deviceCapitalized})`, coverMargin + 70, scoreBoxY + 20, 
       { width: coverWidth - 140, align: 'center' });
 
-  const scoreColor = isPassing ? '#27AE60' : '#E67E22';
+  // Three-tier color system
+  let scoreColor;
+  const roundedScore = Math.round(avgScore);
+  if (roundedScore >= 80) {
+    scoreColor = '#28A745'; // Green for Pass
+  } else if (roundedScore >= 70) {
+    scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement
+  } else {
+    scoreColor = '#DC3545'; // Red for Fail
+  }
+  
   coverDoc.fontSize(72).font('BoldFont').fillColor(scoreColor)
-    .text(`${Math.round(avgScore)}%`, coverMargin + 70, scoreBoxY + 50, 
+    .text(`${roundedScore}%`, coverMargin + 70, scoreBoxY + 50, 
       { width: coverWidth - 140, align: 'center' });
 
   if (!isPassing) {
@@ -280,14 +290,14 @@ async function mergePDFsByPlatform(options) {
       .text('⚠ WARNING: Below Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
         { width: coverWidth - 140, align: 'center' });
     coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
-      .text('Minimum recommended score: 70%', coverMargin + 70, scoreBoxY + 143, 
+      .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
         { width: coverWidth - 140, align: 'center' });
   } else {
     coverDoc.fontSize(12).font('BoldFont').fillColor('#27AE60')
       .text('✓ PASS: Meets Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
         { width: coverWidth - 140, align: 'center' });
     coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
-      .text('Minimum recommended score: 70%', coverMargin + 70, scoreBoxY + 143, 
+      .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
         { width: coverWidth - 140, align: 'center' });
   }
 
@@ -477,9 +487,9 @@ async function mergePDFsByPlatform(options) {
     let scoreColor = '#6B7280';
     if (entry.score !== 'N/A') {
       const scoreNum = parseFloat(entry.score);
-      if (scoreNum >= 70) scoreColor = '#10B981';
-      else if (scoreNum >= 50) scoreColor = '#F59E0B';
-      else scoreColor = '#EF4444';
+      if (scoreNum >= 80) scoreColor = '#10B981'; // Green for Pass
+      else if (scoreNum >= 70) scoreColor = '#F59E0B'; // Yellow/Orange for Needs Improvement
+      else scoreColor = '#EF4444'; // Red for Fail
     }
     tocDoc.fillColor(scoreColor).font('BoldFont').text(entry.score, x, tocY + 8, { 
       width: colWidths[1], 
@@ -687,11 +697,11 @@ async function generateCombinedPlatformReport(options) {
     let statusText = 'N/A';
     let statusColor = '#6B7280';
     if (report.score !== null && report.score !== undefined) {
-      if (report.score >= 70) {
+      if (report.score >= 80) {
         statusText = 'Pass';
         statusColor = '#10B981';
-      } else if (report.score >= 50) {
-        statusText = 'Warning';
+      } else if (report.score >= 70) {
+        statusText = 'Needs Improvement';
         statusColor = '#F59E0B';
       } else {
         statusText = 'Fail';
