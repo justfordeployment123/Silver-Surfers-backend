@@ -448,11 +448,26 @@ addOverallScoreDisplay(scoreData) {
             .text(`Report prepared for: ${clientEmail}`, this.margin + 60, this.currentY);
         this.currentY += 25;
 
-        // Pages audited (left-aligned) - we'll show based on report data if available
-        const pagesCount = reportData.pagesScanned || reportData.pageCount || 'Multiple';
-        const pagesText = typeof pagesCount === 'number' 
-            ? `Pages audited: ${pagesCount}` 
-            : 'Pages audited: Multiple pages';
+        // Pages audited (left-aligned) - show actual page URL if available
+        let pagesText = '';
+        if (reportData.requestedUrl || reportData.finalUrl) {
+            const pageUrl = reportData.requestedUrl || reportData.finalUrl;
+            // Extract path from URL for display
+            try {
+                const urlObj = new URL(pageUrl);
+                const displayPath = urlObj.pathname === '/' || urlObj.pathname === '' 
+                    ? 'Home Page' 
+                    : urlObj.pathname;
+                pagesText = `Pages audited: ${displayPath}`;
+            } catch (e) {
+                pagesText = `Pages audited: ${pageUrl}`;
+            }
+        } else {
+            const pagesCount = reportData.pagesScanned || reportData.pageCount;
+            pagesText = typeof pagesCount === 'number' 
+                ? `Pages audited: ${pagesCount}` 
+                : 'Pages audited: 1';
+        }
         this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
             .text(pagesText, this.margin + 60, this.currentY);
         this.currentY += 25;
@@ -674,17 +689,17 @@ addOverallScoreDisplay(scoreData) {
         // Critical Priority Section
         if (criticalIssues.length > 0) {
             // Section heading with icon circle
-            const iconRadius = 10;
+            const iconRadius = 12;
             const iconX = this.margin + iconRadius;
-            const iconY = this.currentY + iconRadius;
+            const iconY = this.currentY + 7; // Center vertically with text (14px font height / 2 ≈ 7)
             
             // Draw blue circle with white exclamation (simulate with text)
             this.doc.circle(iconX, iconY, iconRadius).fill('#3D5A80');
-            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF')
-                .text('!', iconX - 3, iconY - 7);
+            this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
+                .text('!', iconX - 4, iconY - 8);
             
             this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
-                .text('Critical Priority (High Impact)', this.margin + 30, this.currentY);
+                .text('Critical Priority (High Impact)', this.margin + 32, this.currentY);
             this.currentY += 30;
 
             // Add numbered critical issues
@@ -699,16 +714,16 @@ addOverallScoreDisplay(scoreData) {
                 this.addPage();
             }
 
-            const iconRadius = 10;
+            const iconRadius = 12;
             const iconX = this.margin + iconRadius;
-            const iconY = this.currentY + iconRadius;
+            const iconY = this.currentY + 7; // Center vertically with text (14px font height / 2 ≈ 7)
             
             this.doc.circle(iconX, iconY, iconRadius).fill('#FD7E14');
-            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF')
-                .text('!', iconX - 3, iconY - 7);
+            this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
+                .text('!', iconX - 4, iconY - 8);
             
             this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
-                .text('Medium Priority (Moderate Impact)', this.margin + 30, this.currentY);
+                .text('Medium Priority (Moderate Impact)', this.margin + 32, this.currentY);
             this.currentY += 30;
 
             mediumIssues.slice(0, 3).forEach((issue, index) => {
@@ -719,16 +734,16 @@ addOverallScoreDisplay(scoreData) {
         // Low Priority Section (optional, if there are any low priority items)
         const lowPriorityCount = Object.keys(AUDIT_INFO).length - criticalIssues.length - mediumIssues.length;
         if (lowPriorityCount > 0 && this.currentY < 650) {
-            const iconRadius = 10;
+            const iconRadius = 12;
             const iconX = this.margin + iconRadius;
-            const iconY = this.currentY + iconRadius;
+            const iconY = this.currentY + 7; // Center vertically with text (14px font height / 2 ≈ 7)
             
             this.doc.circle(iconX, iconY, iconRadius).fill('#28A745');
-            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF')
-                .text('✓', iconX - 4, iconY - 7);
+            this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
+                .text('✓', iconX - 4, iconY - 8);
             
             this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
-                .text('Low Priority (Minor Improvements)', this.margin + 30, this.currentY);
+                .text('Low Priority (Minor Improvements)', this.margin + 32, this.currentY);
             this.currentY += 20;
             
             this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
@@ -855,16 +870,21 @@ addOverallScoreDisplay(scoreData) {
                     this.addPage();
                 }
 
-                // Checkmark and title with score
-                const checkX = this.margin;
-                const checkY = this.currentY;
+                // Checkmark and title with score - make checkmark more prominent
+                const checkRadius = 10;
+                const checkX = this.margin + checkRadius;
+                const checkY = this.currentY + 5.5; // Center vertically with 11px text
                 
-                this.doc.fontSize(12).font('BoldFont').fillColor('#28A745')
-                    .text('✓', checkX, checkY);
+                // Draw green circle background
+                this.doc.circle(checkX, checkY, checkRadius).fill('#28A745');
+                
+                // Draw white checkmark
+                this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
+                    .text('✓', checkX - 4, checkY - 8);
                 
                 this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
                     .text(`${strength.info.title} (${strength.score}%)`, 
-                        checkX + 15, checkY);
+                        this.margin + 28, this.currentY);
                 this.currentY += 20;
 
                 // Description
@@ -1118,6 +1138,29 @@ addOverallScoreDisplay(scoreData) {
 
         // Add each audit's table
         auditsWithDetails.forEach((audit, index) => {
+            // Pre-check if the table will actually have content
+            const tableConfig = this.getTableConfig(audit.id);
+            const items = audit.data.details.items;
+            
+            // Check if all locations would be N/A (same logic as in addTablePages)
+            const locationIndex = tableConfig.headers.findIndex(h => 
+                h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
+            );
+            
+            let hasValidContent = true;
+            if (locationIndex !== -1) {
+                const itemsWithValidLocation = items.filter(item => {
+                    const locationValue = tableConfig.extractors[locationIndex](item);
+                    return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
+                });
+                hasValidContent = itemsWithValidLocation.length > 0;
+            }
+            
+            // Only add section heading if there's valid content to display
+            if (!hasValidContent) {
+                return; // Skip this audit entirely
+            }
+            
             if (index > 0 && this.currentY > 650) {
                 this.addPage();
             }
@@ -1247,8 +1290,8 @@ addOverallScoreDisplay(scoreData) {
                     actualColor = '#28A745'; // Green
                 }
                 
-                // Standard is usually 100% or ≥90%
-                const standard = scorePercent >= 90 ? '100%' : '≥90%';
+                // Standard is usually 100% or >=90%
+                const standard = scorePercent >= 90 ? '100%' : '>=90%';
                 
                 // Get details from actual audit data
                 let details = '';

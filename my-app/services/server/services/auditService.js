@@ -202,34 +202,113 @@ async function mergePDFsByPlatform(options) {
   const coverMargin = 40;
   const coverWidth = 515;
   
-  // Cover page content
-  coverDoc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
-    .text(`Combined ${deviceCapitalized} Audit Report`, coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 60;
-  
-  coverDoc.fontSize(14).font('RegularFont').fillColor('#7F8C8D')
-    .text(`Generated for: ${email_address}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 30;
-  
-  coverDoc.fontSize(12).font('RegularFont').fillColor('#7F8C8D')
-    .text(`Platform: ${deviceCapitalized}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 20;
-  
-  coverDoc.fontSize(12).font('RegularFont').fillColor('#7F8C8D')
-    .text(`Total Pages Audited: ${reports.length}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 40;
+  // Helper to extract site name from URL
+  function extractSiteName(url) {
+    try {
+      const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+      let hostname = urlObj.hostname.replace(/^www\./, '');
+      let name = hostname.split('.')[0];
+      name = name.replace(/([A-Z])/g, ' $1').replace(/([0-9]+)/g, ' $1');
+      name = name.replace(/[-_]/g, ' ');
+      name = name.split(' ').map(word => {
+        if (!word) return '';
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      }).join(' ').trim();
+      return name || hostname;
+    } catch (e) {
+      return 'Multiple Websites';
+    }
+  }
+
+  // Get base URL from first report
+  const baseUrl = reports[0]?.url || 'website';
+  const siteName = extractSiteName(baseUrl);
   
   // Calculate average score
   const avgScore = reports.length > 0 
     ? reports.reduce((sum, r) => sum + (r.score || 0), 0) / reports.length 
     : 0;
-  coverDoc.fontSize(16).font('BoldFont').fillColor('#3498DB')
-    .text(`Average Score: ${avgScore.toFixed(1)}%`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  const isPassing = avgScore >= 70;
+
+  // Cover page content matching individual report format
+  coverY = 80;
+  coverDoc.fontSize(32).font('BoldFont').fillColor('#2C5F9C')
+    .text(siteName, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 50;
+
+  coverDoc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
+    .text(`Website Accessibility Audit Report – (${deviceCapitalized})`, coverMargin, coverY, 
+      { width: coverWidth, align: 'center' });
   coverY += 40;
-  
-  const genDate = new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
-  coverDoc.fontSize(11).font('RegularFont').fillColor('#95A5A6')
+
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#7F8C8D')
+    .text(baseUrl, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 25;
+
+  const genDate = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', month: 'long', day: 'numeric' 
+  });
+  coverDoc.fontSize(10).font('RegularFont').fillColor('#95A5A6')
     .text(`Generated: ${genDate}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 60;
+
+  // Overall Accessibility Score box
+  const scoreBoxHeight = 160;
+  const scoreBoxY = coverY;
+  
+  coverDoc.rect(coverMargin + 50, scoreBoxY, coverWidth - 100, scoreBoxHeight)
+    .strokeColor('#E8D5D0')
+    .lineWidth(2)
+    .stroke();
+  
+  coverDoc.rect(coverMargin + 50, scoreBoxY, coverWidth - 100, scoreBoxHeight)
+    .fillOpacity(0.3)
+    .fill('#FCF3EF')
+    .fillOpacity(1);
+
+  coverDoc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
+    .text(`Overall Accessibility Score (${deviceCapitalized})`, coverMargin + 70, scoreBoxY + 20, 
+      { width: coverWidth - 140, align: 'center' });
+
+  const scoreColor = isPassing ? '#27AE60' : '#E67E22';
+  coverDoc.fontSize(72).font('BoldFont').fillColor(scoreColor)
+    .text(`${Math.round(avgScore)}%`, coverMargin + 70, scoreBoxY + 50, 
+      { width: coverWidth - 140, align: 'center' });
+
+  if (!isPassing) {
+    coverDoc.fontSize(12).font('BoldFont').fillColor('#C0392B')
+      .text('⚠ WARNING: Below Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
+        { width: coverWidth - 140, align: 'center' });
+    coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
+      .text('Minimum recommended score: 70%', coverMargin + 70, scoreBoxY + 143, 
+        { width: coverWidth - 140, align: 'center' });
+  } else {
+    coverDoc.fontSize(12).font('BoldFont').fillColor('#27AE60')
+      .text('✓ PASS: Meets Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
+        { width: coverWidth - 140, align: 'center' });
+    coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
+      .text('Minimum recommended score: 70%', coverMargin + 70, scoreBoxY + 143, 
+        { width: coverWidth - 140, align: 'center' });
+  }
+
+  coverY = scoreBoxY + scoreBoxHeight + 30;
+
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+    .text(`Report prepared for: ${email_address}`, coverMargin + 60, coverY);
+  coverY += 25;
+
+  // List all pages audited
+  const pagesList = reports.map(r => {
+    try {
+      const urlObj = new URL(r.url);
+      return urlObj.pathname === '/' || urlObj.pathname === '' ? 'Home Page' : urlObj.pathname;
+    } catch (e) {
+      return r.url;
+    }
+  }).join(', ');
+  
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+    .text(`Pages audited: ${reports.length} (${pagesList})`, coverMargin + 60, coverY, { width: coverWidth - 120 });
   
   coverDoc.end();
   
