@@ -189,8 +189,15 @@ class LiteAccessibilityPDFGenerator {
     const centerX = this.doc.page.width / 2;
     const radius = 50;
 
-    // Use rounded score for color logic to match displayed value
-    let scoreColor = roundedScore >= 80 ? '#27AE60' : roundedScore >= 40 ? '#F39C12' : '#E74C3C';
+    // Three-tier color system: Pass (>=80%), Needs Improvement (70-79%), Fail (<70%)
+    let scoreColor;
+    if (roundedScore >= 80) {
+        scoreColor = '#28A745'; // Green for Pass
+    } else if (roundedScore >= 70) {
+        scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement
+    } else {
+        scoreColor = '#DC3545'; // Red for Fail
+    }
 
     this.doc.circle(centerX, this.currentY + radius, radius).fill(scoreColor);
     this.doc.fontSize(40).font('BoldFont').fillColor('#FFFFFF')
@@ -243,16 +250,16 @@ class LiteAccessibilityPDFGenerator {
             // Skip audits that are N/A (score is null) or don't exist
             if (auditResult && auditInfo && auditResult.score !== null) {
                 const score = auditResult.score;
-                let status = score === 1 ? 'PASS' :
-                    score > 0.5 ? 'NEEDS WORK' : 'FAIL';
+                let status = score >= 0.8 ? 'PASS' :
+                    score >= 0.7 ? 'NEEDS IMPROVEMENT' : 'FAIL';
 
                 let bgColor, borderColor, statusColor, badgeBg;
-                if (score === 1) {
+                if (score >= 0.8) {
                     bgColor = '#ECFDF5';
                     borderColor = '#10B981';
                     statusColor = '#FFFFFF';
                     badgeBg = '#10B981';
-                } else if (score > 0.5) {
+                } else if (score >= 0.7) {
                     bgColor = '#FEF3C7';
                     borderColor = '#F59E0B';
                     statusColor = '#FFFFFF';
