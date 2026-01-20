@@ -276,8 +276,8 @@ addOverallScoreDisplay(scoreData) {
     const centerX = this.doc.page.width / 2;
     const radius = 60;
 
-    // Determine pass/fail status based on 70% threshold
-    const isPassing = roundedScore >= 70;
+    // Determine pass/fail status based on 80% threshold
+    const isPassing = roundedScore >= 80;
     const resultText = isPassing ? 'PASS' : 'FAIL';
     const resultColor = isPassing ? '#27AE60' : '#E74C3C';
 
@@ -357,7 +357,7 @@ addOverallScoreDisplay(scoreData) {
 
         const siteName = extractSiteName(reportData.finalUrl || '');
         const score = Math.round(scoreData.finalScore);
-        const isPassing = score >= 70;
+        const isPassing = score >= 80;
         const formFactor = reportData.configSettings?.formFactor || 'desktop';
         const formFactorDisplay = formFactor.charAt(0).toUpperCase() + formFactor.slice(1);
 
@@ -417,13 +417,20 @@ addOverallScoreDisplay(scoreData) {
             .text(`Overall Accessibility Score (${formFactorDisplay})`, this.margin + 70, scoreBoxY + 20, 
                 { width: this.pageWidth - 140, align: 'center' });
 
-        // Large score percentage (orange color from image)
-        const scoreColor = isPassing ? '#27AE60' : '#E67E22';
+        // Large score percentage - three tier color system
+        let scoreColor;
+        if (score >= 80) {
+            scoreColor = '#28A745'; // Green for Pass
+        } else if (score >= 70) {
+            scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement
+        } else {
+            scoreColor = '#DC3545'; // Red for Fail
+        }
         this.doc.fontSize(72).font('BoldFont').fillColor(scoreColor)
             .text(`${score}%`, this.margin + 70, scoreBoxY + 50, 
                 { width: this.pageWidth - 140, align: 'center' });
 
-        // Warning message if below 70%
+        // Warning message if below 80%
         if (!isPassing) {
             this.doc.fontSize(12).font('BoldFont').fillColor('#C0392B')
                 .text('⚠ WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
@@ -558,7 +565,7 @@ addOverallScoreDisplay(scoreData) {
 
         const siteName = extractSiteName(reportData.finalUrl || '');
         const score = Math.round(scoreData.finalScore);
-        const isPassing = score >= 70;
+        const isPassing = score >= 80;
 
         // Executive Summary heading (blue)
         this.doc.fontSize(24).font('BoldFont').fillColor('#2C5F9C')
@@ -675,13 +682,13 @@ addOverallScoreDisplay(scoreData) {
             const score = auditData.score !== null && auditData.score !== undefined ? auditData.score : 1;
             const scorePercent = Math.round(score * 100);
             
-            // Critical: score < 50%
-            // Medium: score 50-89%
-            // Low/Passing: score >= 90%
+            // Critical: score < 70% (Fail)
+            // Medium: score 70-79% (Needs Improvement)
+            // Low/Passing: score >= 80% (Pass)
             
-            if (scorePercent < 50) {
+            if (scorePercent < 70) {
                 criticalIssues.push({ id: auditId, score: scorePercent, data: auditData });
-            } else if (scorePercent < 90) {
+            } else if (scorePercent < 80) {
                 mediumIssues.push({ id: auditId, score: scorePercent, data: auditData });
             }
         });
@@ -842,7 +849,7 @@ addOverallScoreDisplay(scoreData) {
         const audits = reportData.audits || {};
         const strengths = [];
 
-        // Find audits with scores >= 90%
+        // Find audits with scores >= 80% (Pass threshold)
         Object.keys(AUDIT_INFO).forEach(auditId => {
             const auditData = audits[auditId];
             if (!auditData) return;
@@ -850,7 +857,7 @@ addOverallScoreDisplay(scoreData) {
             const score = auditData.score !== null && auditData.score !== undefined ? auditData.score : 0;
             const scorePercent = Math.round(score * 100);
             
-            if (scorePercent >= 90) {
+            if (scorePercent >= 80) {
                 strengths.push({ 
                     id: auditId, 
                     score: scorePercent,
@@ -1279,19 +1286,23 @@ addOverallScoreDisplay(scoreData) {
                 const score = auditData.score !== null && auditData.score !== undefined ? auditData.score : 0;
                 const scorePercent = Math.round(score * 100);
                 
-                // Determine rating and colors
+                // Determine rating and colors based on new thresholds
                 let rating = 'Fail';
                 let ratingColor = '#DC3545'; // Red
                 let actualColor = '#DC3545'; // Red
                 
-                if (scorePercent >= 90) {
+                if (scorePercent >= 80) {
                     rating = 'Pass';
                     ratingColor = '#28A745'; // Green
                     actualColor = '#28A745'; // Green
+                } else if (scorePercent >= 70) {
+                    rating = 'Needs Improvement';
+                    ratingColor = '#FD7E14'; // Yellow/Orange
+                    actualColor = '#FD7E14'; // Yellow/Orange
                 }
                 
-                // Standard is usually 100% or >=90%
-                const standard = scorePercent >= 90 ? '100%' : '>=90%';
+                // Standard is 80% or higher for Pass
+                const standard = scorePercent >= 80 ? '>=80%' : '>=80%';
                 
                 // Get details from actual audit data
                 let details = '';
@@ -1861,11 +1872,11 @@ addOverallScoreDisplay(scoreData) {
             
             // Score (center-aligned with color based on value)
             const scoreValue = parseInt(item.score);
-            let scoreColor = '#DC3545'; // Red for 0%
-            if (scoreValue === 100) {
-                scoreColor = '#28A745'; // Green for 100%
-            } else if (scoreValue > 0 && scoreValue < 100) {
-                scoreColor = '#FD7E14'; // Orange for partial
+            let scoreColor = '#DC3545'; // Red for Fail (<70%)
+            if (scoreValue >= 80) {
+                scoreColor = '#28A745'; // Green for Pass (>=80%)
+            } else if (scoreValue >= 70) {
+                scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement (70-79%)
             }
             this.doc.font('BoldFont').fontSize(9).fillColor(scoreColor).text(item.score, currentX + 10, tableY + 6, {
                 width: colWidths[1] - 20,
