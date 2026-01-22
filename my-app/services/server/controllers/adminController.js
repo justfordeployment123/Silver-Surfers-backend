@@ -156,6 +156,95 @@ export async function getQuickScans(req, res) {
   }
 }
 
+export async function getSubscriptionScans(req, res) {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const {
+      page = 1,
+      limit = 100,
+      search,
+      planId,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const parsedLimit = Math.min(parseInt(limit) || 100, 500);
+    const parsedPage = parseInt(page) || 1;
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    // Base query: only records tied to a plan (subscription or one-time)
+    const query = { planId: { $ne: null } };
+
+    if (planId && planId !== 'all') {
+      query.planId = planId;
+    }
+
+    if (search) {
+      const regex = { $regex: search, $options: 'i' };
+      query.$or = [{ url: regex }, { email: regex }];
+    }
+
+    const allowedSorts = new Set(['createdAt', 'email', 'url', 'score', 'status']);
+    const sortField = allowedSorts.has(sortBy) ? sortBy : 'createdAt';
+    const sort = { [sortField]: sortOrder === 'asc' ? 1 : -1 };
+
+    const [items, total, stats] = await Promise.all([
+      AnalysisRecord.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean(),
+      AnalysisRecord.countDocuments(query),
+      AnalysisRecord.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: null,
+            totalScans: { $sum: 1 },
+            completedScans: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+            failedScans: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+            uniqueEmails: { $addToSet: '$email' },
+            uniqueUrls: { $addToSet: '$url' }
+          }
+        },
+        {
+          $project: {
+            totalScans: 1,
+            completedScans: 1,
+            failedScans: 1,
+            uniqueEmails: { $size: '$uniqueEmails' },
+            uniqueUrls: { $size: '$uniqueUrls' }
+          }
+        }
+      ])
+    ]);
+
+    const statistics = stats[0] || {
+      totalScans: 0,
+      completedScans: 0,
+      failedScans: 0,
+      uniqueEmails: 0,
+      uniqueUrls: 0
+    };
+
+    res.json({
+      success: true,
+      items,
+      total,
+      page: parsedPage,
+      limit: parsedLimit,
+      pages: Math.ceil(total / parsedLimit),
+      statistics
+    });
+  } catch (error) {
+    console.error('Error fetching subscription scans:', error);
+    res.status(500).json({ error: 'Failed to fetch subscription scans' });
+  }
+}
+
 export async function bulkQuickScans(req, res) {
   try {
     if (req.user.role !== 'admin') {

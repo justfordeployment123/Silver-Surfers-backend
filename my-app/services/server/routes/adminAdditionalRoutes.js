@@ -27,6 +27,9 @@ router.get('/quick-scans', authRequired, adminController.getQuickScans);
 // Bulk quick scans
 router.post('/quick-scans/bulk', authRequired, adminController.bulkQuickScans);
 
+// Subscription and one-time scans
+router.get('/subscription-scans', authRequired, adminOnly, adminController.getSubscriptionScans);
+
 // User management routes
 router.get('/users', authRequired, adminOnly, adminController.getUsers);
 router.get('/users/:id', authRequired, adminOnly, adminController.getUser);
