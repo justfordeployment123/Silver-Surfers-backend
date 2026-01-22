@@ -29,8 +29,8 @@ import QuickScan from '../models/QuickScan.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper function to generate summary PDF
-async function generateSummaryPDF(pageResults, outputPath) {
+// Helper function to generate summary PDF for platform averages
+async function generateSummaryPDF(platformResults, outputPath) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       margin: 40,
@@ -53,9 +53,9 @@ async function generateSummaryPDF(pageResults, outputPath) {
     const headerHeight = 35;
     const rowHeight = 25;
     
-    // Table headers
-    const headers = ['Audit Page', 'Platform', 'Score', 'Result'];
-    const colWidths = [280, 80, 80, 75];
+    // Table headers (platform averages only)
+    const headers = ['Platform', 'Average Score', 'Result'];
+    const colWidths = [200, 160, 155];
     
     // Draw header background
     doc.rect(margin, currentY, pageWidth, headerHeight).fill('#6366F1');
@@ -76,7 +76,7 @@ async function generateSummaryPDF(pageResults, outputPath) {
     // Table rows
     doc.fontSize(10).font('Helvetica').fillColor('#1F2937');
     
-    pageResults.forEach((result, index) => {
+    platformResults.forEach((result, index) => {
       // Check if we need a new page
       if (currentY + rowHeight > doc.page.height - 60) {
         doc.addPage();
@@ -101,18 +101,18 @@ async function generateSummaryPDF(pageResults, outputPath) {
         doc.rect(margin, currentY, pageWidth, rowHeight).fill('#F9FAFB');
       }
       
-      const filename = result.filename || 'Unknown';
       const platform = result.platform || 'Unknown';
-      const score = result.score !== null && result.score !== undefined ? `${Math.round(result.score)}%` : 'N/A';
+      const scoreValue = result.score !== null && result.score !== undefined ? Math.round(result.score) : null;
+      const score = scoreValue !== null ? `${scoreValue}%` : 'N/A';
       
-      // Determine result status and color based on score
+      // Determine result status and color based on average score
       let resultStatus = 'N/A';
       let resultColor = '#6B7280';
-      if (result.score !== null && result.score !== undefined) {
-        if (result.score >= 80) {
+      if (scoreValue !== null) {
+        if (scoreValue >= 80) {
           resultStatus = 'Pass';
           resultColor = '#10B981'; // Green
-        } else if (result.score >= 70) {
+        } else if (scoreValue >= 70) {
           resultStatus = 'Needs Improvement';
           resultColor = '#F59E0B'; // Orange
         } else {
@@ -124,31 +124,23 @@ async function generateSummaryPDF(pageResults, outputPath) {
       // Draw row content
       x = margin;
       
-      // Audit Page (left-aligned, truncate if too long)
-      const displayFilename = filename.length > 50 ? filename.substring(0, 47) + '...' : filename;
-      doc.fillColor('#1F2937').text(displayFilename, x + 10, currentY + 7, { 
+      // Platform (left-aligned)
+      doc.fillColor('#1F2937').text(platform, x + 10, currentY + 7, { 
         width: colWidths[0] - 20, 
         align: 'left' 
       });
       x += colWidths[0];
       
-      // Platform (center-aligned)
-      doc.fillColor('#1F2937').text(platform, x, currentY + 7, { 
+      // Average Score (center-aligned)
+      doc.fillColor('#1F2937').text(score, x, currentY + 7, { 
         width: colWidths[1], 
         align: 'center' 
       });
       x += colWidths[1];
       
-      // Score (center-aligned)
-      doc.fillColor('#1F2937').text(score, x, currentY + 7, { 
-        width: colWidths[2], 
-        align: 'center' 
-      });
-      x += colWidths[2];
-      
       // Result (center-aligned, colored)
       doc.fillColor(resultColor).font('Helvetica-Bold').text(resultStatus, x, currentY + 7, { 
-        width: colWidths[3], 
+        width: colWidths[2], 
         align: 'center' 
       });
       doc.font('Helvetica'); // Reset to regular font
@@ -865,8 +857,7 @@ export const runFullAuditProcess = async (job) => {
       console.log(`📱 Non-pro/onetime plan (${effectivePlanId || 'starter/default'}): Auditing device - ${devicesToAudit[0]}`);
     }
 
-    // Track all page results for summary generation and group by platform
-    const pageResults = [];
+    // Track results grouped by platform for summaries
     const reportsByPlatform = {}; // { device: [{ jsonReportPath, url, imagePaths, score }] }
 
     for (const link of linksToAudit) {
@@ -911,13 +902,6 @@ export const runFullAuditProcess = async (job) => {
               score: auditScore
             });
 
-            // Track page result for summary
-            pageResults.push({
-              filename: path.basename(link),
-              platform: device.charAt(0).toUpperCase() + device.slice(1),
-              score: auditScore,
-              url: link
-            });
           } else {
             console.error(`Skipping full report for ${link} (${device}). Reason: ${auditResult.error}`);
           }
@@ -930,6 +914,21 @@ export const runFullAuditProcess = async (job) => {
         }
       }
     }
+
+    // Prepare platform summary averages for the summary PDF
+    const platformSummary = Object.entries(reportsByPlatform).map(([device, deviceReports]) => {
+      const scores = deviceReports
+        .map((r) => r.score)
+        .filter((s) => s !== null && s !== undefined);
+      const averageScore = scores.length
+        ? scores.reduce((sum, val) => sum + val, 0) / scores.length
+        : null;
+
+      return {
+        platform: device.charAt(0).toUpperCase() + device.slice(1),
+        score: averageScore
+      };
+    });
 
     // Generate combined PDFs per platform
     // Strategy: Generate one comprehensive PDF per platform with all pages' reports
@@ -1014,13 +1013,13 @@ export const runFullAuditProcess = async (job) => {
     console.log(`🎉 All links for ${email} have been processed.`);
     console.log(`\n=== GENERATING SUMMARY PDF ===`);
     
-    // Generate summary PDF with all pages and scores (only for full audits, not quick scans)
-    if (pageResults.length > 0) {
+    // Generate summary PDF with average scores per platform (only for full audits, not quick scans)
+    if (platformSummary.length > 0) {
       try {
         const pdfPath = path.join(finalReportFolder, 'audit-summary.pdf');
-        await generateSummaryPDF(pageResults, pdfPath);
+        await generateSummaryPDF(platformSummary, pdfPath);
         console.log(`✅ Summary PDF generated: ${pdfPath}`);
-        console.log(`   Contains ${pageResults.length} page results`);
+        console.log(`   Contains ${platformSummary.length} platform average rows`);
       } catch (pdfError) {
         console.error(`❌ Failed to generate summary PDF:`, pdfError.message);
         // Don't fail the entire job if PDF generation fails
