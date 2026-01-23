@@ -1694,99 +1694,68 @@ def _precheck_url_sync(url: str) -> Dict[str, Any]:
             if _precheck_browser is not None:
                 try:
                     print(f"💥 Browser crashed, resetting: {str(e)}")
-                    _precheck_browser.close()
-                except:
-                    pass
-                _precheck_browser = None
-            
-            return {
-                "success": False,
-                "error": f"Precheck failed: {str(e)}"
-            }
+                    # Use lock to prevent concurrent Camoufox use
+                    with _precheck_lock:
+                        try:
+                            print("🚀 Creating new precheck browser instance...")
+                            with Camoufox(headless=True) as browser:
+                                page = browser.new_page()
 
+                                # Set basic viewport
+                                page.set_viewport_size({"width": 1920, "height": 1080})
 
-@app.post("/precheck", response_model=PrecheckResponse)
-async def precheck_url(request: PrecheckRequest):
-    """
-    Lightweight async precheck endpoint using Camoufox.
-    Just verifies URL is reachable without doing a full audit.
-    """
-    try:
-        # Normalize URL
-        url = request.url
-        if not url.startswith(("http://", "https://")):
-            url = f"https://{url}"
-        
-        print(f"🔍 Precheck request for: {url}")
-        
-        # Run Camoufox precheck in thread pool (sync API)
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor() as executor:
-            result = await loop.run_in_executor(
-                executor,
-                _precheck_url_sync,
-                url
-            )
-        
-        if result["success"]:
-            print(f"✅ Precheck success: {url} → {result.get('finalUrl', url)}")
-            return PrecheckResponse(
-                success=True,
-                finalUrl=result.get("finalUrl", url),
-                status=result.get("status"),
-                redirected=result.get("redirected", False)
-            )
-        else:
-            print(f"❌ Precheck failed: {url} - {result.get('error', 'Unknown error')}")
-            return PrecheckResponse(
-                success=False,
-                error=result.get("error", "Precheck failed")
-            )
-            
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Precheck error: {error_msg}")
-        return PrecheckResponse(
-            success=False,
-            error=error_msg
-        )
+                                # Set realistic user agent
+                                context = page.context
+                                context.set_extra_http_headers({
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                                })
 
+                                # Navigate with a shorter timeout for precheck (30 seconds)
+                                response = page.goto(url, wait_until="load", timeout=30000)
 
-@app.get("/health")
-@app.head("/health")
-async def health_check():
-    """Health check endpoint - supports both GET and HEAD for health checks"""
-    return {"status": "healthy", "service": "python-scanner"}
+                                # Get final URL after redirects
+                                final_url = page.url
+                                status_code = response.status if response else None
 
+                                # Check if redirected
+                                redirected = final_url != url
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up browser resources on shutdown"""
-    global _precheck_browser
-    if _precheck_browser is not None:
-        try:
-            print("🧹 Closing precheck browser on shutdown...")
-            _precheck_browser.close()
-        except Exception as e:
-            print(f"⚠️ Error closing precheck browser: {e}")
-        finally:
-            _precheck_browser = None
+                                # Quick check: verify page has some content (not blocked)
+                                content = page.content()
+                                has_content = len(content) > 1000  # At least 1KB of content
 
+                                if not has_content:
+                                    return {
+                                        "success": False,
+                                        "error": "Page loaded but has insufficient content (may be blocked)"
+                                    }
 
-if __name__ == "__main__":
-    import uvicorn
-    # Get configuration from environment variables
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8001"))
-    limit_concurrency = int(os.getenv("LIMIT_CONCURRENCY", "10"))
-    timeout_keep_alive = int(os.getenv("TIMEOUT_KEEP_ALIVE", "300"))
-    
-    # Configure for parallel processing - allow up to 10 concurrent requests
-    uvicorn.run(
-        app, 
-        host=host, 
-        port=port,
-        workers=1,  # Single worker (FastAPI handles async concurrency)
+                                return {
+                                    "success": True,
+                                    "finalUrl": final_url,
+                                    "status": status_code,
+                                    "redirected": redirected
+                                }
+                        except Exception as nav_error:
+                            error_msg = str(nav_error)
+                            # Check if it's a timeout or connection error
+                            if "timeout" in error_msg.lower() or "timeout" in str(type(nav_error)).lower():
+                                return {
+                                    "success": False,
+                                    "error": f"Request timeout: {error_msg}"
+                                }
+                            elif "403" in error_msg or "forbidden" in error_msg.lower():
+                                # 403 might still mean the site is accessible, just blocked automated requests
+                                # But for precheck, we'll consider it a failure
+                                return {
+                                    "success": False,
+                                    "error": f"Access forbidden (403): Site may block automated requests"
+                                }
+                            else:
+                                return {
+                                    "success": False,
+                                    "error": f"Navigation failed: {error_msg}"
+                                }
         limit_concurrency=limit_concurrency,  # Allow up to 10 concurrent connections
         timeout_keep_alive=timeout_keep_alive  # 5 minutes keep-alive for long-running scans
     )
