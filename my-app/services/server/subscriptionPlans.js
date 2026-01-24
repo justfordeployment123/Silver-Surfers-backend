@@ -4,7 +4,7 @@ export const SUBSCRIPTION_PLANS = {
     id: 'oneTime',
     name: 'One-Time',
     description: 'Perfect for getting started',
-    price: 49700, // $497.00
+    price: 39700, // $397.00
     currency: 'usd',
     type: 'one-time',
     isOneTime: true,
@@ -12,11 +12,10 @@ export const SUBSCRIPTION_PLANS = {
       scansPerMonth: 1,
       maxUsers: 1,
       features: [
-        '1 comprehensive audit',
-        'Choose ONE device type',
-        'All subpages scanned',
+        'All devices tested',
+        'up to 25 subpages scanned',
         'Detailed PDF report',
-        'Visual annotations',
+        'Actionable recommendations',
         '17-category analysis',
         'Email support'
       ]
@@ -28,12 +27,10 @@ export const SUBSCRIPTION_PLANS = {
   starter: {
     id: 'starter',
     name: 'Starter',
-    description: 'Regular monitoring with savings',
-    // Monthly pricing (in cents)
-    monthlyPriceId: process.env.STRIPE_STARTER_MONTHLY_PRICE_ID, // Set in .env
+    description: '',
+    // Yearly pricing only (in cents)
     yearlyPriceId: process.env.STRIPE_STARTER_YEARLY_PRICE_ID,   // Set in .env
-    monthlyPrice: 29700, // $297.00
-    yearlyPrice: 297000, // $2,970.00 (17% discount)
+    yearlyPrice: 199700, // $1,997.00
     currency: 'usd',
     // Limits and features
     limits: {
@@ -42,12 +39,11 @@ export const SUBSCRIPTION_PLANS = {
       features: [
         '60 reports per year',
         'Select device per report',
-        'All subpages scanned',
+        'up to 25 subpages scanned',
         '1 user account',
         'PDF reports',
         'Actionable recommendations',
-        'Priority email support',
-        '2 months free'
+        'Priority email support'
       ]
     },
 
@@ -57,12 +53,10 @@ export const SUBSCRIPTION_PLANS = {
   pro: {
     id: 'pro',
     name: 'Pro',
-    description: 'Complete solution + huge savings',
-    // Monthly pricing (in cents)
-    monthlyPriceId: process.env.STRIPE_PRO_MONTHLY_PRICE_ID, // Set in .env
+    description: '',
+    // Yearly pricing only (in cents)
     yearlyPriceId: process.env.STRIPE_PRO_YEARLY_PRICE_ID,   // Set in .env
-    monthlyPrice: 69700, // $697.00
-    yearlyPrice: 697000, // $6,970.00 (17% discount)
+    yearlyPrice: 299700, // $2,997.00
     currency: 'usd',
     // Limits and features
     limits: {
@@ -71,14 +65,13 @@ export const SUBSCRIPTION_PLANS = {
       features: [
         '144 reports per year',
         'All devices tested together',
-        'All subpages scanned',
+        'up to 25 subpages scanned',
         '3 team users',
         'SilverSurfers Seal',
         'Priority support',
         'Historical tracking',
         'White-label reports',
-        'Quarterly consultation',
-        '2 months free'
+        'Quarterly consultation'
       ]
     },
     gradient: 'from-green-500 to-teal-500',
@@ -86,7 +79,7 @@ export const SUBSCRIPTION_PLANS = {
   },
   custom: {
     id: 'custom',
-    name: 'SilverSurfers Custom',
+    name: 'Custom',
     description: 'Tailored solutions for enterprise-level accessibility needs.',
     // Custom pricing - handled separately
     monthlyPrice: null,
@@ -100,6 +93,7 @@ export const SUBSCRIPTION_PLANS = {
         'SilverSurfers Score',
         'Unlimited scans',
         'SilverSurfers Seal of Approval',
+        'Unlimited team users',
         'Advanced analytics',
         'API access',
         'White labeling options',
@@ -120,7 +114,7 @@ export const getPlanById = (planId) => {
 
 export const getPlanByPriceId = (priceId) => {
   return Object.values(SUBSCRIPTION_PLANS).find(plan =>
-    plan.monthlyPriceId === priceId || plan.yearlyPriceId === priceId
+    plan.yearlyPriceId === priceId
   );
 };
 
@@ -134,7 +128,6 @@ export const getPublicPlans = () => {
     name: plan.name,
     description: plan.description,
     price: plan.price,
-    monthlyPrice: plan.monthlyPrice,
     yearlyPrice: plan.yearlyPrice,
     currency: plan.currency,
     type: plan.type,

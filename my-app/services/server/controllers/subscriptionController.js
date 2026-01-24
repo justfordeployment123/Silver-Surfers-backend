@@ -80,7 +80,8 @@ export async function getSubscription(req, res) {
 
 export async function createCheckoutSession(req, res) {
   try {
-    const { planId, billingCycle = 'monthly' } = req.body || {};
+    const { planId } = req.body || {};
+    const billingCycle = 'yearly'; // Always yearly - no monthly option
     const userId = req.user.id;
 
     if (!planId) {
@@ -158,7 +159,7 @@ export async function createCheckoutSession(req, res) {
 
       return res.json({ url: session.url });
     } else {
-      const priceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
+      const priceId = plan.yearlyPriceId; // Always yearly
       if (!priceId) {
         return res.status(400).json({ error: 'Price ID not configured for this plan.' });
       }
@@ -230,7 +231,8 @@ export async function createPortalSession(req, res) {
 
 export async function upgradeSubscription(req, res) {
   try {
-    const { planId, billingCycle = 'monthly' } = req.body;
+    const { planId } = req.body;
+    const billingCycle = 'yearly'; // Always yearly - no monthly option
     const userId = req.user.id;
 
     if (!planId) {
@@ -251,7 +253,7 @@ export async function upgradeSubscription(req, res) {
       return res.status(404).json({ error: 'No active subscription found.' });
     }
 
-    const newPriceId = billingCycle === 'yearly' ? plan.yearlyPriceId : plan.monthlyPriceId;
+    const newPriceId = plan.yearlyPriceId; // Always yearly
     if (!newPriceId) {
       return res.status(400).json({ error: 'Price ID not configured for this plan.' });
     }
@@ -377,7 +379,6 @@ export async function getPlans(req, res) {
       name: plan.name,
       description: plan.description,
       price: plan.price,
-      monthlyPrice: plan.monthlyPrice,
       yearlyPrice: plan.yearlyPrice,
       currency: plan.currency,
       type: plan.type,
