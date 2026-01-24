@@ -76,6 +76,32 @@ async def health_check():
     return {"status": "healthy", "service": "python-scanner"}
 
 
+# Precheck endpoint
+@app.post("/precheck", response_model=PrecheckResponse)
+async def precheck_url(request: PrecheckRequest):
+    """
+    Lightweight precheck: verify URL is reachable before running full audit.
+    This is much faster than a full audit.
+    """
+    try:
+        # Run precheck in thread pool since it uses sync Camoufox
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _precheck_url_sync, request.url)
+        
+        return PrecheckResponse(
+            success=result.get("success", False),
+            finalUrl=result.get("finalUrl"),
+            status=result.get("status"),
+            redirected=result.get("redirected", False),
+            error=result.get("error")
+        )
+    except Exception as e:
+        return PrecheckResponse(
+            success=False,
+            error=f"Precheck failed: {str(e)}"
+        )
+
+
 # Configuration matching Node.js custom-config-lite.js
 LITE_AUDIT_REFS = [
     {"id": "color-contrast", "weight": 5},
