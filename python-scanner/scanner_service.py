@@ -69,6 +69,13 @@ class AuditResponse(BaseModel):
     errorCode: Optional[str] = None
 
 
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker/Kubernetes"""
+    return {"status": "healthy", "service": "python-scanner"}
+
+
 # Configuration matching Node.js custom-config-lite.js
 LITE_AUDIT_REFS = [
     {"id": "color-contrast", "weight": 5},
