@@ -1927,17 +1927,17 @@ addOverallScoreDisplay(scoreData) {
         
         // Draw rows with alternating background
         items.forEach((item, rowIndex) => {
-            // Alternating light gray background - use actual row height
-            const bgColor = rowIndex % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
-            this.doc.rect(this.margin, tableY, this.pageWidth, actualRowHeight).fill(bgColor);
-            currentX = this.margin;
-            
-            // Calculate actual row height needed for Audit Component name
+            // Calculate actual row height needed for Audit Component name FIRST
             const componentNameHeight = this.doc.heightOfString(item.name, { 
                 width: colWidths[0] - 20,
                 fontSize: 9
             });
             const actualRowHeight = Math.max(rowHeight, componentNameHeight + 12);
+            
+            // Alternating light gray background - use actual row height
+            const bgColor = rowIndex % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
+            this.doc.rect(this.margin, tableY, this.pageWidth, actualRowHeight).fill(bgColor);
+            currentX = this.margin;
             
             // Audit Component (left-aligned) - remove height constraint
             this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(item.name, currentX + 10, tableY + 6, {
