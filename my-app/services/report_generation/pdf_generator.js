@@ -357,7 +357,8 @@ addOverallScoreDisplay(scoreData) {
 
         const siteName = extractSiteName(reportData.finalUrl || '');
         const score = Math.round(scoreData.finalScore);
-        const isPassing = score >= 80;
+        // For messaging on this page, treat 70% as the minimum recommended standard
+        const meetsMinimum = score >= 70;
         const formFactor = reportData.configSettings?.formFactor || 'desktop';
         const formFactorDisplay = formFactor.charAt(0).toUpperCase() + formFactor.slice(1);
 
@@ -433,7 +434,7 @@ addOverallScoreDisplay(scoreData) {
         // Warning message if below 80%
         if (!isPassing) {
             this.doc.fontSize(12).font('BoldFont').fillColor('#C0392B')
-                .text('⚠ WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
+                .text('⚠️ WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
                     { width: this.pageWidth - 140, align: 'center' });
             this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
                 .text('Minimum recommended score: 70%', this.margin + 70, scoreBoxY + 143, 
@@ -479,29 +480,11 @@ addOverallScoreDisplay(scoreData) {
             .text(pagesText, this.margin + 60, this.currentY);
         this.currentY += 25;
 
-        // Package information with note (left-aligned, note in red italic)
+        // Package information (simple label, no dev-only notes)
         this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
-            .text(`Package: ${packageText} – `, this.margin + 60, this.currentY, { continued: true })
-            .font('RegularFont').fillColor('#C0392B')
-            .text('Note: ', { continued: true })
-            .font('RegularFont').fillColor('#C0392B');
+            .text(`Package: ${packageText}`, this.margin + 60, this.currentY);
         
-        // Add the appropriate note based on package type
-        if (packageText === 'Pro') {
-            this.doc.text('This report should be generated 3 times for Pro packages. 1 report for Desktop, 1 report for Tablet, 1 report for Mobile. If starter package, the report should reflect the platform choice the user submitted.', 
-                this.margin + 60, this.currentY + 15, 
-                { width: this.pageWidth - 120, align: 'left' });
-        } else if (packageText === 'Starter') {
-            this.doc.text('This report reflects the platform choice you submitted during your scan request.', 
-                this.margin + 60, this.currentY + 15, 
-                { width: this.pageWidth - 120, align: 'left' });
-        } else {
-            this.doc.text('This is a one-time audit report for the selected platform.', 
-                this.margin + 60, this.currentY + 15, 
-                { width: this.pageWidth - 120, align: 'left' });
-        }
-        
-        this.currentY += 70;
+        this.currentY += 30;
     }
 
     addScoreCalculationPage(reportData, scoreData) {
@@ -587,13 +570,66 @@ addOverallScoreDisplay(scoreData) {
             .text('Key Findings', this.margin, this.currentY);
         this.currentY += 25;
 
-        // Key findings bullets
-        const keyFindings = [
-            `Overall score of ${score}% ${isPassing ? 'meets' : 'falls below'} the 70% minimum standard for user-friendly accessibility`,
-            'Critical issues identified in color contrast, page loading speed, and link text clarity',
-            'Strong performance in touch target sizing, mobile responsiveness, and form accessibility',
-            'Security and privacy features meet recommended standards'
-        ];
+        // Build page-specific key findings from this report's audits
+        const audits = reportData.audits || {};
+        const IMPORTANT_AUDITS = {
+            'color-contrast': 'color contrast',
+            'target-size': 'touch target sizing',
+            'text-font-audit': 'text size and readability',
+            'largest-contentful-paint': 'page loading speed',
+            'link-name': 'link text clarity',
+            'label': 'form labels and inputs',
+            'cumulative-layout-shift': 'layout stability',
+            'is-on-https': 'security (HTTPS)'
+        };
+
+        const weakAudits = [];
+        const strongAudits = [];
+
+        Object.keys(IMPORTANT_AUDITS).forEach(id => {
+            const audit = audits[id];
+            if (!audit || typeof audit.score !== 'number') return;
+            if (audit.score < 0.7) {
+                weakAudits.push(IMPORTANT_AUDITS[id]);
+            } else if (audit.score >= 0.9) {
+                strongAudits.push(IMPORTANT_AUDITS[id]);
+            }
+        });
+
+        const formatList = (items) => {
+            if (!items.length) return '';
+            if (items.length === 1) return items[0];
+            if (items.length === 2) return `${items[0]} and ${items[1]}`;
+            return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+        };
+
+        const keyFindings = [];
+
+        // 1) Score statement – remove the word "Overall"
+        keyFindings.push(
+            `Score of ${score}% ${meetsMinimum ? 'meets' : 'falls below'} the 70% minimum standard for user-friendly accessibility on this page`
+        );
+
+        // 2) Areas needing improvement on this specific page
+        if (weakAudits.length) {
+            keyFindings.push(
+                `Key accessibility gaps on this page: ${formatList(weakAudits)}.`
+            );
+        }
+
+        // 3) Strong areas on this specific page
+        if (strongAudits.length) {
+            keyFindings.push(
+                `Strong performance on this page in: ${formatList(strongAudits)}.`
+            );
+        }
+
+        // Fallback bullets if we couldn't classify anything
+        if (keyFindings.length === 1) {
+            keyFindings.push(
+                'This page shows a mix of strengths and opportunities for improvement across accessibility categories.'
+            );
+        }
 
         keyFindings.forEach(finding => {
             const bulletX = this.margin + 20;
@@ -623,13 +659,39 @@ addOverallScoreDisplay(scoreData) {
             .text('Recommended Priority Actions', this.margin, this.currentY);
         this.currentY += 25;
 
-        // Priority actions bullets
-        const priorityActions = [
-            'Improve color contrast ratios for text and interactive elements',
-            'Optimize page loading speed to reduce wait times',
-            'Enhance link text to be more descriptive and contextual',
-            'Add text spacing flexibility to prevent layout breaks when users zoom'
-        ];
+        // Priority actions based on weakest audits for THIS page
+        const ACTIONS_BY_AUDIT = {
+            'color-contrast': 'Improve color contrast ratios for text and interactive elements so older adults can easily read content.',
+            'target-size': 'Increase the size and spacing of buttons and links to make them easier to tap, especially on touch devices.',
+            'text-font-audit': 'Increase text sizes and ensure consistent typography for comfortable reading.',
+            'largest-contentful-paint': 'Optimize page loading speed (images, scripts, and hosting) to reduce wait times.',
+            'link-name': 'Rewrite vague links (e.g., “Learn more”) into descriptive text that explains the destination or action.',
+            'label': 'Add clear labels and instructions to all form fields so users understand what to enter.',
+            'cumulative-layout-shift': 'Stabilize layout elements to prevent content from shifting as the page loads.',
+            'is-on-https': 'Ensure all pages load over HTTPS to protect user privacy and security.'
+        };
+
+        const priorityActions = [];
+
+        // Use the same weak audits list but keep only the first 4 for actions
+        const weakAuditIdsInOrder = Object.keys(IMPORTANT_AUDITS).filter(id => {
+            const audit = audits[id];
+            return audit && typeof audit.score === 'number' && audit.score < 0.7;
+        });
+
+        weakAuditIdsInOrder.slice(0, 4).forEach(id => {
+            if (ACTIONS_BY_AUDIT[id]) {
+                priorityActions.push(ACTIONS_BY_AUDIT[id]);
+            }
+        });
+
+        // Fallback to generic actions if nothing scored poorly
+        if (!priorityActions.length) {
+            priorityActions.push(
+                'Maintain current accessibility practices and schedule regular reviews as content and design change.',
+                'Monitor page loading speed and media sizes to ensure they remain fast for older devices and slower connections.'
+            );
+        }
 
         priorityActions.forEach(action => {
             const bulletX = this.margin + 20;
@@ -1115,7 +1177,7 @@ addOverallScoreDisplay(scoreData) {
         
         // Page title
         this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
-            .text('Appendix (sample)', this.margin, this.currentY);
+            .text('Appendix', this.margin, this.currentY);
         this.currentY += 30;
         
         // Technical Specifications heading
@@ -1736,9 +1798,9 @@ addOverallScoreDisplay(scoreData) {
         }
     }
     
-    // In appendix mode, don't add heading (it's already added by addAppendix)
-    // In non-appendix mode, check if we need a new page and add heading
-    if (!isAppendixMode) {
+        // In appendix mode, don't add heading (it's already added by addAppendix)
+        // In non-appendix mode, check if we need a new page and add heading
+        if (!isAppendixMode) {
         const needsNewPage = this.currentY > 600;
         
         if (needsNewPage) {
@@ -1747,8 +1809,8 @@ addOverallScoreDisplay(scoreData) {
             this.currentY += 10; // Add some spacing if continuing on same page
         }
         
-        // Add "Detailed Findings (Sample)" header with blue color
-        this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Detailed Findings (Sample)', this.margin, this.currentY);
+        // Add "Detailed Findings" header with blue color
+        this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text('Detailed Findings', this.margin, this.currentY);
         this.currentY += 25;
     }
 
@@ -1756,7 +1818,7 @@ addOverallScoreDisplay(scoreData) {
     for (let i = 0; i < items.length; i += itemsPerPage) {
         if (i > 0) {
             this.addPage();
-            const headerText = isAppendixMode ? info.title + ' (Continued)' : 'Detailed Findings (Sample) - Continued';
+            const headerText = isAppendixMode ? info.title + ' (Continued)' : 'Detailed Findings - Continued';
             this.doc.fontSize(12).font('BoldFont').fillColor(isAppendixMode ? '#2C5F9C' : '#3B82F6').text(headerText, this.margin, this.currentY);
             this.currentY += 25;
         }
@@ -1999,11 +2061,7 @@ addOverallScoreDisplay(scoreData) {
     // Draw rows with alternating white background and bottom borders
     itemsToShow.forEach((item, rowIndex) => {
         const rowData = config.extractors.map(extractor => {
-            let value = String(extractor(item) || 'N/A');
-            // Truncate very long strings during calculation
-            if (value.length > 200) {
-                value = value.substring(0, 197) + '...';
-            }
+            const value = String(extractor(item) || 'N/A');
             return value;
         });
         let maxRowHeight = 0;
@@ -2022,7 +2080,7 @@ addOverallScoreDisplay(scoreData) {
         
         if (tableY + finalRowHeight > this.doc.page.height - this.doc.page.margins.bottom) {
             this.addPage();
-            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings (Sample) - Continued`, this.margin, this.currentY);
+            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings - Continued`, this.margin, this.currentY);
             this.currentY += 25;
             tableY = this.currentY;
             
@@ -2048,13 +2106,7 @@ addOverallScoreDisplay(scoreData) {
         // Draw cell content with proper height constraint
         currentX = this.margin;
         rowData.forEach((cellValue, colIndex) => {
-            // Truncate very long strings to prevent overflow
-            let displayValue = cellValue;
-            if (cellValue.length > 200) {
-                displayValue = cellValue.substring(0, 197) + '...';
-            }
-            
-            this.doc.fillColor('#374151').text(displayValue, currentX + 10, tableY + 10, {
+            this.doc.fillColor('#374151').text(cellValue, currentX + 10, tableY + 10, {
                 width: config.widths[colIndex] - 20,
                 height: finalRowHeight - 20,
                 lineGap: 2,

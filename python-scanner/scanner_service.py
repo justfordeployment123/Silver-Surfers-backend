@@ -6,6 +6,7 @@ and perform accessibility audits compatible with Lighthouse format.
 
 import asyncio
 import json
+import logging
 import os
 import tempfile
 import time
@@ -28,6 +29,14 @@ try:
 except ImportError:
     LIGHTHOUSE_AVAILABLE = False
     print("⚠️ Lighthouse integration not available, using custom audits")
+
+# Configure logging to filter out health check requests
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/health" not in record.getMessage()
+
+# Apply filter to uvicorn access logs
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 app = FastAPI(title="SilverSurfers Python Scanner", version="1.0.0")
 

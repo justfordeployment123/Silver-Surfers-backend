@@ -279,7 +279,7 @@ async function mergePDFsByPlatform(options) {
 
   if (!isPassing) {
     coverDoc.fontSize(12).font('BoldFont').fillColor('#C0392B')
-      .text('⚠ WARNING: Below Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
+      .text('⚠️ WARNING: Below Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
         { width: coverWidth - 140, align: 'center' });
     coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
       .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
