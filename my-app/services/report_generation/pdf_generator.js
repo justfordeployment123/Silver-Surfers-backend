@@ -548,7 +548,8 @@ addOverallScoreDisplay(scoreData) {
 
         const siteName = extractSiteName(reportData.finalUrl || '');
         const score = Math.round(scoreData.finalScore);
-        const isPassing = score >= 80;
+        // For messaging on this page, treat 70% as the minimum recommended standard
+        const meetsMinimum = score >= 70;
 
         // Executive Summary heading (blue)
         this.doc.fontSize(24).font('BoldFont').fillColor('#2C5F9C')
