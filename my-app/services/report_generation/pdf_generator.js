@@ -321,7 +321,7 @@ addOverallScoreDisplay(scoreData) {
     // Add explanatory text about pass/fail threshold
     if (!isPassing) {
         this.doc.fontSize(12).font('RegularFont').fillColor('#E74C3C')
-            .text('This website did not meet the SilverSurfers accessibility standards (70% minimum required)',
+            .text('This website did not meet the SilverSurfers accessibility standards (80% minimum required)',
                 this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
         this.currentY += 20;
     } else {
@@ -357,8 +357,8 @@ addOverallScoreDisplay(scoreData) {
 
         const siteName = extractSiteName(reportData.finalUrl || '');
         const score = Math.round(scoreData.finalScore);
-        // For messaging on this page, treat 70% as the minimum recommended standard
-        const meetsMinimum = score >= 70;
+        // For messaging on this page, treat 80% as the minimum recommended standard (Pass threshold)
+        const meetsMinimum = score >= 80;
         const formFactor = reportData.configSettings?.formFactor || 'desktop';
         const formFactorDisplay = formFactor.charAt(0).toUpperCase() + formFactor.slice(1);
 
@@ -431,23 +431,23 @@ addOverallScoreDisplay(scoreData) {
             .text(`${score}%`, this.margin + 70, scoreBoxY + 50, 
                 { width: this.pageWidth - 140, align: 'center' });
 
-        // Determine if score meets the 70% minimum recommended standard
-        const isPassing = score >= 70;
+        // Determine if score meets the 80% minimum recommended standard (Pass threshold)
+        const isPassing = score >= 80;
 
-        // Warning message if below 70% minimum
+        // Warning message if below 80% minimum
         if (!isPassing) {
             this.doc.fontSize(12).font('BoldFont').fillColor('#C0392B')
-                .text('⚠️ WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
+                .text('WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
                     { width: this.pageWidth - 140, align: 'center' });
             this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
-                .text('Minimum recommended score: 70%', this.margin + 70, scoreBoxY + 143, 
+                .text('Minimum recommended score: 80%', this.margin + 70, scoreBoxY + 143, 
                     { width: this.pageWidth - 140, align: 'center' });
         } else {
             this.doc.fontSize(12).font('BoldFont').fillColor('#27AE60')
-                .text('✓ PASS: Meets Recommended Standard', this.margin + 70, scoreBoxY + 125, 
+                .text('PASS: Meets Recommended Standard', this.margin + 70, scoreBoxY + 125, 
                     { width: this.pageWidth - 140, align: 'center' });
             this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
-                .text('Minimum recommended score: 70%', this.margin + 70, scoreBoxY + 143, 
+                .text('Minimum recommended score: 80%', this.margin + 70, scoreBoxY + 143, 
                     { width: this.pageWidth - 140, align: 'center' });
         }
 
@@ -551,8 +551,8 @@ addOverallScoreDisplay(scoreData) {
 
         const siteName = extractSiteName(reportData.finalUrl || '');
         const score = Math.round(scoreData.finalScore);
-        // For messaging on this page, treat 70% as the minimum recommended standard
-        const meetsMinimum = score >= 70;
+        // For messaging on this page, treat 80% as the minimum recommended standard (Pass threshold)
+        const meetsMinimum = score >= 80;
 
         // Executive Summary heading (blue)
         this.doc.fontSize(24).font('BoldFont').fillColor('#2C5F9C')
@@ -611,7 +611,7 @@ addOverallScoreDisplay(scoreData) {
 
         // 1) Score statement – remove the word "Overall"
         keyFindings.push(
-            `Score of ${score}% ${meetsMinimum ? 'meets' : 'falls below'} the 70% minimum standard for user-friendly accessibility on this page`
+            `Score of ${score}% ${meetsMinimum ? 'meets' : 'falls below'} the 80% minimum standard for user-friendly accessibility on this page`
         );
 
         // 2) Areas needing improvement on this specific page
@@ -1319,8 +1319,8 @@ addOverallScoreDisplay(scoreData) {
                 .text(categoryName, this.margin, this.currentY);
             this.currentY += 25;
 
-            // Table headers
-            const colWidths = [120, 50, 50, 70, 225]; // Component, Rating, Actual, Standard, Details
+            // Table headers - increased Details column width to accommodate longer text
+            const colWidths = [120, 50, 50, 70, 245]; // Component, Rating, Actual, Standard, Details
             const headerHeight = 25;
             const rowMinHeight = 22;
             
@@ -1395,13 +1395,17 @@ addOverallScoreDisplay(scoreData) {
                     }
                 }
 
-                // Calculate row height based on details text
+                // Calculate row height based on details text and component name
                 const detailsHeight = this.doc.heightOfString(details, { 
                     width: colWidths[4] - 10, 
                     fontSize: 8,
                     lineGap: 1
                 });
-                const rowHeight = Math.max(rowMinHeight, detailsHeight + 10);
+                const componentNameHeight = this.doc.heightOfString(audit.info.title, {
+                    width: colWidths[0] - 10,
+                    fontSize: 8
+                });
+                const rowHeight = Math.max(rowMinHeight, Math.max(detailsHeight, componentNameHeight) + 12);
 
                 // Check if we need a new page
                 if (tableY + rowHeight > this.doc.page.height - this.doc.page.margins.bottom - 40) {
@@ -1436,12 +1440,12 @@ addOverallScoreDisplay(scoreData) {
 
                 currentX = this.margin;
 
-                // Component name
+                // Component name - remove height constraint to allow full text
                 this.doc.fontSize(8).font('RegularFont').fillColor('#2C3E50')
                     .text(audit.info.title, currentX + 5, tableY + 6, {
                         width: colWidths[0] - 10,
-                        height: rowHeight - 12,
-                        align: 'left'
+                        align: 'left',
+                        ellipsis: false
                     });
                 currentX += colWidths[0];
 
@@ -1469,13 +1473,13 @@ addOverallScoreDisplay(scoreData) {
                     });
                 currentX += colWidths[3];
 
-                // Details
+                // Details - remove height constraint to allow full text wrapping
                 this.doc.fontSize(8).font('RegularFont').fillColor('#2C3E50')
                     .text(details, currentX + 5, tableY + 6, {
                         width: colWidths[4] - 10,
-                        height: rowHeight - 12,
                         align: 'left',
-                        lineGap: 1
+                        lineGap: 1,
+                        ellipsis: false
                     });
 
                 // Draw row border
@@ -1923,16 +1927,23 @@ addOverallScoreDisplay(scoreData) {
         
         // Draw rows with alternating background
         items.forEach((item, rowIndex) => {
-            // Alternating light gray background
+            // Alternating light gray background - use actual row height
             const bgColor = rowIndex % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
-            this.doc.rect(this.margin, tableY, this.pageWidth, rowHeight).fill(bgColor);
+            this.doc.rect(this.margin, tableY, this.pageWidth, actualRowHeight).fill(bgColor);
             currentX = this.margin;
             
-            // Audit Component (left-aligned)
+            // Calculate actual row height needed for Audit Component name
+            const componentNameHeight = this.doc.heightOfString(item.name, { 
+                width: colWidths[0] - 20,
+                fontSize: 9
+            });
+            const actualRowHeight = Math.max(rowHeight, componentNameHeight + 12);
+            
+            // Audit Component (left-aligned) - remove height constraint
             this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(item.name, currentX + 10, tableY + 6, {
                 width: colWidths[0] - 20,
-                height: rowHeight - 6,
-                align: 'left'
+                align: 'left',
+                ellipsis: false
             });
             currentX += colWidths[0];
             
@@ -1946,7 +1957,6 @@ addOverallScoreDisplay(scoreData) {
             }
             this.doc.font('BoldFont').fontSize(9).fillColor(scoreColor).text(item.score, currentX + 10, tableY + 6, {
                 width: colWidths[1] - 20,
-                height: rowHeight - 6,
                 align: 'center'
             });
             currentX += colWidths[1];
@@ -1954,7 +1964,6 @@ addOverallScoreDisplay(scoreData) {
             // Weight (center-aligned)
             this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(String(item.weight), currentX + 10, tableY + 6, {
                 width: colWidths[2] - 20,
-                height: rowHeight - 6,
                 align: 'center'
             });
             currentX += colWidths[2];
@@ -1962,17 +1971,16 @@ addOverallScoreDisplay(scoreData) {
             // Weighted (center-aligned)
             this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(item.contribution, currentX + 10, tableY + 6, {
                 width: colWidths[3] - 20,
-                height: rowHeight - 6,
                 align: 'center'
             });
             
-            // Draw light bottom border
-            this.doc.moveTo(this.margin, tableY + rowHeight)
-                .lineTo(this.margin + this.pageWidth, tableY + rowHeight)
+            // Draw light bottom border - use actual row height
+            this.doc.moveTo(this.margin, tableY + actualRowHeight)
+                .lineTo(this.margin + this.pageWidth, tableY + actualRowHeight)
                 .strokeColor('#DEE2E6')
                 .lineWidth(0.5)
                 .stroke();
-            tableY += rowHeight;
+            tableY += actualRowHeight;
         });
         
         // Draw TOTAL CALCULATION row with light blue background
@@ -2079,8 +2087,8 @@ addOverallScoreDisplay(scoreData) {
         });
         
         const rowHeight = Math.max(maxRowHeight + 20, 35);
-        // Cap maximum row height to prevent excessive spacing
-        const finalRowHeight = Math.min(rowHeight, 120);
+        // Don't cap row height - allow full text to display
+        const finalRowHeight = rowHeight;
         
         if (tableY + finalRowHeight > this.doc.page.height - this.doc.page.margins.bottom) {
             this.addPage();
@@ -2095,7 +2103,6 @@ addOverallScoreDisplay(scoreData) {
             config.headers.forEach((header, index) => {
                 this.doc.text(header, currentX + 10, tableY + 10, { 
                     width: config.widths[index] - 20, 
-                    height: headerHeight - 10, 
                     align: 'left' 
                 });
                 currentX += config.widths[index];
@@ -2107,14 +2114,14 @@ addOverallScoreDisplay(scoreData) {
         // White background for all rows
         this.doc.rect(this.margin, tableY, this.pageWidth, finalRowHeight).fill('#FFFFFF');
         
-        // Draw cell content with proper height constraint
+        // Draw cell content without height constraint to allow full text wrapping
         currentX = this.margin;
         rowData.forEach((cellValue, colIndex) => {
             this.doc.fillColor('#374151').text(cellValue, currentX + 10, tableY + 10, {
                 width: config.widths[colIndex] - 20,
-                height: finalRowHeight - 20,
                 lineGap: 2,
-                align: 'left'
+                align: 'left',
+                ellipsis: false
             });
             currentX += config.widths[colIndex];
         });

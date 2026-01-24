@@ -251,9 +251,19 @@ export class StarterAccessibilityPDFGenerator {
         this.doc.fillOpacity(1);
 
         const score = Math.round(scoreData.finalScore);
-        const isPassing = score >= 70;
-        const scoreColor = isPassing ? '#6366F1' : '#EF4444';
-        const statusText = isPassing ? 'PASS' : 'FAIL';
+        // Three-tier system: 80-100% Pass, 70-79% Needs Improvement, Below 69% Fail
+        const isPassing = score >= 80;
+        let scoreColor, statusText;
+        if (score >= 80) {
+            scoreColor = '#6366F1'; // Blue/Purple for Pass
+            statusText = 'PASS';
+        } else if (score >= 70) {
+            scoreColor = '#F59E0B'; // Orange for Needs Improvement
+            statusText = 'NEEDS IMPROVEMENT';
+        } else {
+            scoreColor = '#EF4444'; // Red for Fail
+            statusText = 'FAIL';
+        }
 
         // Large score circle
         this.doc.circle(scoreBoxX + 80, scoreBoxY + 60, 45).fill('white');

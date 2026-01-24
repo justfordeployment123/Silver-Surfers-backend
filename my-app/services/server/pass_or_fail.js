@@ -197,7 +197,7 @@ function calculateWeightedScore(data, options = {}) {
     };
 }
 
-function checkScoreThreshold(data, threshold = 70, options = {}) {
+function checkScoreThreshold(data, threshold = 80, options = {}) {
     const { verbose = false } = options;
 
     if (threshold < 0 || threshold > 100) {

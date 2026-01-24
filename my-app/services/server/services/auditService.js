@@ -279,14 +279,14 @@ async function mergePDFsByPlatform(options) {
 
   if (!isPassing) {
     coverDoc.fontSize(12).font('BoldFont').fillColor('#C0392B')
-      .text('⚠️ WARNING: Below Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
+      .text('WARNING: Below Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
         { width: coverWidth - 140, align: 'center' });
     coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
       .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
         { width: coverWidth - 140, align: 'center' });
   } else {
     coverDoc.fontSize(12).font('BoldFont').fillColor('#27AE60')
-      .text('✓ PASS: Meets Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
+      .text('PASS: Meets Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
         { width: coverWidth - 140, align: 'center' });
     coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
       .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
@@ -1177,7 +1177,7 @@ export const runFullAuditProcess = async (job) => {
         console.error('Could not read results.json for score threshold check:', e.message);
     }
 
-    const myThreshold = 70;
+    const myThreshold = 80; // Pass threshold is 80% (80-100%: Pass, 70-79%: Needs Improvement, Below 69%: Fail)
     const result = checkScoreThreshold(urlScores, myThreshold, { verbose: true });
 
     // If Pro plan and passed threshold, email the SilverSurfers Seal of Approval
