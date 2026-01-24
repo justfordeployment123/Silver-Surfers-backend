@@ -421,17 +421,20 @@ addOverallScoreDisplay(scoreData) {
         // Large score percentage - three tier color system
         let scoreColor;
         if (score >= 80) {
-            scoreColor = '#28A745'; // Green for Pass
+            scoreColor = '#28A745'; // Green for Strong Pass
         } else if (score >= 70) {
-            scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement
+            scoreColor = '#FD7E14'; // Yellow/Orange for Meets Minimum but needs improvement
         } else {
-            scoreColor = '#DC3545'; // Red for Fail
+            scoreColor = '#DC3545'; // Red for Below Minimum
         }
         this.doc.fontSize(72).font('BoldFont').fillColor(scoreColor)
             .text(`${score}%`, this.margin + 70, scoreBoxY + 50, 
                 { width: this.pageWidth - 140, align: 'center' });
 
-        // Warning message if below 80%
+        // Determine if score meets the 70% minimum recommended standard
+        const isPassing = score >= 70;
+
+        // Warning message if below 70% minimum
         if (!isPassing) {
             this.doc.fontSize(12).font('BoldFont').fillColor('#C0392B')
                 .text('⚠️ WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
