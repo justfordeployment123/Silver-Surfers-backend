@@ -69,8 +69,8 @@ class AuditResponse(BaseModel):
     errorCode: Optional[str] = None
 
 
-# Health check endpoint
-@app.get("/health")
+# Health check endpoint (supports both GET and HEAD for Docker healthchecks)
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     """Health check endpoint for Docker/Kubernetes"""
     return {"status": "healthy", "service": "python-scanner"}
