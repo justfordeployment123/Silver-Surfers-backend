@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from camoufox import Camoufox
+from camoufox.sync_api import Camoufox
 from bs4 import BeautifulSoup
 
 # Try to import Lighthouse integration (optional - falls back to custom audits if not available)
@@ -31,11 +31,8 @@ except ImportError:
 
 app = FastAPI(title="SilverSurfers Python Scanner", version="1.0.0")
 
-# Global browser instance for precheck (reused to avoid overhead)
-_precheck_browser = None
+# Thread-safe lock for synchronous Camoufox operations
 _precheck_lock = threading.Lock()  # Thread-safe lock for synchronous code
-_browser_last_used = 0
-_browser_max_age = 300  # Recreate browser after 5 minutes of inactivity
 
 
 class AuditRequest(BaseModel):
@@ -1597,35 +1594,15 @@ def _precheck_url_sync(url: str) -> Dict[str, Any]:
     """
     Lightweight precheck: Just verify URL is reachable using Camoufox.
     This is much faster than a full audit - just navigates and checks status.
-    Uses a reused browser instance to avoid initialization overhead.
     Thread-safe using a lock to prevent concurrent browser access issues.
     """
-    global _precheck_browser, _browser_last_used
-    
-    # Use lock to ensure thread-safe access to shared browser instance
+    # Use lock to ensure thread-safe access (one precheck at a time)
     with _precheck_lock:
         try:
-            # Check if browser needs to be recreated (stale or doesn't exist)
-            current_time = time.time()
-            if _precheck_browser is None or (current_time - _browser_last_used) > _browser_max_age:
-                # Close old browser if it exists
-                if _precheck_browser is not None:
-                    try:
-                        print("🔄 Recreating stale precheck browser...")
-                        _precheck_browser.close()
-                    except Exception as close_err:
-                        print(f"⚠️ Error closing old browser: {close_err}")
+            # Use Camoufox with context manager (proper usage pattern)
+            with Camoufox(headless=True) as browser:
+                page = browser.new_page()
                 
-                # Create new browser instance
-                print("🚀 Creating new precheck browser instance...")
-                _precheck_browser = Camoufox(headless=True)
-            
-            _browser_last_used = current_time
-            
-            # Create a new page for this precheck
-            page = _precheck_browser.new_page()
-            
-            try:
                 # Set basic viewport
                 page.set_viewport_size({"width": 1920, "height": 1080})
                 
@@ -1682,81 +1659,10 @@ def _precheck_url_sync(url: str) -> Dict[str, Any]:
                             "success": False,
                             "error": f"Navigation failed: {error_msg}"
                         }
-            finally:
-                # Always close the page (but keep the browser alive)
-                try:
-                    page.close()
-                except Exception as page_close_err:
-                    print(f"⚠️ Error closing page: {page_close_err}")
                     
         except Exception as e:
-            # If browser is completely broken, reset it
-            if _precheck_browser is not None:
-                try:
-                    print(f"💥 Browser crashed, resetting: {str(e)}")
-                    # Use lock to prevent concurrent Camoufox use
-                    with _precheck_lock:
-                        try:
-                            print("🚀 Creating new precheck browser instance...")
-                            with Camoufox(headless=True) as browser:
-                                page = browser.new_page()
-
-                                # Set basic viewport
-                                page.set_viewport_size({"width": 1920, "height": 1080})
-
-                                # Set realistic user agent
-                                context = page.context
-                                context.set_extra_http_headers({
-                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-                                })
-
-                                # Navigate with a shorter timeout for precheck (30 seconds)
-                                response = page.goto(url, wait_until="load", timeout=30000)
-
-                                # Get final URL after redirects
-                                final_url = page.url
-                                status_code = response.status if response else None
-
-                                # Check if redirected
-                                redirected = final_url != url
-
-                                # Quick check: verify page has some content (not blocked)
-                                content = page.content()
-                                has_content = len(content) > 1000  # At least 1KB of content
-
-                                if not has_content:
-                                    return {
-                                        "success": False,
-                                        "error": "Page loaded but has insufficient content (may be blocked)"
-                                    }
-
-                                return {
-                                    "success": True,
-                                    "finalUrl": final_url,
-                                    "status": status_code,
-                                    "redirected": redirected
-                                }
-                        except Exception as nav_error:
-                            error_msg = str(nav_error)
-                            # Check if it's a timeout or connection error
-                            if "timeout" in error_msg.lower() or "timeout" in str(type(nav_error)).lower():
-                                return {
-                                    "success": False,
-                                    "error": f"Request timeout: {error_msg}"
-                                }
-                            elif "403" in error_msg or "forbidden" in error_msg.lower():
-                                # 403 might still mean the site is accessible, just blocked automated requests
-                                # But for precheck, we'll consider it a failure
-                                return {
-                                    "success": False,
-                                    "error": f"Access forbidden (403): Site may block automated requests"
-                                }
-                            else:
-                                return {
-                                    "success": False,
-                                    "error": f"Navigation failed: {error_msg}"
-                                }
-        limit_concurrency=limit_concurrency,  # Allow up to 10 concurrent connections
-        timeout_keep_alive=timeout_keep_alive  # 5 minutes keep-alive for long-running scans
-    )
+            return {
+                "success": False,
+                "error": f"Precheck failed: {str(e)}"
+            }
 
