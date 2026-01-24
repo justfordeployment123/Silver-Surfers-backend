@@ -1319,8 +1319,9 @@ addOverallScoreDisplay(scoreData) {
                 .text(categoryName, this.margin, this.currentY);
             this.currentY += 25;
 
-            // Table headers - increased Details column width to accommodate longer text
-            const colWidths = [120, 50, 50, 70, 245]; // Component, Rating, Actual, Standard, Details
+            // Table headers - ensure total width doesn't exceed pageWidth (515)
+            // Component (120), Rating (50), Actual (50), Standard (70), Details (225) = 515
+            const colWidths = [120, 50, 50, 70, 225]; // Component, Rating, Actual, Standard, Details
             const headerHeight = 25;
             const rowMinHeight = 22;
             
@@ -1835,11 +1836,12 @@ addOverallScoreDisplay(scoreData) {
 }
     
     getTableConfig(auditId) {
+        // All widths must sum to pageWidth (515) to prevent overflow
         switch (auditId) {
             case 'text-font-audit':
                 return {
                     headers: ['Text Content', 'Element Selector', 'Reason'],
-                    widths: [180, 200, 135],
+                    widths: [170, 190, 155], // Total: 515
                     extractors: [
                         item => item.textSnippet || 'N/A',
                         item => item.containerSelector || 'N/A',
@@ -1849,7 +1851,7 @@ addOverallScoreDisplay(scoreData) {
             case 'interactive-color-audit':
                 return {
                     headers: ['Interactive Text', 'Element Location', 'Senior Accessibility Issue'],
-                    widths: [150, 200, 165],
+                    widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => item.text || 'Interactive Element',
                         item => this.extractSelector(item.node) || 'N/A',
@@ -1859,7 +1861,7 @@ addOverallScoreDisplay(scoreData) {
             case 'layout-brittle-audit':
                 return {
                     headers: ['Page Element', 'Element Location', 'Senior Impact'],
-                    widths: [150, 200, 165],
+                    widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => this.extractNodeLabel(item.node) || 'Layout Element',
                         item => this.extractSelector(item.node) || 'N/A',
@@ -1869,7 +1871,7 @@ addOverallScoreDisplay(scoreData) {
             case 'flesch-kincaid-audit':
                 return {
                     headers: ['Metric', 'Value'],
-                    widths: [257, 258],
+                    widths: [257, 258], // Total: 515
                     extractors: [
                         item => item.metric || 'N/A',
                         item => item.value || 'N/A'
@@ -1878,7 +1880,7 @@ addOverallScoreDisplay(scoreData) {
             default:
                 return {
                     headers: ['Element', 'Location', 'Senior Accessibility Issue'],
-                    widths: [150, 200, 165],
+                    widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => item.node?.nodeLabel || item.nodeLabel || 'Page Element',
                         item => item.node?.selector || item.selector || 'N/A',
@@ -2059,9 +2061,10 @@ addOverallScoreDisplay(scoreData) {
     let currentX = this.margin;
     
     config.headers.forEach((header, index) => {
-        this.doc.text(header, currentX + 10, tableY + 10, { 
-            width: config.widths[index] - 20, 
-            height: headerHeight - 10, 
+        const cellPadding = 10;
+        const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
+        this.doc.text(header, currentX + cellPadding, tableY + 10, { 
+            width: availableWidth, 
             align: 'left' 
         });
         currentX += config.widths[index];
@@ -2101,8 +2104,10 @@ addOverallScoreDisplay(scoreData) {
             this.doc.font('BoldFont').fontSize(10).fillColor('#374151');
             currentX = this.margin;
             config.headers.forEach((header, index) => {
-                this.doc.text(header, currentX + 10, tableY + 10, { 
-                    width: config.widths[index] - 20, 
+                const cellPadding = 10;
+                const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
+                this.doc.text(header, currentX + cellPadding, tableY + 10, { 
+                    width: availableWidth, 
                     align: 'left' 
                 });
                 currentX += config.widths[index];
@@ -2115,10 +2120,15 @@ addOverallScoreDisplay(scoreData) {
         this.doc.rect(this.margin, tableY, this.pageWidth, finalRowHeight).fill('#FFFFFF');
         
         // Draw cell content without height constraint to allow full text wrapping
+        // Ensure text stays within column boundaries
         currentX = this.margin;
         rowData.forEach((cellValue, colIndex) => {
-            this.doc.fillColor('#374151').text(cellValue, currentX + 10, tableY + 10, {
-                width: config.widths[colIndex] - 20,
+            // Calculate available width for text (column width minus padding)
+            const cellPadding = 10;
+            const availableWidth = Math.max(config.widths[colIndex] - (cellPadding * 2), 20);
+            
+            this.doc.fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
+                width: availableWidth,
                 lineGap: 2,
                 align: 'left',
                 ellipsis: false
