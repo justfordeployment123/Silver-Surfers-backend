@@ -766,12 +766,10 @@ addOverallScoreDisplay(scoreData) {
             const iconX = this.margin + iconRadius;
             const iconY = this.currentY + 7; // Center vertically with text (14px font height / 2 ≈ 7)
             
-            // Draw blue circle with white exclamation (simulate with text)
-            this.doc.circle(iconX, iconY, iconRadius).fill('#3D5A80');
-            this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
-                .text('!', iconX - 4, iconY - 8);
+            // Draw red circle (no character)
+            this.doc.circle(iconX, iconY, iconRadius).fill('#DC3545');
             
-            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+            this.doc.fontSize(14).font('BoldFont').fillColor('#DC3545')
                 .text('Critical Priority (High Impact)', this.margin + 32, this.currentY);
             this.currentY += 30;
 
@@ -791,9 +789,8 @@ addOverallScoreDisplay(scoreData) {
             const iconX = this.margin + iconRadius;
             const iconY = this.currentY + 7; // Center vertically with text (14px font height / 2 ≈ 7)
             
+            // Draw yellow/orange circle (no character)
             this.doc.circle(iconX, iconY, iconRadius).fill('#FD7E14');
-            this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
-                .text('!', iconX - 4, iconY - 8);
             
             this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
                 .text('Medium Priority (Moderate Impact)', this.margin + 32, this.currentY);
@@ -811,9 +808,8 @@ addOverallScoreDisplay(scoreData) {
             const iconX = this.margin + iconRadius;
             const iconY = this.currentY + 7; // Center vertically with text (14px font height / 2 ≈ 7)
             
+            // Draw green circle (no character)
             this.doc.circle(iconX, iconY, iconRadius).fill('#28A745');
-            this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
-                .text('✓', iconX - 4, iconY - 8);
             
             this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
                 .text('Low Priority (Minor Improvements)', this.margin + 32, this.currentY);
@@ -848,7 +844,7 @@ addOverallScoreDisplay(scoreData) {
                 .font('RegularFont')
                 .text(issueDesc, { width: this.pageWidth - this.margin });
             this.currentY += this.doc.heightOfString(issueDesc, 
-                { width: this.pageWidth - this.margin }) + 10;
+                { width: this.pageWidth - this.margin }) + 15;
 
             // Why it matters
             this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
@@ -856,7 +852,7 @@ addOverallScoreDisplay(scoreData) {
                 .font('RegularFont')
                 .text(info.why, { width: this.pageWidth - this.margin });
             this.currentY += this.doc.heightOfString(info.why, 
-                { width: this.pageWidth - this.margin }) + 10;
+                { width: this.pageWidth - this.margin }) + 15;
 
             // Recommendation
             this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
@@ -943,17 +939,13 @@ addOverallScoreDisplay(scoreData) {
                     this.addPage();
                 }
 
-                // Checkmark and title with score - make checkmark more prominent
+                // Green circle (no character)
                 const checkRadius = 10;
                 const checkX = this.margin + checkRadius;
                 const checkY = this.currentY + 5.5; // Center vertically with 11px text
                 
-                // Draw green circle background
+                // Draw green circle (no character inside)
                 this.doc.circle(checkX, checkY, checkRadius).fill('#28A745');
-                
-                // Draw white checkmark
-                this.doc.fontSize(14).font('BoldFont').fillColor('#FFFFFF')
-                    .text('✓', checkX - 4, checkY - 8);
                 
                 this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
                     .text(`${strength.info.title} (${strength.score}%)`, 
