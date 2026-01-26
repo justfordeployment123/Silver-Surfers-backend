@@ -1900,6 +1900,7 @@ addOverallScoreDisplay(scoreData) {
         const headerHeight = 30;
         const rowHeight = 22;
         const colWidths = [300, 75, 70, 70]; // Audit Component, Score, Weight, Weighted
+        const pageBottom = this.doc.page.height - this.margin; // Calculate once for the function
         
         // Draw header with dark blue background
         this.doc.rect(this.margin, startY, this.pageWidth, headerHeight).fill('#3D5A80');
@@ -1930,7 +1931,6 @@ addOverallScoreDisplay(scoreData) {
             const actualRowHeight = Math.max(rowHeight, componentNameHeight + 12);
             
             // Check if row would exceed page bottom margin (with safety buffer)
-            const pageBottom = this.doc.page.height - this.margin;
             if (tableY + actualRowHeight > pageBottom) {
                 this.addPage();
                 // Redraw header on new page
@@ -2002,7 +2002,6 @@ addOverallScoreDisplay(scoreData) {
         const totalRowHeight = 25;
         
         // Check if TOTAL row would exceed page bottom margin
-        const pageBottom = this.doc.page.height - this.margin;
         if (tableY + totalRowHeight > pageBottom) {
             this.addPage();
             // Redraw header on new page
@@ -2053,7 +2052,6 @@ addOverallScoreDisplay(scoreData) {
         this.currentY = tableY + 15;
         
         // Check if final score text would exceed page bottom margin
-        const pageBottom = this.doc.page.height - this.margin;
         const finalScoreTextHeight = this.doc.heightOfString('Final Score: 100.00 ÷ 100 = 100%', { fontSize: 11 });
         if (this.currentY + finalScoreTextHeight > pageBottom) {
             this.addPage();
