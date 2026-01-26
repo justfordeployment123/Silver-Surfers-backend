@@ -2094,6 +2094,8 @@ addOverallScoreDisplay(scoreData) {
     const headerHeight = 30;
     let tableY = startY;
     const auditInfo = AUDIT_INFO[config.auditId];
+    // Calculate page bottom once - will be recalculated after page breaks
+    let pageBottom = this.doc.page.height - this.margin;
     
     // Draw header with light gray background
     this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
@@ -2123,18 +2125,24 @@ addOverallScoreDisplay(scoreData) {
         
         rowData.forEach((cellValue, colIndex) => {
             const cellWidth = config.widths[colIndex] - 20;
-            const cellHeight = this.doc.heightOfString(cellValue, { width: cellWidth });
+            // Calculate height using same parameters as text rendering (lineGap: 2)
+            const cellHeight = this.doc.heightOfString(cellValue, { 
+                width: cellWidth,
+                lineGap: 2
+            });
             if (cellHeight > maxRowHeight) {
                 maxRowHeight = cellHeight;
             }
         });
         
+        // Add padding (10px top + 10px bottom) and ensure minimum row height
         const rowHeight = Math.max(maxRowHeight + 20, 35);
         // Don't cap row height - allow full text to display
         const finalRowHeight = rowHeight;
         
         // Check if row would exceed page bottom margin (with safety buffer)
-        const pageBottom = this.doc.page.height - this.margin;
+        // Recalculate pageBottom in case we're on a new page
+        pageBottom = this.doc.page.height - this.margin;
         if (tableY + finalRowHeight > pageBottom) {
             this.addPage();
             this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings - Continued`, this.margin, this.currentY);
@@ -2156,19 +2164,49 @@ addOverallScoreDisplay(scoreData) {
             });
             tableY += headerHeight;
             this.doc.font('RegularFont').fontSize(9);
+            // Recalculate pageBottom after adding new page
+            pageBottom = this.doc.page.height - this.margin;
+        }
+        
+        // Double-check that row won't exceed page bottom before drawing
+        pageBottom = this.doc.page.height - this.margin;
+        if (tableY + finalRowHeight > pageBottom) {
+            // If somehow we still exceed, add a new page
+            this.addPage();
+            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings - Continued`, this.margin, this.currentY);
+            this.currentY += 25;
+            tableY = this.currentY;
+            
+            // Redraw header on new page
+            this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
+            this.doc.font('BoldFont').fontSize(10).fillColor('#374151');
+            currentX = this.margin;
+            config.headers.forEach((header, index) => {
+                const cellPadding = 10;
+                const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
+                this.doc.text(header, currentX + cellPadding, tableY + 10, { 
+                    width: availableWidth, 
+                    align: 'left' 
+                });
+                currentX += config.widths[index];
+            });
+            tableY += headerHeight;
+            this.doc.font('RegularFont').fontSize(9);
+            pageBottom = this.doc.page.height - this.margin;
         }
         
         // White background for all rows
         this.doc.rect(this.margin, tableY, this.pageWidth, finalRowHeight).fill('#FFFFFF');
         
-        // Draw cell content without height constraint to allow full text wrapping
-        // Ensure text stays within column boundaries
+        // Draw cell content - text is already constrained by row height calculation
         currentX = this.margin;
         rowData.forEach((cellValue, colIndex) => {
             // Calculate available width for text (column width minus padding)
             const cellPadding = 10;
             const availableWidth = Math.max(config.widths[colIndex] - (cellPadding * 2), 20);
             
+            // Draw text - it will wrap within the available width
+            // The row height was already calculated to accommodate all wrapped text
             this.doc.fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
                 width: availableWidth,
                 lineGap: 2,
@@ -2186,6 +2224,11 @@ addOverallScoreDisplay(scoreData) {
             .stroke();
         
         tableY += finalRowHeight;
+        
+        // Final safety check - if tableY exceeds page bottom, we have a problem
+        if (tableY > pageBottom) {
+            console.warn(`Warning: Table row exceeded page bottom. tableY: ${tableY}, pageBottom: ${pageBottom}`);
+        }
     });
     
     this.currentY = tableY + 20;
