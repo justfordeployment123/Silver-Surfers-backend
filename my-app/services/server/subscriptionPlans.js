@@ -32,9 +32,9 @@ export const SUBSCRIPTION_PLANS = {
     yearlyPriceId: process.env.STRIPE_STARTER_YEARLY_PRICE_ID,   // Set in .env
     yearlyPrice: 199700, // $1,997.00
     currency: 'usd',
-    // Limits and features
+    // Limits and features (yearly limits)
     limits: {
-      scansPerMonth: 5,
+      scansPerMonth: 60, // 60 scans per year
       maxUsers: 1,
       features: [
         '60 reports per year',
@@ -58,9 +58,9 @@ export const SUBSCRIPTION_PLANS = {
     yearlyPriceId: process.env.STRIPE_PRO_YEARLY_PRICE_ID,   // Set in .env
     yearlyPrice: 299700, // $2,997.00
     currency: 'usd',
-    // Limits and features
+    // Limits and features (yearly limits)
     limits: {
-      scansPerMonth: 12,
+      scansPerMonth: 144, // 144 scans per year
       maxUsers: 3,
       features: [
         '144 reports per year',

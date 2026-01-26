@@ -815,7 +815,7 @@ export async function sendSubscriptionReinstatementEmail(to, planName) {
 }
 
 // Subscription welcome/purchase confirmation email
-export async function sendSubscriptionWelcomeEmail(to, planName, billingCycle = 'monthly', currentPeriodEnd = null) {
+export async function sendSubscriptionWelcomeEmail(to, planName, billingCycle = 'yearly', currentPeriodEnd = null) {
   const brandPrimary = '#2563eb';
   const brandSuccess = '#059669';
   const brandAccent = '#10b981';
@@ -832,14 +832,14 @@ export async function sendSubscriptionWelcomeEmail(to, planName, billingCycle = 
   const getPlanFeatures = (plan) => {
     const features = {
       'starter': [
-        '5 accessibility scans per month',
+        '60 accessibility scans per year',
         'Senior-friendly scoring system',
         'PDF reports with recommendations',
         'Email delivery of reports',
         'Basic support'
       ],
       'pro': [
-        '12 accessibility scans per month',
+        '144 accessibility scans per year',
         'Senior-friendly scoring system',
         'PDF reports with recommendations',
         'Email delivery of reports',

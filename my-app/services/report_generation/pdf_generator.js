@@ -1400,8 +1400,9 @@ addOverallScoreDisplay(scoreData) {
                 });
                 const rowHeight = Math.max(rowMinHeight, Math.max(detailsHeight, componentNameHeight) + 12);
 
-                // Check if we need a new page
-                if (tableY + rowHeight > this.doc.page.height - this.doc.page.margins.bottom - 40) {
+                // Check if we need a new page (use consistent margin check)
+                const pageBottom = this.doc.page.height - this.margin;
+                if (tableY + rowHeight > pageBottom) {
                     this.addPage();
                     
                     // Redraw category heading and table header
@@ -1928,6 +1929,26 @@ addOverallScoreDisplay(scoreData) {
             });
             const actualRowHeight = Math.max(rowHeight, componentNameHeight + 12);
             
+            // Check if row would exceed page bottom margin (with safety buffer)
+            const pageBottom = this.doc.page.height - this.margin;
+            if (tableY + actualRowHeight > pageBottom) {
+                this.addPage();
+                // Redraw header on new page
+                this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
+                this.doc.font('BoldFont').fontSize(10).fillColor('#FFFFFF');
+                currentX = this.margin;
+                headers.forEach((header, index) => {
+                    const align = index === 0 ? 'left' : 'center';
+                    const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                    this.doc.text(header, xPos, this.currentY + 10, { 
+                        width: colWidths[index] - 20,
+                        align: align
+                    });
+                    currentX += colWidths[index];
+                });
+                tableY = this.currentY + headerHeight;
+            }
+            
             // Alternating light gray background - use actual row height
             const bgColor = rowIndex % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
             this.doc.rect(this.margin, tableY, this.pageWidth, actualRowHeight).fill(bgColor);
@@ -1979,6 +2000,27 @@ addOverallScoreDisplay(scoreData) {
         
         // Draw TOTAL CALCULATION row with light blue background
         const totalRowHeight = 25;
+        
+        // Check if TOTAL row would exceed page bottom margin
+        const pageBottom = this.doc.page.height - this.margin;
+        if (tableY + totalRowHeight > pageBottom) {
+            this.addPage();
+            // Redraw header on new page
+            this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
+            this.doc.font('BoldFont').fontSize(10).fillColor('#FFFFFF');
+            currentX = this.margin;
+            headers.forEach((header, index) => {
+                const align = index === 0 ? 'left' : 'center';
+                const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                this.doc.text(header, xPos, this.currentY + 10, { 
+                    width: colWidths[index] - 20,
+                    align: align
+                });
+                currentX += colWidths[index];
+            });
+            tableY = this.currentY + headerHeight;
+        }
+        
         this.doc.rect(this.margin, tableY, this.pageWidth, totalRowHeight).fill('#D6EAF8');
         
         currentX = this.margin;
@@ -2009,6 +2051,14 @@ addOverallScoreDisplay(scoreData) {
         
         // Final Score calculation below table
         this.currentY = tableY + 15;
+        
+        // Check if final score text would exceed page bottom margin
+        const pageBottom = this.doc.page.height - this.margin;
+        const finalScoreTextHeight = this.doc.heightOfString('Final Score: 100.00 ÷ 100 = 100%', { fontSize: 11 });
+        if (this.currentY + finalScoreTextHeight > pageBottom) {
+            this.addPage();
+        }
+        
         const finalScoreText = `Final Score: ${scoreData.totalWeightedScore.toFixed(2)} ÷ ${scoreData.totalWeight} = ${Math.round(scoreData.finalScore)}%`;
         this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50').text(
             finalScoreText,
@@ -2085,7 +2135,9 @@ addOverallScoreDisplay(scoreData) {
         // Don't cap row height - allow full text to display
         const finalRowHeight = rowHeight;
         
-        if (tableY + finalRowHeight > this.doc.page.height - this.doc.page.margins.bottom) {
+        // Check if row would exceed page bottom margin (with safety buffer)
+        const pageBottom = this.doc.page.height - this.margin;
+        if (tableY + finalRowHeight > pageBottom) {
             this.addPage();
             this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings - Continued`, this.margin, this.currentY);
             this.currentY += 25;

@@ -361,7 +361,7 @@ export async function getUsers(req, res) {
             currentPeriodEnd: user.subscription.currentPeriodEnd,
             periodEnd: user.subscription.currentPeriodEnd,
             isTeamMember: user.subscription.isTeamMember || false,
-            billingCycle: user.subscription.billingCycle || 'monthly'
+            billingCycle: user.subscription.billingCycle || 'yearly'
           };
         } else {
           // Fall back to Subscription collection
@@ -381,7 +381,7 @@ export async function getUsers(req, res) {
               currentPeriodEnd: subscription.currentPeriodEnd,
               periodEnd: subscription.currentPeriodEnd,
               isTeamMember: subscription.teamMembers?.length > 0 || false,
-              billingCycle: 'monthly'
+              billingCycle: 'yearly'
             };
           } else {
             userObj.subscription = null;

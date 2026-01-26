@@ -231,11 +231,11 @@ export async function startAudit(req, res) {
     }
 
     const currentUsage = subscription.usage?.scansThisMonth || 0;
-    const monthlyLimit = subscription.limits?.scansPerMonth;
+    const yearlyLimit = subscription.limits?.scansPerMonth; // Yearly limit (despite field name)
     
-    if (monthlyLimit !== -1 && currentUsage >= monthlyLimit) {
+    if (yearlyLimit !== -1 && currentUsage >= yearlyLimit) {
       return res.status(403).json({ 
-        error: 'Monthly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
+        error: 'Yearly scan limit reached. Please upgrade your plan or wait for the next billing cycle.' 
       });
     }
 

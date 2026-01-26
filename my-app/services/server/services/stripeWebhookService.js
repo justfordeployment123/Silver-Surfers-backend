@@ -144,7 +144,7 @@ export async function handleSubscriptionUpdated(subscription) {
 
     if (shouldResetUsage) {
       subUpdate['usage.scansThisMonth'] = 0;
-      console.log(`🔄 Resetting monthly usage for subscription ${subscription.id} - new billing period started`);
+      console.log(`🔄 Resetting yearly usage for subscription ${subscription.id} - new billing period started`);
     }
 
     await Subscription.findByIdAndUpdate(localSubscription._id, subUpdate);
