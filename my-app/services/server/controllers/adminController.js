@@ -7,6 +7,10 @@ import QuickScan from '../models/QuickScan.js';
 import ContactMessage from '../models/ContactMessage.js';
 import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
+import Stripe from 'stripe';
+import { getPlanById } from '../subscriptionPlans.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2024-06-20' });
 
 // Queue references (set by server.js)
 let fullAuditQueue, quickScanQueue;
@@ -539,6 +543,163 @@ export async function updateUserRole(req, res) {
   } catch (error) {
     console.error('Error updating user role:', error);
     res.status(500).json({ error: 'Failed to update user role' });
+  }
+}
+
+export async function updateUserSubscription(req, res) {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required.' });
+    }
+
+    const { userId, planId, billingCycle = 'yearly' } = req.body;
+
+    if (!userId || !planId) {
+      return res.status(400).json({ error: 'User ID and Plan ID are required.' });
+    }
+
+    const plan = getPlanById(planId);
+    if (!plan) {
+      return res.status(400).json({ error: 'Invalid plan ID.' });
+    }
+
+    // Get user details
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Get current subscription (if any)
+    const currentSubscription = await Subscription.findOne({ 
+      user: userId, 
+      status: { $in: ['active', 'trialing'] } 
+    });
+
+    // If no active subscription exists, create a new one
+    if (!currentSubscription) {
+      console.log(`🔧 Admin creating new subscription for user ${userId} with plan ${planId}`);
+      
+      // Check if user has a Stripe customer ID, create one if not
+      if (!user.stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: user.email,
+          metadata: {
+            userId: userId.toString(),
+            createdBy: 'admin'
+          }
+        });
+        user.stripeCustomerId = customer.id;
+        await user.save();
+      }
+
+      // Create a new subscription in Stripe (always yearly now)
+      const newPriceId = plan.yearlyPriceId;
+      if (!newPriceId) {
+        return res.status(400).json({ error: 'Price ID not configured for this plan.' });
+      }
+
+      const stripeSubscription = await stripe.subscriptions.create({
+        customer: user.stripeCustomerId,
+        items: [{ price: newPriceId }],
+        payment_behavior: 'default_incomplete',
+        payment_settings: { save_default_payment_method: 'on_subscription' },
+        expand: ['latest_invoice.payment_intent'],
+        metadata: {
+          userId: userId.toString(),
+          planId: planId,
+          createdBy: 'admin'
+        }
+      });
+
+      // Create local subscription record
+      const newSubscription = new Subscription({
+        user: userId,
+        stripeSubscriptionId: stripeSubscription.id,
+        stripeCustomerId: user.stripeCustomerId,
+        planId: planId,
+        priceId: newPriceId,
+        status: 'active',
+        limits: plan.limits,
+        usage: {
+          scansThisMonth: 0,
+          totalScans: 0
+        },
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
+        cancelAtPeriodEnd: false
+      });
+
+      await newSubscription.save();
+
+      // Update user subscription info
+      await User.findByIdAndUpdate(userId, {
+        'subscription.status': 'active',
+        'subscription.planId': planId,
+        'subscription.priceId': newPriceId,
+        'subscription.limits': plan.limits,
+        'subscription.usage.scansThisMonth': 0,
+        'subscription.currentPeriodStart': new Date(),
+        'subscription.currentPeriodEnd': new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        'subscription.cancelAtPeriodEnd': false
+      });
+
+      console.log(`✅ Admin successfully created new subscription for user ${userId} with plan ${planId}`);
+
+      return res.json({ 
+        message: 'New subscription created successfully',
+        subscription: newSubscription,
+        created: true
+      });
+    }
+
+    // Update existing subscription
+    const newPriceId = plan.yearlyPriceId; // Always yearly now
+    if (!newPriceId) {
+      return res.status(400).json({ error: 'Price ID not configured for this plan.' });
+    }
+
+    // Retrieve Stripe subscription to get the subscription item id
+    const stripeSub = await stripe.subscriptions.retrieve(currentSubscription.stripeSubscriptionId);
+    const subscriptionItemId = stripeSub?.items?.data?.[0]?.id;
+    if (!subscriptionItemId) {
+      return res.status(500).json({ error: 'Could not determine subscription item to update.' });
+    }
+
+    // Update subscription in Stripe
+    const updatedSubscription = await stripe.subscriptions.update(
+      currentSubscription.stripeSubscriptionId,
+      {
+        items: [{
+          id: subscriptionItemId,
+          price: newPriceId,
+        }],
+        proration_behavior: 'create_prorations',
+        metadata: {
+          planId: planId,
+          billingCycle: 'yearly',
+          adminUpdated: 'true'
+        }
+      }
+    );
+
+    // Update local subscription record
+    await Subscription.findByIdAndUpdate(currentSubscription._id, {
+      planId: planId,
+      priceId: newPriceId,
+      limits: plan.limits,
+      status: updatedSubscription.status
+    });
+
+    console.log(`Admin updated subscription for user ${userId} to plan ${planId}`);
+
+    return res.json({ 
+      message: 'Subscription updated successfully by admin.',
+      subscription: updatedSubscription
+    });
+  } catch (err) {
+    console.error('Admin update subscription error:', err);
+    return res.status(500).json({ error: 'Failed to update subscription.' });
   }
 }
 

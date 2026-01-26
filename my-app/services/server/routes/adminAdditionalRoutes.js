@@ -36,6 +36,9 @@ router.get('/users/:id', authRequired, adminOnly, adminController.getUser);
 router.post('/users/:id/reset-usage', authRequired, adminOnly, adminController.resetUserUsage);
 router.put('/users/:id/role', authRequired, adminOnly, adminController.updateUserRole);
 
+// Subscription management
+router.post('/subscription/update', authRequired, adminOnly, adminController.updateUserSubscription);
+
 export default router;
 
 
