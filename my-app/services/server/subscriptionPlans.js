@@ -12,7 +12,7 @@ export const SUBSCRIPTION_PLANS = {
       scansPerMonth: 1,
       maxUsers: 1,
       features: [
-        'All devices tested',
+        'One device tested',
         'up to 25 subpages scanned',
         'Detailed PDF report',
         'Actionable recommendations',

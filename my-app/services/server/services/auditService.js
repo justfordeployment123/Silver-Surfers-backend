@@ -1116,6 +1116,10 @@ export const runFullAuditProcess = async (job) => {
       }
       } else {
         record.status = 'completed';
+        // Clear any watchdog timeout failure reason if scan completed successfully
+        if (record.failureReason && record.failureReason.includes('watchdog timeout')) {
+          record.failureReason = undefined;
+        }
       }
       
       // If audit failed, decrement usage counter since we already incremented it when request was made
