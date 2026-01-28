@@ -223,17 +223,21 @@ export class ElderlyAccessibilityPDFGenerator {
             .lineTo(rightMargin, footerY - 5)
             .stroke();
         
-        // Left text: "SilverSurfers.ai"
+        // Left text: "SilverSurfers.ai" - no width to prevent wrapping/page breaks
         this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text('SilverSurfers.ai', leftMargin, footerY, { width: 150, align: 'left' });
+            .text('SilverSurfers.ai', leftMargin, footerY);
         
-        // Center: Page number
+        // Center: Page number - no width to prevent wrapping/page breaks
+        const pageNumText = String(this.pageNumber);
+        const pageNumWidth = this.doc.widthOfString(pageNumText, { fontSize: 9 });
         this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text(String(this.pageNumber), pageWidth / 2, footerY, { width: 50, align: 'center' });
+            .text(pageNumText, (pageWidth / 2) - (pageNumWidth / 2), footerY);
         
-        // Right text: "Website Accessibility Audit Report"
+        // Right text: "Website Accessibility Audit Report" - no width to prevent wrapping/page breaks
+        const rightText = 'Website Accessibility Audit Report';
+        const rightTextWidth = this.doc.widthOfString(rightText, { fontSize: 9 });
         this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text('Website Accessibility Audit Report', rightMargin - 200, footerY, { width: 200, align: 'right' });
+            .text(rightText, rightMargin - rightTextWidth, footerY);
     }
 
     addPage() {
