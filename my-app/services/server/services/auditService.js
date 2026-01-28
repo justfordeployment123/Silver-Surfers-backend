@@ -29,6 +29,34 @@ import QuickScan from '../models/QuickScan.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Helper function to add footer to PDFKit document
+function addFooterToPDFDoc(doc, pageNumber) {
+  const pageHeight = doc.page.height;
+  const footerY = pageHeight - 30; // 30px from bottom
+  const pageWidth = doc.page.width;
+  const leftMargin = 40;
+  const rightMargin = pageWidth - 40;
+  
+  // Draw horizontal line (border)
+  doc.strokeColor('#666666')
+    .lineWidth(0.5)
+    .moveTo(leftMargin, footerY - 5)
+    .lineTo(rightMargin, footerY - 5)
+    .stroke();
+  
+  // Left text: "SilverSurfers.ai"
+  doc.fontSize(9).font('RegularFont').fillColor('#666666')
+    .text('SilverSurfers.ai', leftMargin, footerY, { width: 150, align: 'left' });
+  
+  // Center: Page number
+  doc.fontSize(9).font('RegularFont').fillColor('#666666')
+    .text(String(pageNumber), pageWidth / 2, footerY, { width: 50, align: 'center' });
+  
+  // Right text: "Website Accessibility Audit Report"
+  doc.fontSize(9).font('RegularFont').fillColor('#666666')
+    .text('Website Accessibility Audit Report', rightMargin - 200, footerY, { width: 200, align: 'right' });
+}
+
 // Helper function to generate summary PDF for platform averages
 async function generateSummaryPDF(platformResults, outputPath) {
   return new Promise((resolve, reject) => {
@@ -153,6 +181,9 @@ async function generateSummaryPDF(platformResults, outputPath) {
       
       currentY += rowHeight;
     });
+    
+    // Add footer to summary PDF
+    addFooterToPDFDoc(doc, 1);
     
     doc.end();
     
@@ -299,18 +330,12 @@ async function mergePDFsByPlatform(options) {
     .text(`Report prepared for: ${email_address}`, coverMargin + 60, coverY);
   coverY += 25;
 
-  // List all pages audited
-  const pagesList = reports.map(r => {
-    try {
-      const urlObj = new URL(r.url);
-      return urlObj.pathname === '/' || urlObj.pathname === '' ? 'Home Page' : urlObj.pathname;
-    } catch (e) {
-      return r.url;
-    }
-  }).join(', ');
-  
+  // Show pages audited count only (no page names)
   coverDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
-    .text(`Pages audited: ${reports.length} (${pagesList})`, coverMargin + 60, coverY, { width: coverWidth - 120 });
+    .text(`Pages audited: ${reports.length}`, coverMargin + 60, coverY, { width: coverWidth - 120 });
+  
+  // Add footer to cover page (page 1)
+  addFooterToPDFDoc(coverDoc, 1);
   
   coverDoc.end();
   
@@ -505,6 +530,9 @@ async function mergePDFsByPlatform(options) {
     
     tocY += rowHeight;
   });
+  
+  // Add footer to TOC page (page 2)
+  addFooterToPDFDoc(tocDoc, 2);
   
   tocDoc.end();
   

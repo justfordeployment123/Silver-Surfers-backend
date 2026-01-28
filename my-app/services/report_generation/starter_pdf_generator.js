@@ -169,6 +169,34 @@ export class StarterAccessibilityPDFGenerator {
         this.currentY = 40;
         this.pageWidth = 515;
         this.margin = 40;
+        this.pageNumber = 0;
+    }
+
+    addFooter() {
+        const pageHeight = this.doc.page.height;
+        const footerY = pageHeight - 30; // 30px from bottom
+        const pageWidth = this.doc.page.width;
+        const leftMargin = this.margin;
+        const rightMargin = pageWidth - this.margin;
+        
+        // Draw horizontal line (border)
+        this.doc.strokeColor('#666666')
+            .lineWidth(0.5)
+            .moveTo(leftMargin, footerY - 5)
+            .lineTo(rightMargin, footerY - 5)
+            .stroke();
+        
+        // Left text: "SilverSurfers.ai"
+        this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
+            .text('SilverSurfers.ai', leftMargin, footerY, { width: 150, align: 'left' });
+        
+        // Center: Page number
+        this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
+            .text(String(this.pageNumber), pageWidth / 2, footerY, { width: 50, align: 'center' });
+        
+        // Right text: "Website Accessibility Audit Report"
+        this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
+            .text('Website Accessibility Audit Report', rightMargin - 200, footerY, { width: 200, align: 'right' });
     }
 
     async generateReport(inputFile, outputFile, options = {}) {
@@ -199,6 +227,9 @@ export class StarterAccessibilityPDFGenerator {
             this.addSummaryTable(scoreData);
             this.addDetailedResults(reportData);
 
+            // Add footer to the last page before ending
+            this.addFooter();
+
             // Finalize document and await write completion
             await new Promise((resolve, reject) => {
                 writeStream.on('finish', resolve);
@@ -221,7 +252,13 @@ export class StarterAccessibilityPDFGenerator {
     }
 
     addPage() {
+        // Add footer to previous page if it exists
+        if (this.pageNumber > 0) {
+            this.addFooter();
+        }
+        
         this.doc.addPage();
+        this.pageNumber++;
         this.currentY = this.margin;
     }
 
@@ -342,8 +379,8 @@ export class StarterAccessibilityPDFGenerator {
     drawScoreTable(scoreItems) {
         const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
         const widths = [260, 80, 60, 115];
-        const headerHeight = 30;
-        const rowHeight = 25;
+        const headerHeight = 35;
+        const rowHeight = 30;
 
         // Check if scoreItems is empty
         if (!scoreItems || scoreItems.length === 0) {
@@ -354,7 +391,7 @@ export class StarterAccessibilityPDFGenerator {
 
         // Header
         this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#4F46E5');
-        this.doc.fontSize(11).font('BoldFont').fillColor('white');
+        this.doc.fontSize(14).font('BoldFont').fillColor('white');
         let x = this.margin;
         headers.forEach((header, i) => {
             this.doc.text(header, x + 8, this.currentY + 8, { width: widths[i] - 16, align: 'center' });
@@ -364,17 +401,17 @@ export class StarterAccessibilityPDFGenerator {
         this.currentY += headerHeight;
 
         // Rows
-        this.doc.fontSize(10).font('RegularFont').fillColor('#1F2937');
+        this.doc.fontSize(12).font('RegularFont').fillColor('#1F2937');
         scoreItems.forEach((item, idx) => {
             const bgColor = idx % 2 === 0 ? '#F9FAFB' : 'white';
             this.doc.rect(this.margin, this.currentY, this.pageWidth, rowHeight).fill(bgColor).stroke('#E5E7EB');
             
             x = this.margin;
             const componentName = sanitizeText(String(item.component || '')).substring(0, 40);
-            this.doc.fontSize(9).fillColor('#1F2937').text(componentName || '—', x + 8, this.currentY + 7, { width: widths[0] - 16 });
-            this.doc.fontSize(9).fillColor('#1F2937').text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 7, { width: widths[1] - 16, align: 'center' });
-            this.doc.fontSize(9).fillColor('#1F2937').text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 7, { width: widths[2] - 16, align: 'center' });
-            this.doc.fontSize(9).fillColor('#1F2937').text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 7, { width: widths[3] - 16, align: 'center' });
+            this.doc.fontSize(12).fillColor('#1F2937').text(componentName || '—', x + 8, this.currentY + 7, { width: widths[0] - 16 });
+            this.doc.fontSize(12).fillColor('#1F2937').text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 7, { width: widths[1] - 16, align: 'center' });
+            this.doc.fontSize(12).fillColor('#1F2937').text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 7, { width: widths[2] - 16, align: 'center' });
+            this.doc.fontSize(12).fillColor('#1F2937').text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 7, { width: widths[3] - 16, align: 'center' });
             
             this.currentY += rowHeight;
         });
