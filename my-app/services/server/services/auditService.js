@@ -68,6 +68,10 @@ async function generateSummaryPDF(platformResults, outputPath) {
     const writeStream = fsSync.createWriteStream(outputPath);
     doc.pipe(writeStream);
 
+    // Register fonts for footer
+    doc.registerFont('RegularFont', 'Helvetica');
+    doc.registerFont('BoldFont', 'Helvetica-Bold');
+
     // Title
     doc.fontSize(20).font('Helvetica-Bold').fillColor('#1F2937')
       .text('Audit Summary Report', 40, 40, { align: 'center', width: 515 });
@@ -199,7 +203,7 @@ async function generateSummaryPDF(platformResults, outputPath) {
 
 // Helper function to merge multiple PDFs into one combined PDF per platform
 async function mergePDFsByPlatform(options) {
-  const { pdfPaths, device, email_address, outputDir, reports } = options;
+  const { pdfPaths, device, email_address, outputDir, reports, planType } = options;
   
   if (!pdfPaths || pdfPaths.length === 0) {
     throw new Error('No PDF paths provided for merging');
@@ -259,10 +263,23 @@ async function mergePDFsByPlatform(options) {
     .text(siteName, coverMargin, coverY, { width: coverWidth, align: 'center' });
   coverY += 50;
 
+  // Determine package type display text
+  let packageText = 'Pro';
+  if (planType && typeof planType === 'string') {
+    if (planType.toLowerCase().includes('starter')) packageText = 'Starter';
+    else if (planType.toLowerCase().includes('onetime') || planType === 'oneTime') packageText = 'One-Time';
+    else if (planType.toLowerCase().includes('pro')) packageText = 'Pro';
+  }
+
   coverDoc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
     .text(`Website Accessibility Audit Report – (${deviceCapitalized})`, coverMargin, coverY, 
       { width: coverWidth, align: 'center' });
-  coverY += 40;
+  coverY += 25;
+  
+  // Package type indicator
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#3498DB')
+    .text(`${packageText} Package`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 30;
 
   coverDoc.fontSize(11).font('RegularFont').fillColor('#7F8C8D')
     .text(baseUrl, coverMargin, coverY, { width: coverWidth, align: 'center' });
@@ -1000,7 +1017,8 @@ export const runFullAuditProcess = async (job) => {
             device: device,
             email_address: email,
             outputDir: finalReportFolder,
-            reports: reports
+            reports: reports,
+            planType: effectivePlanId
           });
           console.log(`✅ Combined ${device} PDF generated: ${combinedPdfPath}`);
           console.log(`   Merged ${individualPdfPaths.length} individual PDFs into one ${device} report`);
@@ -1079,20 +1097,25 @@ export const runFullAuditProcess = async (job) => {
     
     let sendResult;
     try {
-      // Set plan-specific email body
+      // Set plan-specific email body and subject
       let emailBody = 'Attached are all your senior accessibility audit results. Thank you for using SilverSurfers!';
+      let emailSubject = 'Your SilverSurfers Audit Results';
+      
       if (effectivePlanId === 'starter') {
         emailBody = 'Attached are all of the older adult accessibility audit results for your Starter Subscription. Thank you for using SilverSurfers!';
+        emailSubject = 'Your SilverSurfers Starter Audit Results';
       } else if (effectivePlanId === 'pro') {
         emailBody = 'Attached are all of the older adult accessibility audit results for your Pro Subscription. Thank you for using SilverSurfers!';
+        emailSubject = 'Your SilverSurfers Pro Audit Results';
       } else if (effectivePlanId === 'oneTime') {
         emailBody = 'Attached are all of the older adult accessibility audit results for your One-Time Report. Thank you for using SilverSurfers!';
+        emailSubject = 'Your SilverSurfers One-Time Report Results';
       }
 
       // Add timeout to email sending (5 minutes max)
       const emailPromise = sendAuditReportEmail({
         to: email,
-        subject: 'Your SilverSurfers Audit Results',
+        subject: emailSubject,
         text: emailBody,
         folderPath: finalReportFolder,
         deviceFilter: deviceFilterForEmail,

@@ -467,19 +467,44 @@ class LiteAccessibilityPDFGenerator {
             const scoreBoxHeight = 200;
             this.doc.rect(0, this.currentY, this.doc.page.width, scoreBoxHeight).fill('#1E3A8A');
             
-            // Draw score circle
+            // Draw score circle with color-coded background
             const centerX = this.doc.page.width / 2;
             const circleY = this.currentY + 80;
-            this.doc.circle(centerX, circleY, 60).lineWidth(8).stroke('#FFFFFF').opacity(0.3);
-            this.doc.circle(centerX, circleY, 60).lineWidth(8).stroke('#FFFFFF').opacity(1);
+            const roundedScore = Math.round(scoreData.finalScore);
+            
+            // Three-tier color system: Pass (>=80%), Needs Improvement (70-79%), Fail (<70%)
+            let scoreColor;
+            if (roundedScore >= 80) {
+                scoreColor = '#28A745'; // Green for Pass
+            } else if (roundedScore >= 70) {
+                scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement
+            } else {
+                scoreColor = '#DC3545'; // Red for Fail
+            }
+            
+            // Draw colored circle
+            this.doc.circle(centerX, circleY, 60).fill(scoreColor);
             
             // Score text
-            this.doc.fontSize(48).font('BoldFont').fillColor('white').opacity(1)
-                .text(`${scoreData.finalScore.toFixed(0)}%`, 0, circleY - 24, { width: this.doc.page.width, align: 'center' });
+            this.doc.fontSize(48).font('BoldFont').fillColor('#FFFFFF').opacity(1)
+                .text(`${roundedScore}%`, 0, circleY - 24, { width: this.doc.page.width, align: 'center' });
             
             // Score label
-            this.doc.fontSize(14).font('RegularFont').fillColor('white')
+            this.doc.fontSize(14).font('RegularFont').fillColor('#FFFFFF')
                 .text('SilverSurfers Score', 0, circleY + 80, { width: this.doc.page.width, align: 'center' });
+            
+            // Status text below score circle
+            let statusText;
+            if (roundedScore >= 80) {
+                statusText = 'Pass - Highly accessible for older adults';
+            } else if (roundedScore >= 70) {
+                statusText = 'Needs Improvement - Falls below recommended standards';
+            } else {
+                statusText = 'Fail - Significant barriers to older adults';
+            }
+            
+            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF')
+                .text(statusText, 0, circleY + 105, { width: this.doc.page.width, align: 'center' });
             
             this.currentY += scoreBoxHeight + 20;
 

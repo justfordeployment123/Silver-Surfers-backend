@@ -279,8 +279,8 @@ export async function startAudit(req, res) {
   const taskId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   
   try {
-    // Get plan ID from subscription (or default for one-time scans)
-    const planId = subscription?.planId || 'oneTime';
+    // Get plan ID - CRITICAL: Use 'oneTime' when isOneTimeScan is true, regardless of subscription
+    const planId = isOneTimeScan ? 'oneTime' : (subscription?.planId || 'oneTime');
     
     // Add job to persistent queue
     const job = await fullAuditQueue.addJob({
@@ -291,7 +291,7 @@ export async function startAudit(req, res) {
       userId: subscription?.user || userId,
       taskId,
       jobType: 'full-audit',
-      subscriptionId: subscription?._id || null,
+      subscriptionId: isOneTimeScan ? null : (subscription?._id || null), // Don't pass subscriptionId for one-time scans
       planId: planId,
       selectedDevice: selectedDevice,
       priority: 1 // Normal priority
