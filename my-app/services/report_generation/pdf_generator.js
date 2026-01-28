@@ -210,6 +210,9 @@ export class ElderlyAccessibilityPDFGenerator {
     }
 
     addFooter() {
+        // Save current Y position to restore after drawing footer
+        const savedY = this.doc.y;
+        
         const pageHeight = this.doc.page.height;
         const footerY = pageHeight - 30; // 30px from bottom
         const pageWidth = this.doc.page.width;
@@ -223,21 +226,24 @@ export class ElderlyAccessibilityPDFGenerator {
             .lineTo(rightMargin, footerY - 5)
             .stroke();
         
-        // Left text: "SilverSurfers.ai" - no width to prevent wrapping/page breaks
+        // Left text: "SilverSurfers.ai" - use lineBreak: false to prevent cursor advancement
         this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text('SilverSurfers.ai', leftMargin, footerY);
+            .text('SilverSurfers.ai', leftMargin, footerY, { lineBreak: false });
         
-        // Center: Page number - no width to prevent wrapping/page breaks
+        // Center: Page number - use lineBreak: false to prevent cursor advancement
         const pageNumText = String(this.pageNumber);
-        const pageNumWidth = this.doc.widthOfString(pageNumText, { fontSize: 9 });
+        const pageNumWidth = this.doc.widthOfString(pageNumText);
         this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text(pageNumText, (pageWidth / 2) - (pageNumWidth / 2), footerY);
+            .text(pageNumText, (pageWidth / 2) - (pageNumWidth / 2), footerY, { lineBreak: false });
         
-        // Right text: "Website Accessibility Audit Report" - no width to prevent wrapping/page breaks
+        // Right text: "Website Accessibility Audit Report" - use lineBreak: false to prevent cursor advancement
         const rightText = 'Website Accessibility Audit Report';
-        const rightTextWidth = this.doc.widthOfString(rightText, { fontSize: 9 });
+        const rightTextWidth = this.doc.widthOfString(rightText);
         this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text(rightText, rightMargin - rightTextWidth, footerY);
+            .text(rightText, rightMargin - rightTextWidth, footerY, { lineBreak: false });
+        
+        // Restore Y position to prevent affecting document flow
+        this.doc.y = savedY;
     }
 
     addPage() {
