@@ -767,15 +767,15 @@ addOverallScoreDisplay(scoreData) {
         this.addPage();
         
         // Page title
-        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
+        this.doc.fontSize(22).font('BoldFont').fillColor('#2C5F9C')
             .text('Priority Recommendations', this.margin, this.currentY);
-        this.currentY += 30;
+        this.currentY += 35;
         
         // Description
-        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+        this.doc.fontSize(12).font('RegularFont').fillColor('#2C3E50')
             .text('Based on the audit findings, here are the priority improvements organized by impact and implementation effort.',
                 this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
-        this.currentY += 35;
+        this.currentY += 40;
 
         const audits = reportData.audits || {};
         
@@ -816,9 +816,9 @@ addOverallScoreDisplay(scoreData) {
             // Draw red circle (no character)
             this.doc.circle(iconX, iconY, iconRadius).fill('#DC3545');
             
-            this.doc.fontSize(14).font('BoldFont').fillColor('#DC3545')
+            this.doc.fontSize(16).font('BoldFont').fillColor('#DC3545')
                 .text('Critical Priority (High Impact)', this.margin + 32, this.currentY);
-            this.currentY += 30;
+            this.currentY += 35;
 
             // Add numbered critical issues
             criticalIssues.slice(0, 5).forEach((issue, index) => {
@@ -828,7 +828,8 @@ addOverallScoreDisplay(scoreData) {
 
         // Medium Priority Section
         if (mediumIssues.length > 0) {
-            if (this.currentY > 650) {
+            // Check if we need a new page (reserve space for footer)
+            if (this.currentY > this.doc.page.height - 100) {
                 this.addPage();
             }
 
@@ -839,9 +840,9 @@ addOverallScoreDisplay(scoreData) {
             // Draw yellow/orange circle (no character)
             this.doc.circle(iconX, iconY, iconRadius).fill('#FD7E14');
             
-            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+            this.doc.fontSize(16).font('BoldFont').fillColor('#2C5F9C')
                 .text('Medium Priority (Moderate Impact)', this.margin + 32, this.currentY);
-            this.currentY += 30;
+            this.currentY += 35;
 
             mediumIssues.slice(0, 3).forEach((issue, index) => {
                 this.addRecommendationItem(issue.id, index + 1, issue.data, true);
@@ -850,7 +851,8 @@ addOverallScoreDisplay(scoreData) {
 
         // Low Priority Section (optional, if there are any low priority items)
         if (lowIssues.length > 0) {
-            if (this.currentY > 650) {
+            // Check if we need a new page (reserve space for footer)
+            if (this.currentY > this.doc.page.height - 100) {
                 this.addPage();
             }
 
@@ -861,17 +863,18 @@ addOverallScoreDisplay(scoreData) {
             // Draw green circle (no character)
             this.doc.circle(iconX, iconY, iconRadius).fill('#28A745');
             
-            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
+            this.doc.fontSize(16).font('BoldFont').fillColor('#2C5F9C')
                 .text('Low Priority (Minor Improvements)', this.margin + 32, this.currentY);
-            this.currentY += 20;
-            
-            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                .text(`${lowIssues.length} items are performing well with only minor improvements needed.`,
-                    this.margin, this.currentY, { width: this.pageWidth });
             this.currentY += 25;
             
-            // Display low priority items (show up to 5 items)
-            lowIssues.slice(0, 5).forEach((issue, index) => {
+            this.doc.fontSize(12).font('RegularFont').fillColor('#2C3E50')
+                .text(`${lowIssues.length} items are performing well with only minor improvements needed.`,
+                    this.margin, this.currentY, { width: this.pageWidth });
+            this.currentY += 30;
+            
+            // Display all low priority items (or up to 10 to keep report manageable)
+            const itemsToShow = Math.min(lowIssues.length, 10);
+            lowIssues.slice(0, itemsToShow).forEach((issue, index) => {
                 this.addRecommendationItem(issue.id, index + 1, issue.data, true);
             });
         }
@@ -881,47 +884,47 @@ addOverallScoreDisplay(scoreData) {
         const info = AUDIT_INFO[auditId];
         if (!info) return;
 
-        // Check if we need a new page
-        if (this.currentY > 650) {
+        // Check if we need a new page (reserve space for footer)
+        if (this.currentY > this.doc.page.height - 100) {
             this.addPage();
         }
 
         // Number and title
-        this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
+        this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
             .text(`${number}. ${info.title}`, this.margin, this.currentY);
-        this.currentY += 18;
+        this.currentY += 22;
 
         if (!isCompact) {
             // Issue
             const issueDesc = this.getIssueDescription(auditId, auditData);
-            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+            this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
                 .text('Issue: ', this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
                 .text(issueDesc, { width: this.pageWidth - this.margin });
             this.currentY += this.doc.heightOfString(issueDesc, 
-                { width: this.pageWidth - this.margin }) + 15;
+                { width: this.pageWidth - this.margin }) + 18;
 
             // Why it matters
-            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+            this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
                 .text('Why it matters: ', this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
                 .text(info.why, { width: this.pageWidth - this.margin });
             this.currentY += this.doc.heightOfString(info.why, 
-                { width: this.pageWidth - this.margin }) + 15;
+                { width: this.pageWidth - this.margin }) + 18;
 
             // Recommendation
-            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+            this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
                 .text('Recommendation: ', this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
                 .text(info.recommendation, { width: this.pageWidth - this.margin });
             this.currentY += this.doc.heightOfString(info.recommendation, 
-                { width: this.pageWidth - this.margin }) + 20;
+                { width: this.pageWidth - this.margin }) + 25;
         } else {
-            // Compact version for medium priority
-            this.doc.fontSize(9).font('RegularFont').fillColor('#2C3E50')
+            // Compact version for medium and low priority
+            this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
                 .text(info.recommendation, this.margin, this.currentY, { width: this.pageWidth });
             this.currentY += this.doc.heightOfString(info.recommendation, 
-                { width: this.pageWidth }) + 15;
+                { width: this.pageWidth }) + 20;
         }
     }
 
@@ -990,7 +993,8 @@ addOverallScoreDisplay(scoreData) {
                     this.margin, this.currentY, { width: this.pageWidth });
         } else {
             strengths.forEach(strength => {
-                if (this.currentY > 700) {
+                // Check if we need a new page (reserve space for footer)
+                if (this.currentY > this.doc.page.height - 80) {
                     this.addPage();
                 }
 
@@ -1281,7 +1285,8 @@ addOverallScoreDisplay(scoreData) {
                 return; // Skip this audit entirely
             }
             
-            if (index > 0 && this.currentY > 650) {
+            // Check if we need a new page (reserve space for footer)
+            if (index > 0 && this.currentY > this.doc.page.height - 100) {
                 this.addPage();
             }
 
@@ -1356,8 +1361,8 @@ addOverallScoreDisplay(scoreData) {
 
             const categoryAudits = categories[categoryName];
             
-            // Check if we need a new page
-            if (this.currentY > 650) {
+            // Check if we need a new page (reserve space for footer)
+            if (this.currentY > this.doc.page.height - 100) {
                 this.addPage();
             }
 
@@ -1450,15 +1455,14 @@ addOverallScoreDisplay(scoreData) {
                 }
 
                 // Calculate row height based on details text and component name
-                // Use the same parameters as actual text rendering for accurate calculation
+                // IMPORTANT: Set font size first for accurate height calculation
+                this.doc.fontSize(11).font('RegularFont');
                 const detailsHeight = this.doc.heightOfString(details, { 
-                    width: colWidths[4] - 10, 
-                    fontSize: 11,
+                    width: colWidths[4] - 10,
                     lineGap: 1
                 });
                 const componentNameHeight = this.doc.heightOfString(audit.info.title, {
                     width: colWidths[0] - 10,
-                    fontSize: 11,
                     lineGap: 1
                 });
                 // Add generous padding: 6px top (tableY + 6) + text height + 10px bottom padding for safety
@@ -1466,8 +1470,9 @@ addOverallScoreDisplay(scoreData) {
                 const calculatedHeight = Math.max(detailsHeight, componentNameHeight) + 16;
                 const rowHeight = Math.max(rowMinHeight, calculatedHeight);
 
-                // Check if we need a new page (use consistent margin check)
-                const pageBottom = this.doc.page.height - this.margin;
+                // Check if we need a new page (reserve space for footer at bottom)
+                // Footer is at pageHeight - 30, so content should stop at pageHeight - 80 (50px buffer for footer)
+                const pageBottom = this.doc.page.height - 80;
                 if (tableY + rowHeight > pageBottom) {
                     this.addPage();
                     
@@ -1576,8 +1581,8 @@ addOverallScoreDisplay(scoreData) {
             const column = cardIndex % 2;
             const cardX = this.margin + (column * (cardWidth + cardGap));
             
-            // Check if we need a new page
-            if (this.currentY > 650) {
+            // Check if we need a new page (reserve space for footer)
+            if (this.currentY > this.doc.page.height - 100) {
                 this.addPage();
                 cardIndex = 0;
             }
@@ -1594,10 +1599,10 @@ addOverallScoreDisplay(scoreData) {
             
             // Calculate actual card height based on text wrapping
             let totalAuditHeight = 0;
+            this.doc.fontSize(10).font('RegularFont'); // Set font for accurate height calculation
             categoryAudits.forEach(audit => {
                 const textHeight = this.doc.heightOfString(audit.info.title, { 
-                    width: textWidth, 
-                    fontSize: 10,
+                    width: textWidth,
                     lineGap: 2 
                 });
                 const auditItemHeight = Math.max(textHeight + 4, badgeHeight + 4); // At least badge height + padding
@@ -1639,9 +1644,9 @@ addOverallScoreDisplay(scoreData) {
                 }
                 
                 // Calculate text height for this specific audit title
+                this.doc.fontSize(10).font('RegularFont'); // Set font for accurate height
                 const textHeight = this.doc.heightOfString(audit.info.title, { 
-                    width: textWidth, 
-                    fontSize: 10,
+                    width: textWidth,
                     lineGap: 2 
                 });
                 const auditItemHeight = Math.max(textHeight + 4, badgeHeight + 4);
@@ -1887,9 +1892,7 @@ addOverallScoreDisplay(scoreData) {
     for (let i = 0; i < items.length; i += itemsPerPage) {
         if (i > 0) {
             this.addPage();
-            const headerText = isAppendixMode ? info.title + ' (Continued)' : 'Detailed Findings - Continued';
-            this.doc.fontSize(12).font('BoldFont').fillColor(isAppendixMode ? '#2C5F9C' : '#3B82F6').text(headerText, this.margin, this.currentY);
-            this.currentY += 25;
+            // Removed "Detailed Findings - Continued" heading
         }
         this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
     }
@@ -1967,7 +1970,8 @@ addOverallScoreDisplay(scoreData) {
         const headerHeight = 35;
         const rowHeight = 28;
         const colWidths = [300, 75, 70, 70]; // Audit Component, Score, Weight, Weighted
-        const pageBottom = this.doc.page.height - this.margin; // Calculate once for the function
+        // Reserve space for footer at bottom (footer at pageHeight - 30, content stops at pageHeight - 80)
+        const pageBottom = this.doc.page.height - 80;
         
         // Draw header with dark blue background
         this.doc.rect(this.margin, startY, this.pageWidth, headerHeight).fill('#3D5A80');
@@ -1981,7 +1985,8 @@ addOverallScoreDisplay(scoreData) {
             const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
             this.doc.text(header, xPos, startY + 10, { 
                 width: colWidths[index] - 20,
-                align: align
+                align: align,
+                lineBreak: false
             });
             currentX += colWidths[index];
         });
@@ -1991,9 +1996,10 @@ addOverallScoreDisplay(scoreData) {
         // Draw rows with alternating background
         items.forEach((item, rowIndex) => {
             // Calculate actual row height needed for Audit Component name FIRST
+            // Set font size before calculating height for accuracy
+            this.doc.fontSize(12).font('RegularFont');
             const componentNameHeight = this.doc.heightOfString(item.name, { 
-                width: colWidths[0] - 20,
-                fontSize: 12
+                width: colWidths[0] - 20
             });
             const actualRowHeight = Math.max(rowHeight, componentNameHeight + 12);
             
@@ -2119,7 +2125,8 @@ addOverallScoreDisplay(scoreData) {
         this.currentY = tableY + 15;
         
         // Check if final score text would exceed page bottom margin
-        const finalScoreTextHeight = this.doc.heightOfString('Final Score: 100.00 ÷ 100 = 100%', { fontSize: 11 });
+        this.doc.fontSize(11);
+        const finalScoreTextHeight = this.doc.heightOfString('Final Score: 100.00 ÷ 100 = 100%');
         if (this.currentY + finalScoreTextHeight > pageBottom) {
             this.addPage();
         }
@@ -2161,8 +2168,8 @@ addOverallScoreDisplay(scoreData) {
     const headerHeight = 35;
     let tableY = startY;
     const auditInfo = AUDIT_INFO[config.auditId];
-    // Calculate page bottom once - will be recalculated after page breaks
-    let pageBottom = this.doc.page.height - this.margin;
+    // Reserve space for footer at bottom (footer at pageHeight - 30, content stops at pageHeight - 80)
+    let pageBottom = this.doc.page.height - 80;
     
     // Draw header with light gray background
     this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
@@ -2207,13 +2214,12 @@ addOverallScoreDisplay(scoreData) {
         // Don't cap row height - allow full text to display
         const finalRowHeight = rowHeight;
         
-        // Check if row would exceed page bottom margin (with safety buffer)
+        // Check if row would exceed page bottom margin (with safety buffer for footer)
         // Recalculate pageBottom in case we're on a new page
-        pageBottom = this.doc.page.height - this.margin;
+        pageBottom = this.doc.page.height - 80;
         if (tableY + finalRowHeight > pageBottom) {
             this.addPage();
-            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings - Continued`, this.margin, this.currentY);
-            this.currentY += 25;
+            // Removed "Detailed Findings - Continued" heading
             tableY = this.currentY;
             
             // Redraw header on new page
@@ -2232,16 +2238,15 @@ addOverallScoreDisplay(scoreData) {
             tableY += headerHeight;
             this.doc.font('RegularFont').fontSize(12);
             // Recalculate pageBottom after adding new page
-            pageBottom = this.doc.page.height - this.margin;
+            pageBottom = this.doc.page.height - 80;
         }
         
         // Double-check that row won't exceed page bottom before drawing
-        pageBottom = this.doc.page.height - this.margin;
+        pageBottom = this.doc.page.height - 80;
         if (tableY + finalRowHeight > pageBottom) {
             // If somehow we still exceed, add a new page
             this.addPage();
-            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings - Continued`, this.margin, this.currentY);
-            this.currentY += 25;
+            // Removed "Detailed Findings - Continued" heading
             tableY = this.currentY;
             
             // Redraw header on new page
@@ -2259,7 +2264,7 @@ addOverallScoreDisplay(scoreData) {
             });
             tableY += headerHeight;
             this.doc.font('RegularFont').fontSize(12);
-            pageBottom = this.doc.page.height - this.margin;
+            pageBottom = this.doc.page.height - 80;
         }
         
         // White background for all rows
