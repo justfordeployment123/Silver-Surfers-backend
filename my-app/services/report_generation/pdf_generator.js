@@ -1441,21 +1441,33 @@ addOverallScoreDisplay(scoreData) {
             // Table headers - ensure total width doesn't exceed pageWidth (515)
             // Component (120), Rating (50), Actual (50), Standard (70), Details (225) = 515
             const colWidths = [120, 50, 50, 70, 225]; // Component, Rating, Actual, Standard, Details
-            const headerHeight = 40; // Consistent header height across all tables
             const rowMinHeight = 28;
+            
+            // Calculate header height dynamically based on text wrapping
+            this.doc.fontSize(12).font('BoldFont');
+            const headers = ['Component', 'Rating', 'Actual', 'Standard', 'Details'];
+            let maxHeaderHeight = 0;
+            headers.forEach((header, index) => {
+                const headerTextHeight = this.doc.heightOfString(header, { 
+                    width: colWidths[index] - 10,
+                    lineGap: 2
+                });
+                if (headerTextHeight > maxHeaderHeight) {
+                    maxHeaderHeight = headerTextHeight;
+                }
+            });
+            // Add padding: 12px top + 12px bottom = 24px total padding
+            const headerHeight = Math.max(maxHeaderHeight + 24, 40);
             
             // Draw header background
             this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
             
             // Header text - all centered for consistency
-            const headers = ['Component', 'Rating', 'Actual', 'Standard', 'Details'];
             let currentX = this.margin;
-            
-            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
+            this.doc.fillColor('#FFFFFF');
             headers.forEach((header, index) => {
-                // Center all headers vertically and horizontally
-                const xPos = currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
-                this.doc.text(header, xPos, this.currentY + 12, {
+                // Center text horizontally using align: 'center' with column width
+                this.doc.text(header, currentX + 5, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), {
                     width: colWidths[index] - 10,
                     align: 'center'
                 });
@@ -1554,9 +1566,8 @@ addOverallScoreDisplay(scoreData) {
                     currentX = this.margin;
                     this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
                     headers.forEach((header, index) => {
-                        // Center all headers vertically and horizontally
-                        const xPos = currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
-                        this.doc.text(header, xPos, this.currentY + 12, {
+                        // Center text horizontally using align: 'center' with column width
+                        this.doc.text(header, currentX + 5, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), {
                             width: colWidths[index] - 10,
                             align: 'center'
                         });
@@ -2040,23 +2051,35 @@ addOverallScoreDisplay(scoreData) {
         if (!items || items.length === 0) return;
         
         const startY = this.currentY;
-        const headerHeight = 40; // Consistent header height across all tables
         const rowHeight = 28;
         const colWidths = [300, 75, 70, 70]; // Audit Component, Score, Weight, Weighted
         // Reserve space for footer at bottom (footer at pageHeight - 30, content stops at pageHeight - 80)
         const pageBottom = this.doc.page.height - 80;
         
+        // Calculate header height dynamically based on text wrapping
+        this.doc.font('BoldFont').fontSize(13);
+        const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
+        let maxHeaderHeight = 0;
+        headers.forEach((header, index) => {
+            const headerTextHeight = this.doc.heightOfString(header, { 
+                width: colWidths[index] - 20,
+                lineGap: 2
+            });
+            if (headerTextHeight > maxHeaderHeight) {
+                maxHeaderHeight = headerTextHeight;
+            }
+        });
+        // Add padding: 12px top + 12px bottom = 24px total padding
+        const headerHeight = Math.max(maxHeaderHeight + 24, 40);
+        
         // Draw header with dark blue background
         this.doc.rect(this.margin, startY, this.pageWidth, headerHeight).fill('#3D5A80');
-        this.doc.font('BoldFont').fontSize(13).fillColor('#FFFFFF');
+        this.doc.fillColor('#FFFFFF');
         
-        const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
         let currentX = this.margin;
-        
         headers.forEach((header, index) => {
-            // Center all headers vertically and horizontally
-            const xPos = currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
-            this.doc.text(header, xPos, startY + 12, { 
+            // Center text horizontally using align: 'center' with column width
+            this.doc.text(header, currentX + 10, startY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
                 width: colWidths[index] - 20,
                 align: 'center',
                 lineBreak: false
@@ -2084,9 +2107,8 @@ addOverallScoreDisplay(scoreData) {
                 this.doc.font('BoldFont').fontSize(13).fillColor('#FFFFFF');
                 currentX = this.margin;
                 headers.forEach((header, index) => {
-                    // Center all headers vertically and horizontally
-                    const xPos = currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
-                    this.doc.text(header, xPos, this.currentY + 12, { 
+                    // Center text horizontally using align: 'center' with column width
+                    this.doc.text(header, currentX + 10, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
                         width: colWidths[index] - 20,
                         align: 'center'
                     });
@@ -2155,11 +2177,10 @@ addOverallScoreDisplay(scoreData) {
             this.doc.font('BoldFont').fontSize(13).fillColor('#FFFFFF');
             currentX = this.margin;
             headers.forEach((header, index) => {
-                const align = index === 0 ? 'left' : 'center';
-                const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
-                this.doc.text(header, xPos, this.currentY + 10, { 
+                // Center text horizontally using align: 'center' with column width
+                this.doc.text(header, currentX + 10, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
                     width: colWidths[index] - 20,
-                    align: align
+                    align: 'center'
                 });
                 currentX += colWidths[index];
             });
@@ -2238,23 +2259,38 @@ addOverallScoreDisplay(scoreData) {
     }
     
     const startY = this.currentY;
-    const headerHeight = 40; // Increased from 35 to accommodate header text better
     let tableY = startY;
     const auditInfo = AUDIT_INFO[config.auditId];
     // Reserve space for footer at bottom (footer at pageHeight - 30, content stops at pageHeight - 80)
     let pageBottom = this.doc.page.height - 80;
     
+    // Calculate header height dynamically based on text wrapping
+    this.doc.font('BoldFont').fontSize(13);
+    let maxHeaderHeight = 0;
+    config.headers.forEach((header, index) => {
+        const cellPadding = 10;
+        const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
+        const headerTextHeight = this.doc.heightOfString(header, { 
+            width: availableWidth,
+            lineGap: 2
+        });
+        if (headerTextHeight > maxHeaderHeight) {
+            maxHeaderHeight = headerTextHeight;
+        }
+    });
+    // Add padding: 12px top + 12px bottom = 24px total padding
+    const headerHeight = Math.max(maxHeaderHeight + 24, 40);
+    
     // Draw header with light gray background
     this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
-    this.doc.font('BoldFont').fontSize(13).fillColor('#374151');
+    this.doc.fillColor('#374151');
     let currentX = this.margin;
     
     config.headers.forEach((header, index) => {
         const cellPadding = 10;
         const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-        // Center text vertically and horizontally in header
-        const xPos = currentX + (config.widths[index] / 2) - (this.doc.widthOfString(header) / 2);
-        this.doc.text(header, xPos, tableY + 12, { 
+        // Center text horizontally using align: 'center' with column width
+        this.doc.text(header, currentX + cellPadding, tableY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
             width: availableWidth, 
             align: 'center' 
         });
@@ -2304,9 +2340,8 @@ addOverallScoreDisplay(scoreData) {
             config.headers.forEach((header, index) => {
                 const cellPadding = 10;
                 const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-                // Center text vertically and horizontally in header
-                const xPos = currentX + (config.widths[index] / 2) - (this.doc.widthOfString(header) / 2);
-                this.doc.text(header, xPos, tableY + 12, { 
+                // Center text horizontally using align: 'center' with column width
+                this.doc.text(header, currentX + cellPadding, tableY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
                     width: availableWidth, 
                     align: 'center' 
                 });
@@ -2333,9 +2368,8 @@ addOverallScoreDisplay(scoreData) {
             config.headers.forEach((header, index) => {
                 const cellPadding = 10;
                 const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-                // Center text vertically and horizontally in header
-                const xPos = currentX + (config.widths[index] / 2) - (this.doc.widthOfString(header) / 2);
-                this.doc.text(header, xPos, tableY + 12, { 
+                // Center text horizontally using align: 'center' with column width
+                this.doc.text(header, currentX + cellPadding, tableY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
                     width: availableWidth, 
                     align: 'center' 
                 });
