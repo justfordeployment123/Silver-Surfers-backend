@@ -1648,20 +1648,6 @@ addOverallScoreDisplay(scoreData) {
             const column = cardIndex % 2;
             const cardX = this.margin + (column * (cardWidth + cardGap));
             
-            // Calculate card height (badge + text + padding)
-            const cardHeight = 20 + 15 + 15; // Badge + text + padding
-            const totalHeight = cardHeight + 10; // Add some margin
-            
-            // Check if card fits on current page (or if we need to start a new row)
-            if (column === 0) {
-                // First column - check if we need a new page
-                this.checkPageBreak(totalHeight);
-            } else if (this.currentY + totalHeight > this.doc.page.height - 80) {
-                // Second column but doesn't fit - move to next page
-                this.addPage();
-                cardIndex = 0;
-            }
-            
             const categoryAudits = categories[categoryName];
             
             // Score badge dimensions
@@ -1685,6 +1671,17 @@ addOverallScoreDisplay(scoreData) {
             });
             
             const cardHeight = 60 + totalAuditHeight; // Header + dynamic audit heights
+            const totalHeight = cardHeight + 10; // Add some margin for page break check
+            
+            // Check if card fits on current page (or if we need to start a new row)
+            if (column === 0) {
+                // First column - check if we need a new page
+                this.checkPageBreak(totalHeight);
+            } else if (this.currentY + totalHeight > this.doc.page.height - 80) {
+                // Second column but doesn't fit - move to next page
+                this.addPage();
+                cardIndex = 0;
+            }
             
             // Draw card background
             this.doc.roundedRect(cardX, this.currentY, cardWidth, cardHeight, 8)
