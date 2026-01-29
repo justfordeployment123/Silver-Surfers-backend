@@ -257,6 +257,16 @@ export class ElderlyAccessibilityPDFGenerator {
         this.currentY = this.margin;
     }
 
+    // Helper function to check if content fits on current page and add new page if needed
+    checkPageBreak(neededHeight) {
+        const pageBottom = this.doc.page.height - 80; // Reserve space for footer
+        if (this.currentY + neededHeight > pageBottom) {
+            this.addPage();
+            return true; // Page was added
+        }
+        return false; // No page break needed
+    }
+
     drawColorBar(category, y = null) {
         if (y !== null) this.currentY = y;
         const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS['Technical Accessibility'];
@@ -278,13 +288,25 @@ export class ElderlyAccessibilityPDFGenerator {
     }
 
     addHeading(text, fontSize = 16, color = '#34495E') {
+        const headingHeight = fontSize + 12;
+        
+        // Check if heading fits on current page
+        this.checkPageBreak(headingHeight);
+        
         this.doc.fontSize(fontSize).font('BoldFont').fillColor(color).text(text, this.margin, this.currentY, { width: this.pageWidth });
-        this.currentY += fontSize + 12;
+        this.currentY += headingHeight;
     }
 
     addBodyText(text, fontSize = 11, color = '#2C3E50') {
-        this.doc.fontSize(fontSize).font('RegularFont').fillColor(color).text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'justify', lineGap: 3 });
-        this.currentY += this.doc.heightOfString(text, { width: this.pageWidth, lineGap: 3 }) + 12;
+        // Set font size before calculating height
+        this.doc.fontSize(fontSize);
+        const textHeight = this.doc.heightOfString(text, { width: this.pageWidth, lineGap: 3 }) + 12;
+        
+        // Check if text fits on current page
+        this.checkPageBreak(textHeight);
+        
+        this.doc.font('RegularFont').fillColor(color).text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'justify', lineGap: 3 });
+        this.currentY += textHeight;
     }
 
     addScoreBar(score, label) {
@@ -828,10 +850,18 @@ addOverallScoreDisplay(scoreData) {
 
         // Medium Priority Section
         if (mediumIssues.length > 0) {
-            // Check if we need a new page (reserve space for footer)
-            if (this.currentY > this.doc.page.height - 100) {
-                this.addPage();
-            }
+            // Calculate height needed: icon + heading + items
+            const sectionHeaderHeight = 35;
+            const itemsHeight = mediumIssues.slice(0, 3).reduce((total, issue) => {
+                this.doc.fontSize(11);
+                const info = AUDIT_INFO[issue.id];
+                if (!info) return total;
+                return total + this.doc.heightOfString(info.recommendation, { width: this.pageWidth }) + 20;
+            }, 0);
+            const totalHeight = sectionHeaderHeight + itemsHeight;
+            
+            // Check if entire section fits on current page
+            this.checkPageBreak(totalHeight);
 
             const iconRadius = 12;
             const iconX = this.margin + iconRadius;
@@ -851,10 +881,19 @@ addOverallScoreDisplay(scoreData) {
 
         // Low Priority Section (optional, if there are any low priority items)
         if (lowIssues.length > 0) {
-            // Check if we need a new page (reserve space for footer)
-            if (this.currentY > this.doc.page.height - 100) {
-                this.addPage();
-            }
+            // Calculate height needed: icon + heading + items (no description text)
+            const sectionHeaderHeight = 25;
+            const itemsToShow = Math.min(lowIssues.length, 10);
+            const itemsHeight = lowIssues.slice(0, itemsToShow).reduce((total, issue) => {
+                this.doc.fontSize(11);
+                const info = AUDIT_INFO[issue.id];
+                if (!info) return total;
+                return total + this.doc.heightOfString(info.recommendation, { width: this.pageWidth }) + 20;
+            }, 0);
+            const totalHeight = sectionHeaderHeight + itemsHeight;
+            
+            // Check if entire section fits on current page
+            this.checkPageBreak(totalHeight);
 
             const iconRadius = 12;
             const iconX = this.margin + iconRadius;
@@ -867,13 +906,7 @@ addOverallScoreDisplay(scoreData) {
                 .text('Low Priority (Minor Improvements)', this.margin + 32, this.currentY);
             this.currentY += 25;
             
-            this.doc.fontSize(12).font('RegularFont').fillColor('#2C3E50')
-                .text(`${lowIssues.length} items are performing well with only minor improvements needed.`,
-                    this.margin, this.currentY, { width: this.pageWidth });
-            this.currentY += 30;
-            
             // Display all low priority items (or up to 10 to keep report manageable)
-            const itemsToShow = Math.min(lowIssues.length, 10);
             lowIssues.slice(0, itemsToShow).forEach((issue, index) => {
                 this.addRecommendationItem(issue.id, index + 1, issue.data, true);
             });
@@ -884,15 +917,34 @@ addOverallScoreDisplay(scoreData) {
         const info = AUDIT_INFO[auditId];
         if (!info) return;
 
-        // Check if we need a new page (reserve space for footer)
-        if (this.currentY > this.doc.page.height - 100) {
-            this.addPage();
+        // Calculate total height needed for this item BEFORE adding it
+        this.doc.fontSize(13); // Set font size for title height calculation
+        const titleHeight = 22;
+        
+        let totalHeight = titleHeight;
+        
+        if (!isCompact) {
+            // Calculate heights for full version
+            const issueDesc = this.getIssueDescription(auditId, auditData);
+            this.doc.fontSize(11);
+            const issueHeight = this.doc.heightOfString(issueDesc, { width: this.pageWidth - this.margin }) + 18;
+            const whyHeight = this.doc.heightOfString(info.why, { width: this.pageWidth - this.margin }) + 18;
+            const recommendationHeight = this.doc.heightOfString(info.recommendation, { width: this.pageWidth - this.margin }) + 25;
+            totalHeight += issueHeight + whyHeight + recommendationHeight;
+        } else {
+            // Calculate height for compact version
+            this.doc.fontSize(11);
+            const recommendationHeight = this.doc.heightOfString(info.recommendation, { width: this.pageWidth }) + 20;
+            totalHeight += recommendationHeight;
         }
+
+        // Check if entire item fits on current page
+        this.checkPageBreak(totalHeight);
 
         // Number and title
         this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
             .text(`${number}. ${info.title}`, this.margin, this.currentY);
-        this.currentY += 22;
+        this.currentY += titleHeight;
 
         if (!isCompact) {
             // Issue
@@ -993,10 +1045,16 @@ addOverallScoreDisplay(scoreData) {
                     this.margin, this.currentY, { width: this.pageWidth });
         } else {
             strengths.forEach(strength => {
-                // Check if we need a new page (reserve space for footer)
-                if (this.currentY > this.doc.page.height - 80) {
-                    this.addPage();
-                }
+                // Calculate full item height including title and description
+                const description = this.getStrengthDescription(strength.id, strength.score);
+                this.doc.fontSize(11);
+                const titleHeight = 20;
+                this.doc.fontSize(9);
+                const descriptionHeight = this.doc.heightOfString(description, { width: this.pageWidth }) + 15;
+                const fullItemHeight = titleHeight + descriptionHeight;
+                
+                // Check if full item fits on current page
+                this.checkPageBreak(fullItemHeight);
 
                 // Green circle (no character)
                 const checkRadius = 10;
@@ -1009,10 +1067,9 @@ addOverallScoreDisplay(scoreData) {
                 this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
                     .text(`${strength.info.title} (${strength.score}%)`, 
                         this.margin + 28, this.currentY);
-                this.currentY += 20;
+                this.currentY += titleHeight;
 
                 // Description
-                const description = this.getStrengthDescription(strength.id, strength.score);
                 this.doc.fontSize(9).font('RegularFont').fillColor('#2C3E50')
                     .text(description, this.margin, this.currentY, { 
                         width: this.pageWidth,
@@ -1285,9 +1342,15 @@ addOverallScoreDisplay(scoreData) {
                 return; // Skip this audit entirely
             }
             
-            // Check if we need a new page (reserve space for footer)
-            if (index > 0 && this.currentY > this.doc.page.height - 100) {
-                this.addPage();
+            // Calculate height needed: heading + content
+            const headingHeight = 20;
+            // Estimate content height (will be calculated more precisely in drawEnhancedTable)
+            const estimatedContentHeight = 100; // Conservative estimate
+            const totalHeight = headingHeight + estimatedContentHeight;
+            
+            // Check if section fits on current page (only check after first item)
+            if (index > 0) {
+                this.checkPageBreak(totalHeight);
             }
 
             // Audit name as section heading
@@ -1295,7 +1358,7 @@ addOverallScoreDisplay(scoreData) {
             if (info) {
                 this.doc.fontSize(12).font('BoldFont').fillColor('#2C5F9C')
                     .text(info.title, this.margin, this.currentY);
-                this.currentY += 20;
+                this.currentY += headingHeight;
             }
 
             // Add the table for this audit
@@ -1361,10 +1424,14 @@ addOverallScoreDisplay(scoreData) {
 
             const categoryAudits = categories[categoryName];
             
-            // Check if we need a new page (reserve space for footer)
-            if (this.currentY > this.doc.page.height - 100) {
-                this.addPage();
-            }
+            // Calculate height needed: heading + table
+            const headingHeight = 25;
+            // Estimate table height (will be calculated more precisely in drawCategoryTables)
+            const estimatedTableHeight = 150; // Conservative estimate for a few rows
+            const totalHeight = headingHeight + estimatedTableHeight;
+            
+            // Check if category section fits on current page
+            this.checkPageBreak(totalHeight);
 
             // Category heading
             this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
@@ -1581,8 +1648,16 @@ addOverallScoreDisplay(scoreData) {
             const column = cardIndex % 2;
             const cardX = this.margin + (column * (cardWidth + cardGap));
             
-            // Check if we need a new page (reserve space for footer)
-            if (this.currentY > this.doc.page.height - 100) {
+            // Calculate card height (badge + text + padding)
+            const cardHeight = 20 + 15 + 15; // Badge + text + padding
+            const totalHeight = cardHeight + 10; // Add some margin
+            
+            // Check if card fits on current page (or if we need to start a new row)
+            if (column === 0) {
+                // First column - check if we need a new page
+                this.checkPageBreak(totalHeight);
+            } else if (this.currentY + totalHeight > this.doc.page.height - 80) {
+                // Second column but doesn't fit - move to next page
                 this.addPage();
                 cardIndex = 0;
             }
