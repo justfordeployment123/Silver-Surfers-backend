@@ -1440,9 +1440,9 @@ addOverallScoreDisplay(scoreData) {
             this.currentY += 25;
 
             // Table headers - ensure total width doesn't exceed pageWidth (515)
-            // Component (110), Rating (70), Actual (50), Standard (70), Details (215) = 515
-            // Increased Rating from 50 to 70 to prevent "Needs Improvement" from wrapping
-            const colWidths = [110, 70, 50, 70, 215]; // Component, Rating, Actual, Standard, Details
+            // Component (100), Rating (85), Actual (50), Standard (70), Details (210) = 515
+            // Increased Rating from 70 to 85 to ensure "Needs Improvement" fits on one line
+            const colWidths = [100, 85, 50, 70, 210]; // Component, Rating, Actual, Standard, Details
             const rowMinHeight = 28;
             
             // Calculate header height dynamically based on text wrapping
@@ -1597,7 +1597,9 @@ addOverallScoreDisplay(scoreData) {
 
                 // Rating (colored) - prevent wrapping by using non-breaking space and ensuring single line
                 const ratingText = rating === 'Needs Improvement' ? 'Needs\u00A0Improvement' : rating;
-                this.doc.fontSize(11).font('BoldFont').fillColor(ratingColor)
+                // Use smaller font size for "Needs Improvement" if needed to fit on one line
+                const ratingFontSize = rating === 'Needs Improvement' ? 10 : 11;
+                this.doc.fontSize(ratingFontSize).font('BoldFont').fillColor(ratingColor)
                     .text(ratingText, currentX + 5, tableY + 6, {
                         width: colWidths[1] - 10,
                         align: 'center',
