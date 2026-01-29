@@ -1441,25 +1441,23 @@ addOverallScoreDisplay(scoreData) {
             // Table headers - ensure total width doesn't exceed pageWidth (515)
             // Component (120), Rating (50), Actual (50), Standard (70), Details (225) = 515
             const colWidths = [120, 50, 50, 70, 225]; // Component, Rating, Actual, Standard, Details
-            const headerHeight = 30;
+            const headerHeight = 40; // Consistent header height across all tables
             const rowMinHeight = 28;
             
             // Draw header background
             this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
             
-            // Header text
+            // Header text - all centered for consistency
             const headers = ['Component', 'Rating', 'Actual', 'Standard', 'Details'];
             let currentX = this.margin;
             
-            this.doc.fontSize(9).font('BoldFont').fillColor('#FFFFFF');
+            this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
             headers.forEach((header, index) => {
-                const align = index === headers.length - 1 ? 'left' : 'center';
-                const xPos = align === 'center' 
-                    ? currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2)
-                    : currentX + 5;
-                this.doc.text(header, xPos, this.currentY + 8, {
+                // Center all headers vertically and horizontally
+                const xPos = currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                this.doc.text(header, xPos, this.currentY + 12, {
                     width: colWidths[index] - 10,
-                    align: align
+                    align: 'center'
                 });
                 currentX += colWidths[index];
             });
@@ -1556,13 +1554,11 @@ addOverallScoreDisplay(scoreData) {
                     currentX = this.margin;
                     this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
                     headers.forEach((header, index) => {
-                        const align = index === headers.length - 1 ? 'left' : 'center';
-                        const xPos = align === 'center' 
-                            ? currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2)
-                            : currentX + 5;
-                        this.doc.text(header, xPos, this.currentY + 8, {
+                        // Center all headers vertically and horizontally
+                        const xPos = currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                        this.doc.text(header, xPos, this.currentY + 12, {
                             width: colWidths[index] - 10,
-                            align: align
+                            align: 'center'
                         });
                         currentX += colWidths[index];
                     });
@@ -2044,7 +2040,7 @@ addOverallScoreDisplay(scoreData) {
         if (!items || items.length === 0) return;
         
         const startY = this.currentY;
-        const headerHeight = 35;
+        const headerHeight = 40; // Consistent header height across all tables
         const rowHeight = 28;
         const colWidths = [300, 75, 70, 70]; // Audit Component, Score, Weight, Weighted
         // Reserve space for footer at bottom (footer at pageHeight - 30, content stops at pageHeight - 80)
@@ -2058,11 +2054,11 @@ addOverallScoreDisplay(scoreData) {
         let currentX = this.margin;
         
         headers.forEach((header, index) => {
-            const align = index === 0 ? 'left' : 'center';
-            const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
-            this.doc.text(header, xPos, startY + 10, { 
+            // Center all headers vertically and horizontally
+            const xPos = currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+            this.doc.text(header, xPos, startY + 12, { 
                 width: colWidths[index] - 20,
-                align: align,
+                align: 'center',
                 lineBreak: false
             });
             currentX += colWidths[index];
@@ -2088,11 +2084,11 @@ addOverallScoreDisplay(scoreData) {
                 this.doc.font('BoldFont').fontSize(13).fillColor('#FFFFFF');
                 currentX = this.margin;
                 headers.forEach((header, index) => {
-                    const align = index === 0 ? 'left' : 'center';
-                    const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
-                    this.doc.text(header, xPos, this.currentY + 10, { 
+                    // Center all headers vertically and horizontally
+                    const xPos = currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                    this.doc.text(header, xPos, this.currentY + 12, { 
                         width: colWidths[index] - 20,
-                        align: align
+                        align: 'center'
                     });
                     currentX += colWidths[index];
                 });
@@ -2256,10 +2252,11 @@ addOverallScoreDisplay(scoreData) {
     config.headers.forEach((header, index) => {
         const cellPadding = 10;
         const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-        // Center text vertically in header (headerHeight / 2 - font size / 2 ≈ 12-13px from top)
-        this.doc.text(header, currentX + cellPadding, tableY + 12, { 
+        // Center text vertically and horizontally in header
+        const xPos = currentX + (config.widths[index] / 2) - (this.doc.widthOfString(header) / 2);
+        this.doc.text(header, xPos, tableY + 12, { 
             width: availableWidth, 
-            align: 'left' 
+            align: 'center' 
         });
         currentX += config.widths[index];
     });
@@ -2307,10 +2304,11 @@ addOverallScoreDisplay(scoreData) {
             config.headers.forEach((header, index) => {
                 const cellPadding = 10;
                 const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-                // Center text vertically in header (headerHeight / 2 - font size / 2 ≈ 12-13px from top)
-                this.doc.text(header, currentX + cellPadding, tableY + 12, { 
+                // Center text vertically and horizontally in header
+                const xPos = currentX + (config.widths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                this.doc.text(header, xPos, tableY + 12, { 
                     width: availableWidth, 
-                    align: 'left' 
+                    align: 'center' 
                 });
                 currentX += config.widths[index];
             });
@@ -2335,10 +2333,11 @@ addOverallScoreDisplay(scoreData) {
             config.headers.forEach((header, index) => {
                 const cellPadding = 10;
                 const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-                // Center text vertically in header (headerHeight / 2 - font size / 2 ≈ 12-13px from top)
-                this.doc.text(header, currentX + cellPadding, tableY + 12, { 
+                // Center text vertically and horizontally in header
+                const xPos = currentX + (config.widths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                this.doc.text(header, xPos, tableY + 12, { 
                     width: availableWidth, 
-                    align: 'left' 
+                    align: 'center' 
                 });
                 currentX += config.widths[index];
             });
