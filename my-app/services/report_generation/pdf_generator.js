@@ -259,7 +259,8 @@ export class ElderlyAccessibilityPDFGenerator {
 
     // Helper function to check if content fits on current page and add new page if needed
     checkPageBreak(neededHeight) {
-        const pageBottom = this.doc.page.height - 80; // Reserve space for footer
+        // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
+        const pageBottom = this.doc.page.height - 50;
         if (this.currentY + neededHeight > pageBottom) {
             this.addPage();
             return true; // Page was added
@@ -1553,8 +1554,8 @@ addOverallScoreDisplay(scoreData) {
                 const rowHeight = Math.max(rowMinHeight, calculatedHeight);
 
                 // Check if we need a new page (reserve space for footer at bottom)
-                // Footer is at pageHeight - 30, so content should stop at pageHeight - 80 (50px buffer for footer)
-                const pageBottom = this.doc.page.height - 80;
+                // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
+                const pageBottom = this.doc.page.height - 50;
                 if (tableY + rowHeight > pageBottom) {
                     this.addPage();
                     
@@ -1961,7 +1962,12 @@ addOverallScoreDisplay(scoreData) {
         // In appendix mode, don't add heading (it's already added by addAppendix)
         // In non-appendix mode, check if we need a new page and add heading
         if (!isAppendixMode) {
-        const needsNewPage = this.currentY > 600;
+        // Check if we have enough space for header + at least one table row
+        // Footer is at pageHeight - 30, so we need to reserve ~100px (header + row + buffer)
+        const pageBottom = this.doc.page.height - 100;
+        const headerHeight = 25;
+        const minRowHeight = 40;
+        const needsNewPage = this.currentY + headerHeight + minRowHeight > pageBottom;
         
         if (needsNewPage) {
             this.addPage();
@@ -2054,9 +2060,11 @@ addOverallScoreDisplay(scoreData) {
         
         const startY = this.currentY;
         const rowHeight = 28;
-        const colWidths = [300, 75, 70, 70]; // Audit Component, Score, Weight, Weighted
-        // Reserve space for footer at bottom (footer at pageHeight - 30, content stops at pageHeight - 80)
-        const pageBottom = this.doc.page.height - 80;
+        // Adjusted column widths: Audit Component (290), Score (70), Weight (70), Weighted (85) = 515
+        // Increased Weighted from 70 to 85 to prevent "Weighted" from wrapping
+        const colWidths = [290, 70, 70, 85]; // Audit Component, Score, Weight, Weighted
+        // Reserve space for footer at bottom (footer at pageHeight - 30, so reserve 50px)
+        const pageBottom = this.doc.page.height - 50;
         
         // Calculate header height dynamically based on text wrapping
         this.doc.font('BoldFont').fontSize(13);
@@ -2081,10 +2089,12 @@ addOverallScoreDisplay(scoreData) {
         let currentX = this.margin;
         headers.forEach((header, index) => {
             // Center text horizontally using align: 'center' with column width
+            // Use lineBreak: false for "Weighted" to ensure it stays on one line
+            const useLineBreak = header === 'Weighted' ? false : true;
             this.doc.text(header, currentX + 10, startY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
                 width: colWidths[index] - 20,
                 align: 'center',
-                lineBreak: false
+                lineBreak: useLineBreak
             });
             currentX += colWidths[index];
         });
@@ -2110,9 +2120,12 @@ addOverallScoreDisplay(scoreData) {
                 currentX = this.margin;
                 headers.forEach((header, index) => {
                     // Center text horizontally using align: 'center' with column width
+                    // Use lineBreak: false for "Weighted" to ensure it stays on one line
+                    const useLineBreak = header === 'Weighted' ? false : true;
                     this.doc.text(header, currentX + 10, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
                         width: colWidths[index] - 20,
-                        align: 'center'
+                        align: 'center',
+                        lineBreak: useLineBreak
                     });
                     currentX += colWidths[index];
                 });
@@ -2263,8 +2276,8 @@ addOverallScoreDisplay(scoreData) {
     const startY = this.currentY;
     let tableY = startY;
     const auditInfo = AUDIT_INFO[config.auditId];
-    // Reserve space for footer at bottom (footer at pageHeight - 30, content stops at pageHeight - 80)
-    let pageBottom = this.doc.page.height - 80;
+    // Reserve space for footer at bottom (footer at pageHeight - 30, so reserve 50px)
+    let pageBottom = this.doc.page.height - 50;
     
     // Calculate header height dynamically based on text wrapping
     this.doc.font('BoldFont').fontSize(13);
@@ -2328,8 +2341,9 @@ addOverallScoreDisplay(scoreData) {
         const finalRowHeight = rowHeight;
         
         // Check if row would exceed page bottom margin (with safety buffer for footer)
+        // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
         // Recalculate pageBottom in case we're on a new page
-        pageBottom = this.doc.page.height - 80;
+        pageBottom = this.doc.page.height - 50;
         if (tableY + finalRowHeight > pageBottom) {
             this.addPage();
             // Removed "Detailed Findings - Continued" heading
@@ -2352,34 +2366,7 @@ addOverallScoreDisplay(scoreData) {
             tableY += headerHeight;
             this.doc.font('RegularFont').fontSize(12);
             // Recalculate pageBottom after adding new page
-            pageBottom = this.doc.page.height - 80;
-        }
-        
-        // Double-check that row won't exceed page bottom before drawing
-        pageBottom = this.doc.page.height - 80;
-        if (tableY + finalRowHeight > pageBottom) {
-            // If somehow we still exceed, add a new page
-            this.addPage();
-            // Removed "Detailed Findings - Continued" heading
-            tableY = this.currentY;
-            
-            // Redraw header on new page
-            this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
-            this.doc.font('BoldFont').fontSize(13).fillColor('#374151');
-            currentX = this.margin;
-            config.headers.forEach((header, index) => {
-                const cellPadding = 10;
-                const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-                // Center text horizontally using align: 'center' with column width
-                this.doc.text(header, currentX + cellPadding, tableY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
-                    width: availableWidth, 
-                    align: 'center' 
-                });
-                currentX += config.widths[index];
-            });
-            tableY += headerHeight;
-            this.doc.font('RegularFont').fontSize(12);
-            pageBottom = this.doc.page.height - 80;
+            pageBottom = this.doc.page.height - 50;
         }
         
         // White background for all rows
