@@ -2277,12 +2277,6 @@ addOverallScoreDisplay(scoreData) {
         
         rowData.forEach((cellValue, colIndex) => {
             const cellWidth = config.widths[colIndex] - 20;
-            // Use smaller font size for Element and Location columns to reduce row height
-            const headerName = config.headers[colIndex]?.toLowerCase() || '';
-            const isSelectorColumn = headerName.includes('element') || headerName.includes('location');
-            const fontSize = isSelectorColumn ? 9 : 12; // Smaller font for selectors
-            
-            this.doc.fontSize(fontSize);
             // Calculate height using same parameters as text rendering (lineGap: 2)
             const cellHeight = this.doc.heightOfString(cellValue, { 
                 width: cellWidth,
@@ -2294,8 +2288,8 @@ addOverallScoreDisplay(scoreData) {
         });
         
         // Add padding (10px top + 10px bottom) and ensure minimum row height
-        // Cap maximum row height to prevent single rows from dominating the page (max 150px)
-        const rowHeight = Math.min(Math.max(maxRowHeight + 20, 40), 150);
+        const rowHeight = Math.max(maxRowHeight + 20, 40);
+        // Don't cap row height - allow full text to display
         const finalRowHeight = rowHeight;
         
         // Check if row would exceed page bottom margin (with safety buffer for footer)
@@ -2363,13 +2357,8 @@ addOverallScoreDisplay(scoreData) {
             const cellPadding = 10;
             const availableWidth = Math.max(config.widths[colIndex] - (cellPadding * 2), 20);
             
-            // Use smaller font size for Element and Location columns (selectors)
-            const headerName = config.headers[colIndex]?.toLowerCase() || '';
-            const isSelectorColumn = headerName.includes('element') || headerName.includes('location');
-            const fontSize = isSelectorColumn ? 9 : 12; // Smaller font for selectors
-            
-            // Draw text with appropriate font size
-            this.doc.fontSize(fontSize).fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
+            // Draw text without height constraint - row height was already calculated to fit all text
+            this.doc.fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
                 width: availableWidth,
                 lineGap: 2,
                 align: 'left',
@@ -2377,9 +2366,6 @@ addOverallScoreDisplay(scoreData) {
             });
             currentX += config.widths[colIndex];
         });
-        
-        // Reset font size to default for next row
-        this.doc.fontSize(12);
         
         // Draw light bottom border for the row
         this.doc.moveTo(this.margin, tableY + finalRowHeight)
