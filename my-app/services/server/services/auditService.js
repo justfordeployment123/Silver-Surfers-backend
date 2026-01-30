@@ -257,74 +257,102 @@ async function mergePDFsByPlatform(options) {
     : 0;
   const isPassing = avgScore >= 80;
 
-  // New cover page design - simple and clean
-  const pageHeight = coverDoc.page.height;
-  const pageWidth = coverDoc.page.width;
-  
-  // Draw thin gray border around the page
-  coverDoc.rect(10, 10, pageWidth - 20, pageHeight - 20)
-    .strokeColor('#CCCCCC')
-    .lineWidth(1)
-    .stroke();
+  // Cover page content matching individual report format
+  coverY = 80;
+  coverDoc.fontSize(32).font('BoldFont').fillColor('#2C5F9C')
+    .text(siteName, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 50;
 
-  // Main title - 4 lines, large bold black text, centered
-  coverY = pageHeight / 2 - 120; // Center vertically, adjusted for 4 lines
-  coverDoc.fontSize(48).font('BoldFont').fillColor('#000000')
-    .text('SilverSurfers', coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 60;
-  
-  coverDoc.fontSize(48).font('BoldFont').fillColor('#000000')
-    .text('Website', coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 60;
-  
-  coverDoc.fontSize(48).font('BoldFont').fillColor('#000000')
-    .text('Accessibility', coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 60;
-  
-  coverDoc.fontSize(48).font('BoldFont').fillColor('#000000')
-    .text('Audit Report', coverMargin, coverY, { width: coverWidth, align: 'center' });
+  // Determine package type display text
+  let packageText = 'Pro';
+  if (planType && typeof planType === 'string') {
+    if (planType.toLowerCase().includes('starter')) packageText = 'Starter';
+    else if (planType.toLowerCase().includes('onetime') || planType === 'oneTime') packageText = 'One-Time';
+    else if (planType.toLowerCase().includes('pro')) packageText = 'Pro';
+  }
 
-  // Bottom left: "Prepared for" / [Website] / "on [Date]"
-  const bottomY = pageHeight - 80;
-  coverDoc.fontSize(11).font('RegularFont').fillColor('#000000')
-    .text('Prepared for', coverMargin + 40, bottomY);
+  coverDoc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
+    .text(`Website Accessibility Audit Report – (${deviceCapitalized})`, coverMargin, coverY, 
+      { width: coverWidth, align: 'center' });
+  coverY += 25;
   
-  coverDoc.fontSize(11).font('BoldFont').fillColor('#000000')
-    .text(`[${siteName}]`, coverMargin + 40, bottomY + 18);
-  
+  // Package type indicator
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#3498DB')
+    .text(`${packageText} Package`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 30;
+
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#7F8C8D')
+    .text(baseUrl, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 25;
+
   const genDate = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', month: 'long', day: 'numeric' 
   });
-  coverDoc.fontSize(11).font('RegularFont').fillColor('#000000')
-    .text(`on [${genDate}]`, coverMargin + 40, bottomY + 36);
+  coverDoc.fontSize(10).font('RegularFont').fillColor('#95A5A6')
+    .text(`Generated: ${genDate}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
+  coverY += 60;
 
-  // Bottom right: Logo
-  // Logo is located at: backend-silver-surfers/assets/Logo.png
-  try {
-    // Try multiple possible logo paths
-    const possiblePaths = [
-      path.join(__dirname, '../../../assets/Logo.png'), // From services/server/services/ -> ../../../assets/Logo.png
-      path.join(process.cwd(), 'assets', 'Logo.png'),
-      path.join(process.cwd(), 'backend-silver-surfers', 'assets', 'Logo.png')
-    ];
-    
-    let logoPath = null;
-    for (const testPath of possiblePaths) {
-      if (fsSync.existsSync(testPath)) {
-        logoPath = testPath;
-        break;
-      }
-    }
-    
-    if (logoPath) {
-      const logoSize = 80;
-      const logoX = pageWidth - coverMargin - 40 - logoSize;
-      const logoY = bottomY;
-      coverDoc.image(logoPath, logoX, logoY, { width: logoSize, height: logoSize });
-    }
-  } catch (e) {
-    console.warn('Could not load logo for combined report cover page:', e.message);
+  // Overall Accessibility Score box
+  const scoreBoxHeight = 160;
+  const scoreBoxY = coverY;
+  
+  coverDoc.rect(coverMargin + 50, scoreBoxY, coverWidth - 100, scoreBoxHeight)
+    .strokeColor('#E8D5D0')
+    .lineWidth(2)
+    .stroke();
+  
+  coverDoc.rect(coverMargin + 50, scoreBoxY, coverWidth - 100, scoreBoxHeight)
+    .fillOpacity(0.3)
+    .fill('#FCF3EF')
+    .fillOpacity(1);
+
+  coverDoc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
+    .text(`Overall Accessibility Score (${deviceCapitalized})`, coverMargin + 70, scoreBoxY + 20, 
+      { width: coverWidth - 140, align: 'center' });
+
+  // Three-tier color system
+  let scoreColor;
+  const roundedScore = Math.round(avgScore);
+  if (roundedScore >= 80) {
+    scoreColor = '#28A745'; // Green for Pass
+  } else if (roundedScore >= 70) {
+    scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement
+  } else {
+    scoreColor = '#DC3545'; // Red for Fail
   }
+  
+  coverDoc.fontSize(72).font('BoldFont').fillColor(scoreColor)
+    .text(`${roundedScore}%`, coverMargin + 70, scoreBoxY + 50, 
+      { width: coverWidth - 140, align: 'center' });
+
+  if (!isPassing) {
+    coverDoc.fontSize(12).font('BoldFont').fillColor('#C0392B')
+      .text('WARNING: Below Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
+        { width: coverWidth - 140, align: 'center' });
+    coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
+      .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
+        { width: coverWidth - 140, align: 'center' });
+  } else {
+    coverDoc.fontSize(12).font('BoldFont').fillColor('#27AE60')
+      .text('PASS: Meets Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
+        { width: coverWidth - 140, align: 'center' });
+    coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
+      .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
+        { width: coverWidth - 140, align: 'center' });
+  }
+
+  coverY = scoreBoxY + scoreBoxHeight + 30;
+
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+    .text(`Report prepared for: ${email_address}`, coverMargin + 60, coverY);
+  coverY += 25;
+
+  // Show pages audited count only (no page names)
+  coverDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+    .text(`Pages audited: ${reports.length}`, coverMargin + 60, coverY, { width: coverWidth - 120 });
+  
+  // Add footer to cover page (page 1)
+  addFooterToPDFDoc(coverDoc, 1);
   
   coverDoc.end();
   
@@ -403,18 +431,15 @@ async function mergePDFsByPlatform(options) {
     const score = report.score !== null && report.score !== undefined ? `${Math.round(report.score)}%` : 'N/A';
     const startPage = currentPageNumber;
     
-    // Adjust page count: subtract 1 to account for skipping the cover page when merging
-    const actualPageCount = Math.max(1, pageCounts[i] - 1);
-    
     tocEntries.push({
       pageName,
       score,
       startPage,
-      pageCount: actualPageCount
+      pageCount: pageCounts[i]
     });
     
-    // Move to next report's starting page (using actual page count without cover)
-    currentPageNumber += actualPageCount;
+    // Move to next report's starting page
+    currentPageNumber += pageCounts[i];
   }
   
   // STEP 2: Create cover page
@@ -551,16 +576,14 @@ async function mergePDFsByPlatform(options) {
       const pdfDoc = await PDFLib.load(pdfBytes);
       const pageCount = pdfDoc.getPageCount();
       
-      // Skip the first page (cover page) when merging - only copy pages 1 onwards
-      // The combined report has its own cover page, so we don't need individual cover pages
-      const pagesToCopy = pageCount > 1 ? pageCount - 1 : 1; // At least copy 1 page if PDF only has cover
-      const pageIndices = Array.from({ length: pagesToCopy }, (_, i) => i + (pageCount > 1 ? 1 : 0));
+      // Copy all pages from this PDF to the merged PDF
+      const pageIndices = Array.from({ length: pageCount }, (_, i) => i);
       const copiedPages = await mergedPdf.copyPages(pdfDoc, pageIndices);
       copiedPages.forEach((page) => {
         mergedPdf.addPage(page);
       });
       
-      console.log(`   ✅ Merged: ${entry.pageName} - starts at page ${entry.startPage} (${pagesToCopy} pages, skipped cover page)`);
+      console.log(`   ✅ Merged: ${entry.pageName} - starts at page ${entry.startPage} (${pageCount} pages)`);
     } catch (error) {
       console.error(`   ❌ Failed to merge ${pdfPath}:`, error.message);
       // Continue with other PDFs even if one fails
