@@ -398,7 +398,7 @@ addOverallScoreDisplay(scoreData) {
         this.currentY += 20;
     }
 }
-    addIntroPage(reportData, scoreData, planType = 'pro') {
+    addCoverPage(reportData, scoreData, planType = 'pro') {
         // Helper function to extract site name from URL
         function extractSiteName(url) {
             try {
@@ -422,6 +422,83 @@ addOverallScoreDisplay(scoreData) {
             }
         }
 
+        const siteName = extractSiteName(reportData.finalUrl || '');
+        const pageHeight = this.doc.page.height;
+        const pageWidth = this.doc.page.width;
+        
+        // Draw thin gray border around the page
+        this.doc.rect(10, 10, pageWidth - 20, pageHeight - 20)
+            .strokeColor('#CCCCCC')
+            .lineWidth(1)
+            .stroke();
+
+        // Main title - 4 lines, large bold black text, centered
+        this.currentY = pageHeight / 2 - 120; // Center vertically, adjusted for 4 lines
+        this.doc.fontSize(48).font('BoldFont').fillColor('#000000')
+            .text('SilverSurfers', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+        this.currentY += 60;
+        
+        this.doc.fontSize(48).font('BoldFont').fillColor('#000000')
+            .text('Website', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+        this.currentY += 60;
+        
+        this.doc.fontSize(48).font('BoldFont').fillColor('#000000')
+            .text('Accessibility', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+        this.currentY += 60;
+        
+        this.doc.fontSize(48).font('BoldFont').fillColor('#000000')
+            .text('Audit Report', this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+
+        // Bottom left: "Prepared for" / [Website] / "on [Date]"
+        const bottomY = pageHeight - 80;
+        this.doc.fontSize(11).font('RegularFont').fillColor('#000000')
+            .text('Prepared for', this.margin + 40, bottomY);
+        
+        this.doc.fontSize(11).font('BoldFont').fillColor('#000000')
+            .text(`[${siteName}]`, this.margin + 40, bottomY + 18);
+        
+        const genDate = new Date(reportData.fetchTime || new Date()).toLocaleDateString('en-US', { 
+            year: 'numeric', month: 'long', day: 'numeric' 
+        });
+        this.doc.fontSize(11).font('RegularFont').fillColor('#000000')
+            .text(`on [${genDate}]`, this.margin + 40, bottomY + 36);
+
+        // Bottom right: Logo
+        // Logo is located at: backend-silver-surfers/assets/Logo.png
+        try {
+            // Try multiple possible logo paths
+            const possiblePaths = [
+                path.join(__dirname, '../../../assets/Logo.png'), // From report_generation/ -> ../../../assets/Logo.png
+                path.join(process.cwd(), 'assets', 'Logo.png'),
+                path.join(process.cwd(), 'backend-silver-surfers', 'assets', 'Logo.png')
+            ];
+            
+            let logoPath = null;
+            for (const testPath of possiblePaths) {
+                if (fs.existsSync(testPath)) {
+                    logoPath = testPath;
+                    break;
+                }
+            }
+            
+            if (logoPath) {
+                const logoSize = 80;
+                const logoX = pageWidth - this.margin - 40 - logoSize;
+                const logoY = bottomY;
+                this.doc.image(logoPath, logoX, logoY, { width: logoSize, height: logoSize });
+            }
+        } catch (e) {
+            console.warn('Could not load logo for cover page:', e.message);
+        }
+    }
+
+    addIntroPage(reportData, scoreData, planType = 'pro') {
+        // Use the new cover page design
+        this.addCoverPage(reportData, scoreData, planType);
+    }
+
+    // Legacy function - kept for reference but not used
+    addIntroPageOld(reportData, scoreData, planType = 'pro') {
         const siteName = extractSiteName(reportData.finalUrl || '');
         const score = Math.round(scoreData.finalScore);
         // For messaging on this page, treat 80% as the minimum recommended standard (Pass threshold)
@@ -1595,15 +1672,13 @@ addOverallScoreDisplay(scoreData) {
                     });
                 currentX += colWidths[0];
 
-                // Rating (colored) - prevent wrapping by using non-breaking space and ensuring single line
-                const ratingText = rating === 'Needs Improvement' ? 'Needs\u00A0Improvement' : rating;
-                // Use smaller font size for "Needs Improvement" if needed to fit on one line
-                const ratingFontSize = rating === 'Needs Improvement' ? 10 : 11;
-                this.doc.fontSize(ratingFontSize).font('BoldFont').fillColor(ratingColor)
+                // Rating (colored) - allow "Needs Improvement" to wrap between "Needs" and "Improvement"
+                // Use regular space (not non-breaking) so it wraps naturally at that point
+                const ratingText = rating === 'Needs Improvement' ? 'Needs Improvement' : rating;
+                this.doc.fontSize(11).font('BoldFont').fillColor(ratingColor)
                     .text(ratingText, currentX + 5, tableY + 6, {
                         width: colWidths[1] - 10,
-                        align: 'center',
-                        lineBreak: false
+                        align: 'center'
                     });
                 currentX += colWidths[1];
 
