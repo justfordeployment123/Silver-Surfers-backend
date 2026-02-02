@@ -787,7 +787,11 @@ addOverallScoreDisplay(scoreData) {
     }
 
     addPriorityRecommendations(reportData) {
-        this.addPage();
+        // Check if we need a new page - only add if there's not enough space
+        const minNeededHeight = 150; // Title + description + at least one recommendation item
+        if (this.currentY + minNeededHeight > this.doc.page.height - 50) {
+            this.addPage();
+        }
         
         // Page title
         this.doc.fontSize(22).font('BoldFont').fillColor('#2C5F9C')
@@ -1054,7 +1058,11 @@ addOverallScoreDisplay(scoreData) {
     }
 
     addAreasOfStrength(reportData) {
-        this.addPage();
+        // Check if we need a new page - only add if there's not enough space
+        const minNeededHeight = 120; // Title + description + at least one strength item
+        if (this.currentY + minNeededHeight > this.doc.page.height - 50) {
+            this.addPage();
+        }
         
         // Page title
         this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
@@ -1148,7 +1156,11 @@ addOverallScoreDisplay(scoreData) {
     }
 
     addAboutPage(reportData, scoreData) {
-        this.addPage();
+        // Check if we need a new page - only add if there's not enough space
+        const minNeededHeight = 200; // Title + description + focus areas section
+        if (this.currentY + minNeededHeight > this.doc.page.height - 50) {
+            this.addPage();
+        }
         
         // Page title
         this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
@@ -1246,7 +1258,11 @@ addOverallScoreDisplay(scoreData) {
     }
 
     addNextStepsPage() {
-        this.addPage();
+        // Check if we need a new page - only add if there's not enough space
+        const minNeededHeight = 150; // Title + description + next steps list
+        if (this.currentY + minNeededHeight > this.doc.page.height - 50) {
+            this.addPage();
+        }
         
         // Page title
         this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
@@ -1334,7 +1350,11 @@ addOverallScoreDisplay(scoreData) {
     }
 
     addAppendix(reportData) {
-        this.addPage();
+        // Check if we need a new page - only add if there's not enough space
+        const minNeededHeight = 100; // Title + heading + at least one table section
+        if (this.currentY + minNeededHeight > this.doc.page.height - 50) {
+            this.addPage();
+        }
         
         // Page title
         this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
@@ -1393,13 +1413,19 @@ addOverallScoreDisplay(scoreData) {
             
             // Calculate height needed: heading + content
             const headingHeight = 20;
-            // Estimate content height (will be calculated more precisely in drawEnhancedTable)
-            const estimatedContentHeight = 100; // Conservative estimate
+            // More accurate estimate: table header (40px) + rows (items.length * 50px average for wrapped text)
+            const tableHeaderHeight = 40;
+            const estimatedRowHeight = 50; // Account for text wrapping
+            const estimatedContentHeight = tableHeaderHeight + Math.min(items.length * estimatedRowHeight, 300);
             const totalHeight = headingHeight + estimatedContentHeight;
             
             // Check if section fits on current page (only check after first item)
             if (index > 0) {
-                this.checkPageBreak(totalHeight);
+                const pageBottom = this.doc.page.height - 50; // Reserve space for footer
+                if (this.currentY + totalHeight > pageBottom && this.currentY > this.margin + 100) {
+                    // Only add new page if we're not at the top of the page and content won't fit
+                    this.addPage();
+                }
             }
 
             // Audit name as section heading
@@ -1416,7 +1442,16 @@ addOverallScoreDisplay(scoreData) {
     }
 
    addSummaryPage(reportData) {
-        this.addPage();
+        // Check if we need a new page - only add if there's not enough space
+        const pageTitleHeight = 30;
+        const descriptionHeight = 40;
+        const minCategoryHeight = 100; // Minimum space needed for first category
+        const totalNeededHeight = pageTitleHeight + descriptionHeight + minCategoryHeight;
+        const pageBottom = this.doc.page.height - 50; // Reserve space for footer
+        
+        if (this.currentY + totalNeededHeight > pageBottom) {
+            this.addPage();
+        }
         
         // Page title
         this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C').text('Performance by Category', this.margin, this.currentY);
@@ -1475,12 +1510,18 @@ addOverallScoreDisplay(scoreData) {
             
             // Calculate height needed: heading + table
             const headingHeight = 25;
-            // Estimate table height (will be calculated more precisely in drawCategoryTables)
-            const estimatedTableHeight = 150; // Conservative estimate for a few rows
+            // More accurate estimate: table header (40px) + rows (categoryAudits.length * 40px average)
+            const tableHeaderHeight = 40;
+            const estimatedRowHeight = 40;
+            const estimatedTableHeight = tableHeaderHeight + (categoryAudits.length * estimatedRowHeight);
             const totalHeight = headingHeight + estimatedTableHeight;
             
-            // Check if category section fits on current page
-            this.checkPageBreak(totalHeight);
+            // Check if category section fits on current page - use more accurate calculation
+            const pageBottom = this.doc.page.height - 50; // Reserve space for footer
+            if (this.currentY + totalHeight > pageBottom && this.currentY > this.margin + 100) {
+                // Only add new page if we're not at the top of the page and content won't fit
+                this.addPage();
+            }
 
             // Category heading
             this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
@@ -2395,7 +2436,8 @@ addOverallScoreDisplay(scoreData) {
         let maxRowHeight = 0;
         
         rowData.forEach((cellValue, colIndex) => {
-            const cellWidth = config.widths[colIndex] - 20;
+            const cellPadding = 10;
+            const cellWidth = config.widths[colIndex] - (cellPadding * 2);
             // Calculate height using same parameters as text rendering (lineGap: 2)
             // Ensure font size is 10pt for accurate height calculation
             this.doc.fontSize(10).font('RegularFont');
@@ -2409,7 +2451,8 @@ addOverallScoreDisplay(scoreData) {
         });
         
         // Add padding (10px top + 10px bottom) and ensure minimum row height
-        const rowHeight = Math.max(maxRowHeight + 20, 40);
+        // Add extra buffer to ensure text is never cut off
+        const rowHeight = Math.max(maxRowHeight + 24, 45); // Increased padding from 20 to 24, min from 40 to 45
         // Don't cap row height - allow full text to display
         const finalRowHeight = rowHeight;
         
@@ -2459,12 +2502,26 @@ addOverallScoreDisplay(scoreData) {
             
             // Draw text without height constraint - row height was already calculated to fit all text
             // Ensure font size is consistently 10pt for all table cells
-            this.doc.fontSize(10).font('RegularFont').fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
+            // Use explicit parameters to ensure full text is rendered without truncation
+            this.doc.fontSize(10).font('RegularFont').fillColor('#374151');
+            // Render text with explicit options to prevent any truncation
+            // Verify the actual rendered height matches calculated height
+            const actualTextHeight = this.doc.heightOfString(cellValue, {
+                width: availableWidth,
+                lineGap: 2
+            });
+            // If calculated height doesn't match, log for debugging (but don't fail)
+            if (Math.abs(actualTextHeight - maxRowHeight) > 5 && colIndex === rowData.length - 1) {
+                console.log(`[PDF] Text height mismatch for long text: calculated=${maxRowHeight}, actual=${actualTextHeight}, text length=${cellValue.length}`);
+            }
+            const textOptions = {
                 width: availableWidth,
                 lineGap: 2,
                 align: 'left',
-                ellipsis: false
-            });
+                ellipsis: false,
+                continued: false
+            };
+            this.doc.text(cellValue, currentX + cellPadding, tableY + 10, textOptions);
             currentX += config.widths[colIndex];
         });
         
