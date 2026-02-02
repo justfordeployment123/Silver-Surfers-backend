@@ -1637,8 +1637,9 @@ addOverallScoreDisplay(scoreData) {
                 currentX = this.margin;
 
                 // Component name - ensure full text wrapping (no height limit)
+                const componentTitle = String(audit.info.title || '').trim();
                 this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                    .text(audit.info.title, currentX + 5, tableY + 6, {
+                    .text(componentTitle, currentX + 5, tableY + 6, {
                         width: colWidths[0] - 10,
                         align: 'left',
                         lineGap: 1,
@@ -1648,7 +1649,7 @@ addOverallScoreDisplay(scoreData) {
 
                 // Rating (colored) - allow "Needs Improvement" to wrap between "Needs" and "Improvement"
                 // Use regular space (not non-breaking) so it wraps naturally at that point
-                const ratingText = rating === 'Needs Improvement' ? 'Needs Improvement' : rating;
+                const ratingText = String(rating === 'Needs Improvement' ? 'Needs Improvement' : rating || '').trim();
                 this.doc.fontSize(10).font('BoldFont').fillColor(ratingColor)
                     .text(ratingText, currentX + 5, tableY + 6, {
                         width: colWidths[1] - 10,
@@ -1657,24 +1658,27 @@ addOverallScoreDisplay(scoreData) {
                 currentX += colWidths[1];
 
                 // Actual (colored)
+                const actualText = String(`${scorePercent}%` || '').trim();
                 this.doc.fontSize(10).font('BoldFont').fillColor(actualColor)
-                    .text(`${scorePercent}%`, currentX + 5, tableY + 6, {
+                    .text(actualText, currentX + 5, tableY + 6, {
                         width: colWidths[2] - 10,
                         align: 'center'
                     });
                 currentX += colWidths[2];
 
                 // Standard
+                const standardText = String(standard || '').trim();
                 this.doc.fontSize(10).font('BoldFont').fillColor('#28A745')
-                    .text(standard, currentX + 5, tableY + 6, {
+                    .text(standardText, currentX + 5, tableY + 6, {
                         width: colWidths[3] - 10,
                         align: 'center'
                     });
                 currentX += colWidths[3];
 
                 // Details - ensure full text wrapping (no height limit to prevent clipping)
+                const detailsText = String(details || '').trim();
                 this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                    .text(details, currentX + 5, tableY + 6, {
+                    .text(detailsText, currentX + 5, tableY + 6, {
                         width: colWidths[4] - 10,
                         align: 'left',
                         lineGap: 1,
@@ -2047,8 +2051,8 @@ addOverallScoreDisplay(scoreData) {
                     headers: ['Text Content', 'Element Selector', 'Reason'],
                     widths: [170, 190, 155], // Total: 515
                     extractors: [
-                        item => item.textSnippet || 'N/A',
-                        item => item.containerSelector || 'N/A',
+                        item => String(item.textSnippet || 'N/A').trim(),
+                        item => String(item.containerSelector || 'N/A').trim(),
                         item => 'Font smaller than 16px - difficult for older adults to read'
                     ]
                 };
@@ -2057,9 +2061,9 @@ addOverallScoreDisplay(scoreData) {
                     headers: ['Interactive Text', 'Element Location', 'Older Adult Accessibility Issue'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
-                        item => item.text || 'Interactive Element',
-                        item => this.extractSelector(item.node) || 'N/A',
-                        item => item.explanation || 'Insufficient visual distinction for older adult users'
+                        item => String(item.text || 'Interactive Element').trim(),
+                        item => String(this.extractSelector(item.node) || 'N/A').trim(),
+                        item => String(item.explanation || 'Insufficient visual distinction for older adult users').trim()
                     ]
                 };
             case 'layout-brittle-audit':
@@ -2067,8 +2071,8 @@ addOverallScoreDisplay(scoreData) {
                     headers: ['Page Element', 'Element Location', 'Older Adult Impact'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
-                        item => this.extractNodeLabel(item.node) || 'Layout Element',
-                        item => this.extractSelector(item.node) || 'N/A',
+                        item => String(this.extractNodeLabel(item.node) || 'Layout Element').trim(),
+                        item => String(this.extractSelector(item.node) || 'N/A').trim(),
                         item => 'Layout may break when older adults adjust text size for better readability'
                     ]
                 };
@@ -2077,8 +2081,8 @@ addOverallScoreDisplay(scoreData) {
                     headers: ['Metric', 'Value'],
                     widths: [257, 258], // Total: 515
                     extractors: [
-                        item => item.metric || 'N/A',
-                        item => item.value || 'N/A'
+                        item => String(item.metric || 'N/A').trim(),
+                        item => String(item.value || 'N/A').trim()
                     ]
                 };
             default:
@@ -2086,9 +2090,9 @@ addOverallScoreDisplay(scoreData) {
                     headers: ['Element', 'Location', 'Older Adult Accessibility Issue'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
-                        item => item.node?.nodeLabel || item.nodeLabel || 'Page Element',
-                        item => item.node?.selector || item.selector || 'N/A',
-                        item => item.node?.explanation || item.explanation || 'May impact older adult users'
+                        item => String(item.node?.nodeLabel || item.nodeLabel || 'Page Element').trim(),
+                        item => String(item.node?.selector || item.selector || 'N/A').trim(),
+                        item => String(item.node?.explanation || item.explanation || 'May impact older adult users').trim()
                     ]
                 };
         }
@@ -2187,7 +2191,8 @@ addOverallScoreDisplay(scoreData) {
             currentX = this.margin;
             
             // Audit Component (left-aligned) - remove height constraint
-            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(item.name, currentX + 10, tableY + 6, {
+            const componentName = String(item.name || '').trim();
+            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(componentName, currentX + 10, tableY + 6, {
                 width: colWidths[0] - 20,
                 align: 'left',
                 ellipsis: false
@@ -2202,21 +2207,24 @@ addOverallScoreDisplay(scoreData) {
             } else if (scoreValue >= 70) {
                 scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement (70-79%)
             }
-            this.doc.font('BoldFont').fontSize(10).fillColor(scoreColor).text(item.score, currentX + 10, tableY + 6, {
+            const scoreText = String(item.score || '').trim();
+            this.doc.font('BoldFont').fontSize(10).fillColor(scoreColor).text(scoreText, currentX + 10, tableY + 6, {
                 width: colWidths[1] - 20,
                 align: 'center'
             });
             currentX += colWidths[1];
             
             // Weight (center-aligned)
-            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(String(item.weight), currentX + 10, tableY + 6, {
+            const weightText = String(item.weight || '').trim();
+            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(weightText, currentX + 10, tableY + 6, {
                 width: colWidths[2] - 20,
                 align: 'center'
             });
             currentX += colWidths[2];
             
             // Weighted (center-aligned)
-            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(item.contribution, currentX + 10, tableY + 6, {
+            const contributionText = String(item.contribution || '').trim();
+            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(contributionText, currentX + 10, tableY + 6, {
                 width: colWidths[3] - 20,
                 align: 'center'
             });
@@ -2265,14 +2273,16 @@ addOverallScoreDisplay(scoreData) {
         currentX += colWidths[1];
         
         // Total Weight
-        this.doc.fontSize(10).text(String(scoreData.totalWeight), currentX + 10, tableY + 7, {
+        const totalWeightText = String(scoreData.totalWeight || '').trim();
+        this.doc.fontSize(10).text(totalWeightText, currentX + 10, tableY + 7, {
             width: colWidths[2] - 20,
             align: 'center'
         });
         currentX += colWidths[2];
         
         // Total Weighted
-        this.doc.fontSize(10).text(scoreData.totalWeightedScore.toFixed(2), currentX + 10, tableY + 7, {
+        const totalWeightedText = String(scoreData.totalWeightedScore.toFixed(2) || '').trim();
+        this.doc.fontSize(10).text(totalWeightedText, currentX + 10, tableY + 7, {
             width: colWidths[3] - 20,
             align: 'center'
         });
@@ -2363,7 +2373,7 @@ addOverallScoreDisplay(scoreData) {
     // Draw rows with alternating white background and bottom borders
     itemsToShow.forEach((item, rowIndex) => {
         const rowData = config.extractors.map(extractor => {
-            const value = String(extractor(item) || 'N/A');
+            const value = String(extractor(item) || 'N/A').trim();
             return value;
         });
         let maxRowHeight = 0;
@@ -2371,6 +2381,8 @@ addOverallScoreDisplay(scoreData) {
         rowData.forEach((cellValue, colIndex) => {
             const cellWidth = config.widths[colIndex] - 20;
             // Calculate height using same parameters as text rendering (lineGap: 2)
+            // Ensure font size is 10pt for accurate height calculation
+            this.doc.fontSize(10).font('RegularFont');
             const cellHeight = this.doc.heightOfString(cellValue, { 
                 width: cellWidth,
                 lineGap: 2
@@ -2409,7 +2421,7 @@ addOverallScoreDisplay(scoreData) {
                 currentX += config.widths[index];
             });
             tableY += headerHeight;
-            this.doc.font('RegularFont').fontSize(12);
+            this.doc.font('RegularFont').fontSize(10);
             // Recalculate pageBottom after adding new page
             pageBottom = this.doc.page.height - 50;
         }
@@ -2425,7 +2437,8 @@ addOverallScoreDisplay(scoreData) {
             const availableWidth = Math.max(config.widths[colIndex] - (cellPadding * 2), 20);
             
             // Draw text without height constraint - row height was already calculated to fit all text
-            this.doc.fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
+            // Ensure font size is consistently 10pt for all table cells
+            this.doc.fontSize(10).font('RegularFont').fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
                 width: availableWidth,
                 lineGap: 2,
                 align: 'left',

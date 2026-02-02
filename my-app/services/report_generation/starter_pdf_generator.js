@@ -434,11 +434,14 @@ export class StarterAccessibilityPDFGenerator {
             this.doc.rect(this.margin, this.currentY, this.pageWidth, rowHeight).fill(bgColor).stroke('#E5E7EB');
             
             x = this.margin;
-            const componentName = sanitizeText(String(item.component || '')).substring(0, 40);
+            const componentName = sanitizeText(String(item.component || '').trim()).substring(0, 40);
             this.doc.fontSize(10).fillColor('#1F2937').text(componentName || '—', x + 8, this.currentY + 7, { width: widths[0] - 16 });
-            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 7, { width: widths[1] - 16, align: 'center' });
-            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 7, { width: widths[2] - 16, align: 'center' });
-            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 7, { width: widths[3] - 16, align: 'center' });
+            const scoreText = String(item.score || '0').trim() + '%';
+            this.doc.fontSize(10).fillColor('#1F2937').text(scoreText, x + widths[0] + 8, this.currentY + 7, { width: widths[1] - 16, align: 'center' });
+            const weightText = String(item.weight || '0').trim();
+            this.doc.fontSize(10).fillColor('#1F2937').text(weightText, x + widths[0] + widths[1] + 8, this.currentY + 7, { width: widths[2] - 16, align: 'center' });
+            const weightedText = String(item.weighted || '0').trim();
+            this.doc.fontSize(10).fillColor('#1F2937').text(weightedText, x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 7, { width: widths[3] - 16, align: 'center' });
             
             this.currentY += rowHeight;
         });
@@ -576,11 +579,14 @@ export class StarterAccessibilityPDFGenerator {
             this.doc.rect(this.margin, this.currentY, this.pageWidth, rowHeight).fill(bgColor).stroke('#E5E7EB');
             
             x = this.margin;
-            const componentName = sanitizeText(String(item.component || '')).substring(0, 30);
+            const componentName = sanitizeText(String(item.component || '').trim()).substring(0, 30);
             this.doc.fontSize(10).fillColor('#1F2937').text(componentName || '—', x + 8, this.currentY + 6, { width: widths[0] - 16 });
-            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 6, { width: widths[1] - 16, align: 'center' });
-            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 6, { width: widths[2] - 16, align: 'center' });
-            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 6, { width: widths[3] - 16, align: 'center' });
+            const scoreText = String(item.score || '0').trim() + '%';
+            this.doc.fontSize(10).fillColor('#1F2937').text(scoreText, x + widths[0] + 8, this.currentY + 6, { width: widths[1] - 16, align: 'center' });
+            const weightText = String(item.weight || '0').trim();
+            this.doc.fontSize(10).fillColor('#1F2937').text(weightText, x + widths[0] + widths[1] + 8, this.currentY + 6, { width: widths[2] - 16, align: 'center' });
+            const weightedText = String(item.weighted || '0').trim();
+            this.doc.fontSize(10).fillColor('#1F2937').text(weightedText, x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 6, { width: widths[3] - 16, align: 'center' });
             
             this.currentY += rowHeight;
         });
