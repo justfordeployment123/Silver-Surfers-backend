@@ -1606,8 +1606,14 @@ addOverallScoreDisplay(scoreData) {
 
                 // Check if we need a new page (reserve space for footer at bottom)
                 // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
+                // Also check if rendering this row would leave less than minimum space for next row
+                // This prevents single-row pages
                 const pageBottom = this.doc.page.height - 50;
-                if (tableY + rowHeight > pageBottom) {
+                const minSpaceForNextRow = 60; // Minimum space needed for next row (40px row + 20px buffer)
+                const spaceAfterRow = pageBottom - (tableY + rowHeight);
+                const isLastRow = rowIndex === categoryAudits.length - 1;
+                
+                if (tableY + rowHeight > pageBottom || (!isLastRow && spaceAfterRow < minSpaceForNextRow)) {
                     this.addPage();
                     
                     // Redraw category heading and table header
@@ -2165,7 +2171,13 @@ addOverallScoreDisplay(scoreData) {
             const actualRowHeight = Math.max(rowHeight, componentNameHeight + 12);
             
             // Check if row would exceed page bottom margin (with safety buffer)
-            if (tableY + actualRowHeight > pageBottom) {
+            // Also check if rendering this row would leave less than minimum space for next row
+            // This prevents single-row pages
+            const minSpaceForNextRow = 60; // Minimum space needed for next row (40px row + 20px buffer)
+            const spaceAfterRow = pageBottom - (tableY + actualRowHeight);
+            const isLastRow = rowIndex === items.length - 1;
+            
+            if (tableY + actualRowHeight > pageBottom || (!isLastRow && spaceAfterRow < minSpaceForNextRow)) {
                 this.addPage();
                 // Redraw header on new page
                 this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
@@ -2183,6 +2195,8 @@ addOverallScoreDisplay(scoreData) {
                     currentX += colWidths[index];
                 });
                 tableY = this.currentY + headerHeight;
+                // Recalculate pageBottom after adding new page
+                pageBottom = this.doc.page.height - 50;
             }
             
             // Alternating light gray background - use actual row height
@@ -2399,9 +2413,14 @@ addOverallScoreDisplay(scoreData) {
         
         // Check if row would exceed page bottom margin (with safety buffer for footer)
         // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
-        // Recalculate pageBottom in case we're on a new page
+        // Also check if rendering this row would leave less than minimum space for next row
+        // This prevents single-row pages
+        const minSpaceForNextRow = 60; // Minimum space needed for next row (40px row + 20px buffer)
         pageBottom = this.doc.page.height - 50;
-        if (tableY + finalRowHeight > pageBottom) {
+        const spaceAfterRow = pageBottom - (tableY + finalRowHeight);
+        
+        // If row doesn't fit OR if it would leave less than minimum space for next row, move to new page
+        if (tableY + finalRowHeight > pageBottom || (spaceAfterRow < minSpaceForNextRow && rowIndex < itemsToShow.length - 1)) {
             this.addPage();
             // Removed "Detailed Findings - Continued" heading
             tableY = this.currentY;
