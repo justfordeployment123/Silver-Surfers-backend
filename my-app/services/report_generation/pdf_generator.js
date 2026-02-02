@@ -948,30 +948,68 @@ addOverallScoreDisplay(scoreData) {
         this.currentY += titleHeight;
 
         if (!isCompact) {
+            // Standard spacing between sections (18px) - consistent spacing after each section
+            const sectionSpacing = 18;
+            const textOptions = { lineGap: 1 };
+            
             // Issue
             const issueDesc = this.getIssueDescription(auditId, auditData);
+            const issueHeading = 'Issue: ';
+            // Calculate height: heading + text combined
+            this.doc.fontSize(11).font('BoldFont');
+            const headingWidth = this.doc.widthOfString(issueHeading);
+            const availableTextWidth = this.pageWidth - this.margin - headingWidth;
+            this.doc.font('RegularFont');
+            const issueTextHeight = this.doc.heightOfString(issueDesc, { 
+                width: availableTextWidth,
+                ...textOptions
+            });
+            
+            const startYIssue = this.currentY;
             this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
-                .text('Issue: ', this.margin, this.currentY, { continued: true })
+                .text(issueHeading, this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
-                .text(issueDesc, { width: this.pageWidth - this.margin });
-            this.currentY += this.doc.heightOfString(issueDesc, 
-                { width: this.pageWidth - this.margin }) + 18;
+                .text(issueDesc, { width: availableTextWidth, ...textOptions });
+            // Calculate actual height used and add consistent spacing
+            this.currentY = startYIssue + issueTextHeight + sectionSpacing;
 
             // Why it matters
+            const whyHeading = 'Why it matters: ';
+            this.doc.fontSize(11).font('BoldFont');
+            const whyHeadingWidth = this.doc.widthOfString(whyHeading);
+            const whyTextWidth = this.pageWidth - this.margin - whyHeadingWidth;
+            this.doc.font('RegularFont');
+            const whyTextHeight = this.doc.heightOfString(info.why, { 
+                width: whyTextWidth,
+                ...textOptions
+            });
+            
+            const startYWhy = this.currentY;
             this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
-                .text('Why it matters: ', this.margin, this.currentY, { continued: true })
+                .text(whyHeading, this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
-                .text(info.why, { width: this.pageWidth - this.margin });
-            this.currentY += this.doc.heightOfString(info.why, 
-                { width: this.pageWidth - this.margin }) + 18;
+                .text(info.why, { width: whyTextWidth, ...textOptions });
+            // Calculate actual height used and add consistent spacing
+            this.currentY = startYWhy + whyTextHeight + sectionSpacing;
 
             // Recommendation
+            const recHeading = 'Recommendation: ';
+            this.doc.fontSize(11).font('BoldFont');
+            const recHeadingWidth = this.doc.widthOfString(recHeading);
+            const recTextWidth = this.pageWidth - this.margin - recHeadingWidth;
+            this.doc.font('RegularFont');
+            const recTextHeight = this.doc.heightOfString(info.recommendation, { 
+                width: recTextWidth,
+                ...textOptions
+            });
+            
+            const startYRec = this.currentY;
             this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
-                .text('Recommendation: ', this.margin, this.currentY, { continued: true })
+                .text(recHeading, this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
-                .text(info.recommendation, { width: this.pageWidth - this.margin });
-            this.currentY += this.doc.heightOfString(info.recommendation, 
-                { width: this.pageWidth - this.margin }) + 18;
+                .text(info.recommendation, { width: recTextWidth, ...textOptions });
+            // Calculate actual height used and add consistent spacing
+            this.currentY = startYRec + recTextHeight + sectionSpacing;
         } else {
             // Compact version for medium and low priority
             this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
@@ -1446,7 +1484,7 @@ addOverallScoreDisplay(scoreData) {
             const rowMinHeight = 28;
             
             // Calculate header height dynamically based on text wrapping
-            this.doc.fontSize(12).font('BoldFont');
+            this.doc.fontSize(11).font('BoldFont');
             const headers = ['Component', 'Rating', 'Actual', 'Standard', 'Details'];
             let maxHeaderHeight = 0;
             headers.forEach((header, index) => {
@@ -1539,7 +1577,7 @@ addOverallScoreDisplay(scoreData) {
 
                 // Calculate row height based on details text and component name
                 // IMPORTANT: Set font size first for accurate height calculation
-                this.doc.fontSize(11).font('RegularFont');
+                this.doc.fontSize(10).font('RegularFont');
                 const detailsHeight = this.doc.heightOfString(details, { 
                     width: colWidths[4] - 10,
                     lineGap: 1
@@ -1566,7 +1604,7 @@ addOverallScoreDisplay(scoreData) {
                     
                     this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
                     currentX = this.margin;
-                    this.doc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
+                    this.doc.fontSize(11).font('BoldFont').fillColor('#FFFFFF');
                     headers.forEach((header, index) => {
                         // Center text horizontally using align: 'center' with column width
                         this.doc.text(header, currentX + 5, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), {
@@ -1586,7 +1624,7 @@ addOverallScoreDisplay(scoreData) {
                 currentX = this.margin;
 
                 // Component name - ensure full text wrapping (no height limit)
-                this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+                this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
                     .text(audit.info.title, currentX + 5, tableY + 6, {
                         width: colWidths[0] - 10,
                         align: 'left',
@@ -1598,7 +1636,7 @@ addOverallScoreDisplay(scoreData) {
                 // Rating (colored) - allow "Needs Improvement" to wrap between "Needs" and "Improvement"
                 // Use regular space (not non-breaking) so it wraps naturally at that point
                 const ratingText = rating === 'Needs Improvement' ? 'Needs Improvement' : rating;
-                this.doc.fontSize(11).font('BoldFont').fillColor(ratingColor)
+                this.doc.fontSize(10).font('BoldFont').fillColor(ratingColor)
                     .text(ratingText, currentX + 5, tableY + 6, {
                         width: colWidths[1] - 10,
                         align: 'center'
@@ -1606,7 +1644,7 @@ addOverallScoreDisplay(scoreData) {
                 currentX += colWidths[1];
 
                 // Actual (colored)
-                this.doc.fontSize(11).font('BoldFont').fillColor(actualColor)
+                this.doc.fontSize(10).font('BoldFont').fillColor(actualColor)
                     .text(`${scorePercent}%`, currentX + 5, tableY + 6, {
                         width: colWidths[2] - 10,
                         align: 'center'
@@ -1614,7 +1652,7 @@ addOverallScoreDisplay(scoreData) {
                 currentX += colWidths[2];
 
                 // Standard
-                this.doc.fontSize(11).font('BoldFont').fillColor('#28A745')
+                this.doc.fontSize(10).font('BoldFont').fillColor('#28A745')
                     .text(standard, currentX + 5, tableY + 6, {
                         width: colWidths[3] - 10,
                         align: 'center'
@@ -1622,7 +1660,7 @@ addOverallScoreDisplay(scoreData) {
                 currentX += colWidths[3];
 
                 // Details - ensure full text wrapping (no height limit to prevent clipping)
-                this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+                this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
                     .text(details, currentX + 5, tableY + 6, {
                         width: colWidths[4] - 10,
                         align: 'left',
@@ -2065,7 +2103,7 @@ addOverallScoreDisplay(scoreData) {
         const pageBottom = this.doc.page.height - 50;
         
         // Calculate header height dynamically based on text wrapping
-        this.doc.font('BoldFont').fontSize(13);
+        this.doc.font('BoldFont').fontSize(11);
         const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
         let maxHeaderHeight = 0;
         headers.forEach((header, index) => {
@@ -2103,7 +2141,7 @@ addOverallScoreDisplay(scoreData) {
         items.forEach((item, rowIndex) => {
             // Calculate actual row height needed for Audit Component name FIRST
             // Set font size before calculating height for accuracy
-            this.doc.fontSize(12).font('RegularFont');
+            this.doc.fontSize(10).font('RegularFont');
             const componentNameHeight = this.doc.heightOfString(item.name, { 
                 width: colWidths[0] - 20
             });
@@ -2114,7 +2152,7 @@ addOverallScoreDisplay(scoreData) {
                 this.addPage();
                 // Redraw header on new page
                 this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
-                this.doc.font('BoldFont').fontSize(13).fillColor('#FFFFFF');
+                this.doc.font('BoldFont').fontSize(11).fillColor('#FFFFFF');
                 currentX = this.margin;
                 headers.forEach((header, index) => {
                     // Center text horizontally using align: 'center' with column width
@@ -2136,7 +2174,7 @@ addOverallScoreDisplay(scoreData) {
             currentX = this.margin;
             
             // Audit Component (left-aligned) - remove height constraint
-            this.doc.font('RegularFont').fontSize(12).fillColor('#2C3E50').text(item.name, currentX + 10, tableY + 6, {
+            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(item.name, currentX + 10, tableY + 6, {
                 width: colWidths[0] - 20,
                 align: 'left',
                 ellipsis: false
@@ -2151,21 +2189,21 @@ addOverallScoreDisplay(scoreData) {
             } else if (scoreValue >= 70) {
                 scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement (70-79%)
             }
-            this.doc.font('BoldFont').fontSize(12).fillColor(scoreColor).text(item.score, currentX + 10, tableY + 6, {
+            this.doc.font('BoldFont').fontSize(10).fillColor(scoreColor).text(item.score, currentX + 10, tableY + 6, {
                 width: colWidths[1] - 20,
                 align: 'center'
             });
             currentX += colWidths[1];
             
             // Weight (center-aligned)
-            this.doc.font('RegularFont').fontSize(12).fillColor('#2C3E50').text(String(item.weight), currentX + 10, tableY + 6, {
+            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(String(item.weight), currentX + 10, tableY + 6, {
                 width: colWidths[2] - 20,
                 align: 'center'
             });
             currentX += colWidths[2];
             
             // Weighted (center-aligned)
-            this.doc.font('RegularFont').fontSize(12).fillColor('#2C3E50').text(item.contribution, currentX + 10, tableY + 6, {
+            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(item.contribution, currentX + 10, tableY + 6, {
                 width: colWidths[3] - 20,
                 align: 'center'
             });
@@ -2274,7 +2312,7 @@ addOverallScoreDisplay(scoreData) {
     let pageBottom = this.doc.page.height - 50;
     
     // Calculate header height dynamically based on text wrapping
-    this.doc.font('BoldFont').fontSize(13);
+    this.doc.font('BoldFont').fontSize(11);
     let maxHeaderHeight = 0;
     config.headers.forEach((header, index) => {
         const cellPadding = 10;
@@ -2307,7 +2345,7 @@ addOverallScoreDisplay(scoreData) {
     });
     
     tableY += headerHeight;
-    this.doc.font('RegularFont').fontSize(12);
+    this.doc.font('RegularFont').fontSize(10);
     
     // Draw rows with alternating white background and bottom borders
     itemsToShow.forEach((item, rowIndex) => {
@@ -2345,7 +2383,7 @@ addOverallScoreDisplay(scoreData) {
             
             // Redraw header on new page
             this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
-            this.doc.font('BoldFont').fontSize(13).fillColor('#374151');
+            this.doc.font('BoldFont').fontSize(11).fillColor('#374151');
             currentX = this.margin;
             config.headers.forEach((header, index) => {
                 const cellPadding = 10;
