@@ -2064,7 +2064,7 @@ addOverallScoreDisplay(scoreData) {
                 };
             case 'interactive-color-audit':
                 return {
-                    headers: ['Interactive Text', 'Element Location', 'Older Adult Accessibility Issue'],
+                    headers: ['Interactive Text', 'Element Location', 'Accessibility Issue'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => String(item.text || 'Interactive Element').trim(),
@@ -2074,7 +2074,7 @@ addOverallScoreDisplay(scoreData) {
                 };
             case 'layout-brittle-audit':
                 return {
-                    headers: ['Page Element', 'Element Location', 'Older Adult Impact'],
+                    headers: ['Page Element', 'Element Location', 'Accessibility Impact'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => String(this.extractNodeLabel(item.node) || 'Layout Element').trim(),
@@ -2093,7 +2093,7 @@ addOverallScoreDisplay(scoreData) {
                 };
             default:
                 return {
-                    headers: ['Element', 'Location', 'Older Adult Accessibility Issue'],
+                    headers: ['Element', 'Location', 'Accessibility Issue'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => String(item.node?.nodeLabel || item.nodeLabel || 'Page Element').trim(),
@@ -2387,7 +2387,9 @@ addOverallScoreDisplay(scoreData) {
     // Draw rows with alternating white background and bottom borders
     itemsToShow.forEach((item, rowIndex) => {
         const rowData = config.extractors.map(extractor => {
-            const value = String(extractor(item) || 'N/A').trim();
+            let value = String(extractor(item) || 'N/A').trim();
+            // Replace "Senior" with "Accessibility" in table cell text
+            value = value.replace(/\bSenior\b/gi, 'Accessibility');
             return value;
         });
         let maxRowHeight = 0;
