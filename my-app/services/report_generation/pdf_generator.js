@@ -1022,9 +1022,19 @@ addOverallScoreDisplay(scoreData) {
     getIssueDescription(auditId, auditData) {
         // Try to use actual audit description first
         if (auditData && auditData.description) {
+            // Clean markdown links: [text](url) -> text
+            let cleanDesc = auditData.description.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+            
             // Return first 2 sentences for issue description
-            const sentences = auditData.description.split('. ');
-            return sentences.slice(0, 2).join('. ') + '.';
+            const sentences = cleanDesc.split('. ');
+            let result = sentences.slice(0, 2).join('. ');
+            
+            // Only add period if it doesn't already end with one (avoid double dots)
+            if (result && !result.trim().endsWith('.')) {
+                result += '.';
+            }
+            
+            return result;
         }
         
         // Fallback to hardcoded descriptions if audit data not available
@@ -1545,8 +1555,11 @@ addOverallScoreDisplay(scoreData) {
                 
                 // Try to use actual audit description or displayValue first
                 if (auditData.description) {
+                    // Clean markdown links: [text](url) -> text
+                    let cleanDesc = auditData.description.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+                    
                     // Use first sentence(s) of description - split on '. ' (period + space) to avoid splitting on version numbers
-                    const sentences = auditData.description.split('. ');
+                    const sentences = cleanDesc.split('. ');
                     // Take first 2 sentences for better context, or first sentence if it's long enough
                     if (sentences.length > 1 && sentences[0].length < 100) {
                         details = sentences.slice(0, 2).join('. ');
