@@ -72,6 +72,14 @@ async function generateSummaryPDF(platformResults, outputPath) {
     doc.registerFont('RegularFont', 'Helvetica');
     doc.registerFont('BoldFont', 'Helvetica-Bold');
 
+    // Track page number
+    let pageNumber = 1;
+
+    // Use PDFKit's page event to add footer to each page automatically
+    doc.on('pageAdded', () => {
+      pageNumber++;
+    });
+
     // Title
     doc.fontSize(20).font('Helvetica-Bold').fillColor('#1F2937')
       .text('Audit Summary Report', 40, 40, { align: 'center', width: 515 });
@@ -84,6 +92,7 @@ async function generateSummaryPDF(platformResults, outputPath) {
     const pageWidth = 515;
     const headerHeight = 35;
     const rowHeight = 25;
+    const footerHeight = 60; // Space reserved for footer
     
     // Table headers (platform averages only)
     const headers = ['Platform', 'Average Score', 'Result'];
@@ -109,8 +118,11 @@ async function generateSummaryPDF(platformResults, outputPath) {
     doc.fontSize(10).font('Helvetica').fillColor('#1F2937');
     
     platformResults.forEach((result, index) => {
-      // Check if we need a new page
-      if (currentY + rowHeight > doc.page.height - 60) {
+      // Check if we need a new page (account for footer space)
+      if (currentY + rowHeight > doc.page.height - footerHeight) {
+        // Add footer to current page before adding new page
+        addFooterToPDFDoc(doc, pageNumber);
+        
         doc.addPage();
         currentY = margin;
         
@@ -186,9 +198,7 @@ async function generateSummaryPDF(platformResults, outputPath) {
       currentY += rowHeight;
     });
     
-    // Add footer to summary PDF
-    addFooterToPDFDoc(doc, 1);
-    
+
     doc.end();
     
     writeStream.on('finish', () => {
