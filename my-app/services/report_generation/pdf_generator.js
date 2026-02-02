@@ -2238,7 +2238,7 @@ addOverallScoreDisplay(scoreData) {
             this.addPage();
             // Redraw header on new page
             this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
-            this.doc.font('BoldFont').fontSize(13).fillColor('#FFFFFF');
+            this.doc.font('BoldFont').fontSize(11).fillColor('#FFFFFF');
             currentX = this.margin;
             headers.forEach((header, index) => {
                 // Center text horizontally using align: 'center' with column width
@@ -2254,25 +2254,25 @@ addOverallScoreDisplay(scoreData) {
         this.doc.rect(this.margin, tableY, this.pageWidth, totalRowHeight).fill('#D6EAF8');
         
         currentX = this.margin;
-        this.doc.font('BoldFont').fontSize(13).fillColor('#2C3E50').text('TOTAL CALCULATION', currentX + 10, tableY + 7);
+        this.doc.font('BoldFont').fontSize(11).fillColor('#2C3E50').text('TOTAL CALCULATION', currentX + 10, tableY + 7);
         currentX += colWidths[0];
         
         // Empty cell for Score column
-        this.doc.text('—', currentX + 10, tableY + 7, {
+        this.doc.fontSize(10).text('—', currentX + 10, tableY + 7, {
             width: colWidths[1] - 20,
             align: 'center'
         });
         currentX += colWidths[1];
         
         // Total Weight
-        this.doc.text(String(scoreData.totalWeight), currentX + 10, tableY + 7, {
+        this.doc.fontSize(10).text(String(scoreData.totalWeight), currentX + 10, tableY + 7, {
             width: colWidths[2] - 20,
             align: 'center'
         });
         currentX += colWidths[2];
         
         // Total Weighted
-        this.doc.text(scoreData.totalWeightedScore.toFixed(2), currentX + 10, tableY + 7, {
+        this.doc.fontSize(10).text(scoreData.totalWeightedScore.toFixed(2), currentX + 10, tableY + 7, {
             width: colWidths[3] - 20,
             align: 'center'
         });

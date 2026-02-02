@@ -546,7 +546,7 @@ export class StarterAccessibilityPDFGenerator {
 
         // Header
         this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#4F46E5');
-        this.doc.fontSize(10).font('BoldFont').fillColor('white');
+        this.doc.fontSize(11).font('BoldFont').fillColor('white');
         let x = this.margin;
         headers.forEach((header, i) => {
             this.doc.text(header, x + 8, this.currentY + 8, { width: widths[i] - 16, align: 'center' });
@@ -566,7 +566,7 @@ export class StarterAccessibilityPDFGenerator {
         });
 
         // Rows
-        this.doc.fontSize(9).font('RegularFont').fillColor('#1F2937');
+        this.doc.fontSize(10).font('RegularFont').fillColor('#1F2937');
         filteredScoreTable.forEach((item, idx) => {
             if (this.currentY > this.doc.page.height - 60) {
                 this.addPage();
@@ -577,10 +577,10 @@ export class StarterAccessibilityPDFGenerator {
             
             x = this.margin;
             const componentName = sanitizeText(String(item.component || '')).substring(0, 30);
-            this.doc.fontSize(8).fillColor('#1F2937').text(componentName || '—', x + 8, this.currentY + 6, { width: widths[0] - 16 });
-            this.doc.fontSize(8).fillColor('#1F2937').text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 6, { width: widths[1] - 16, align: 'center' });
-            this.doc.fontSize(8).fillColor('#1F2937').text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 6, { width: widths[2] - 16, align: 'center' });
-            this.doc.fontSize(8).fillColor('#1F2937').text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 6, { width: widths[3] - 16, align: 'center' });
+            this.doc.fontSize(10).fillColor('#1F2937').text(componentName || '—', x + 8, this.currentY + 6, { width: widths[0] - 16 });
+            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.score || '0') + '%', x + widths[0] + 8, this.currentY + 6, { width: widths[1] - 16, align: 'center' });
+            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.weight || '0'), x + widths[0] + widths[1] + 8, this.currentY + 6, { width: widths[2] - 16, align: 'center' });
+            this.doc.fontSize(10).fillColor('#1F2937').text(String(item.weighted || '0'), x + widths[0] + widths[1] + widths[2] + 8, this.currentY + 6, { width: widths[3] - 16, align: 'center' });
             
             this.currentY += rowHeight;
         });
