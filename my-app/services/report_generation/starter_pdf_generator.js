@@ -320,7 +320,7 @@ export class StarterAccessibilityPDFGenerator {
         // Score description
         this.doc.fontSize(15).font('BoldFont').fillColor('#1F2937').text('Overall SilverSurfers Score', scoreBoxX + 180, scoreBoxY + 25);
         const descText = isPassing 
-            ? 'This website meets SilverSurfers accessibility\nstandards for senior-friendly design'
+            ? 'This website meets SilverSurfers accessibility\nstandards for older adult-friendly design'
             : 'This website needs improvements to meet\nSilverSurfers accessibility standards';
         this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(descText, scoreBoxX + 180, scoreBoxY + 50, { width: 240 });
 
@@ -399,6 +399,23 @@ export class StarterAccessibilityPDFGenerator {
             return;
         }
 
+        // Filter out rows where ANY column is empty, null, undefined, or whitespace
+        const filteredScoreItems = scoreItems.filter(item => {
+            const componentName = String(item.component || '').trim();
+            const score = String(item.score || '').trim();
+            const weight = String(item.weight || '').trim();
+            const weighted = String(item.weighted || '').trim();
+            // Return true if all columns have values
+            return componentName !== '' && score !== '' && weight !== '' && weighted !== '';
+        });
+
+        // If all rows were filtered out, show message
+        if (filteredScoreItems.length === 0) {
+            this.doc.fontSize(10).font('RegularFont').fillColor('#6B7280').text('No complete audit data available', this.margin, this.currentY);
+            this.currentY += 30;
+            return;
+        }
+
         // Header
         this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#4F46E5');
         this.doc.fontSize(14).font('BoldFont').fillColor('white');
@@ -412,7 +429,7 @@ export class StarterAccessibilityPDFGenerator {
 
         // Rows
         this.doc.fontSize(12).font('RegularFont').fillColor('#1F2937');
-        scoreItems.forEach((item, idx) => {
+        filteredScoreItems.forEach((item, idx) => {
             const bgColor = idx % 2 === 0 ? '#F9FAFB' : 'white';
             this.doc.rect(this.margin, this.currentY, this.pageWidth, rowHeight).fill(bgColor).stroke('#E5E7EB');
             
@@ -538,9 +555,19 @@ export class StarterAccessibilityPDFGenerator {
 
         this.currentY += headerHeight;
 
+        // Filter out rows where ANY column is empty, null, undefined, or whitespace
+        const filteredScoreTable = scoreData.scoreTable.filter(item => {
+            const componentName = String(item.component || '').trim();
+            const score = String(item.score || '').trim();
+            const weight = String(item.weight || '').trim();
+            const weighted = String(item.weighted || '').trim();
+            // Return true if all columns have values
+            return componentName !== '' && score !== '' && weight !== '' && weighted !== '';
+        });
+
         // Rows
         this.doc.fontSize(9).font('RegularFont').fillColor('#1F2937');
-        scoreData.scoreTable.forEach((item, idx) => {
+        filteredScoreTable.forEach((item, idx) => {
             if (this.currentY > this.doc.page.height - 60) {
                 this.addPage();
             }

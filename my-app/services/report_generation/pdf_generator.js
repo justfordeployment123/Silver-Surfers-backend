@@ -393,7 +393,7 @@ addOverallScoreDisplay(scoreData) {
         this.currentY += 20;
     } else {
         this.doc.fontSize(12).font('RegularFont').fillColor('#27AE60')
-            .text('This website meets SilverSurfers accessibility standards for senior-friendly design',
+            .text('This website meets SilverSurfers accessibility standards for older adult-friendly design',
                 this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
         this.currentY += 20;
     }
@@ -930,7 +930,7 @@ addOverallScoreDisplay(scoreData) {
             this.doc.fontSize(11);
             const issueHeight = this.doc.heightOfString(issueDesc, { width: this.pageWidth - this.margin }) + 18;
             const whyHeight = this.doc.heightOfString(info.why, { width: this.pageWidth - this.margin }) + 18;
-            const recommendationHeight = this.doc.heightOfString(info.recommendation, { width: this.pageWidth - this.margin }) + 25;
+            const recommendationHeight = this.doc.heightOfString(info.recommendation, { width: this.pageWidth - this.margin }) + 18;
             totalHeight += issueHeight + whyHeight + recommendationHeight;
         } else {
             // Calculate height for compact version
@@ -971,7 +971,7 @@ addOverallScoreDisplay(scoreData) {
                 .font('RegularFont')
                 .text(info.recommendation, { width: this.pageWidth - this.margin });
             this.currentY += this.doc.heightOfString(info.recommendation, 
-                { width: this.pageWidth - this.margin }) + 25;
+                { width: this.pageWidth - this.margin }) + 18;
         } else {
             // Compact version for medium and low priority
             this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
@@ -1941,22 +1941,20 @@ addOverallScoreDisplay(scoreData) {
     const tableConfig = this.getTableConfig(auditId);
     const items = auditData.details.items;
     
-    // PRE-CHECK: Determine if table would be skipped due to all N/A locations
-    const locationIndex = tableConfig.headers.findIndex(h => 
-        h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
-    );
-    
-    if (locationIndex !== -1) {
-        const itemsWithValidLocation = items.filter(item => {
-            const locationValue = tableConfig.extractors[locationIndex](item);
-            return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
+    // Filter out rows where ANY column is empty, null, undefined, 'N/A', or whitespace
+    const filteredItems = items.filter(item => {
+        // Check all columns using extractors
+        return tableConfig.extractors.every(extractor => {
+            const value = extractor(item);
+            // Return true if value exists, is not 'N/A', and is not empty/whitespace
+            return value && value !== 'N/A' && String(value).trim() !== '';
         });
-        
-        // If all rows would be filtered out, skip the entire page
-        if (itemsWithValidLocation.length === 0) {
-            console.log(`Skipping table for ${auditId} - all locations are N/A`);
-            return; // Exit without adding any content
-        }
+    });
+    
+    // If all rows would be filtered out, skip the entire page
+    if (filteredItems.length === 0) {
+        console.log(`Skipping table for ${auditId} - all rows have empty columns`);
+        return; // Exit without adding any content
     }
     
         // In appendix mode, don't add heading (it's already added by addAppendix)
@@ -1981,12 +1979,12 @@ addOverallScoreDisplay(scoreData) {
     }
 
     const itemsPerPage = 12;
-    for (let i = 0; i < items.length; i += itemsPerPage) {
+    for (let i = 0; i < filteredItems.length; i += itemsPerPage) {
         if (i > 0) {
             this.addPage();
             // Removed "Detailed Findings - Continued" heading
         }
-        this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
+        this.drawEnhancedTable(filteredItems.slice(i, i + itemsPerPage), tableConfig, info?.category);
     }
 }
     
@@ -2005,7 +2003,7 @@ addOverallScoreDisplay(scoreData) {
                 };
             case 'interactive-color-audit':
                 return {
-                    headers: ['Interactive Text', 'Element Location', 'Senior Accessibility Issue'],
+                    headers: ['Interactive Text', 'Element Location', 'Older Adult Accessibility Issue'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => item.text || 'Interactive Element',
@@ -2015,7 +2013,7 @@ addOverallScoreDisplay(scoreData) {
                 };
             case 'layout-brittle-audit':
                 return {
-                    headers: ['Page Element', 'Element Location', 'Senior Impact'],
+                    headers: ['Page Element', 'Element Location', 'Older Adult Impact'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => this.extractNodeLabel(item.node) || 'Layout Element',
@@ -2034,7 +2032,7 @@ addOverallScoreDisplay(scoreData) {
                 };
             default:
                 return {
-                    headers: ['Element', 'Location', 'Senior Accessibility Issue'],
+                    headers: ['Element', 'Location', 'Older Adult Accessibility Issue'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
                         item => item.node?.nodeLabel || item.nodeLabel || 'Page Element',
@@ -2253,24 +2251,20 @@ addOverallScoreDisplay(scoreData) {
     drawEnhancedTable(items, config, category) {
     if (!items || items.length === 0) return;
     
-    // Find the Location column index
-    const locationIndex = config.headers.findIndex(h => 
-        h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
-    );
-    
-    // Filter out rows where "Location" column has N/A
-    let itemsToShow = items;
-    if (locationIndex !== -1) {
-        itemsToShow = items.filter(item => {
-            const locationValue = config.extractors[locationIndex](item);
-            return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
+    // Filter out rows where ANY column is empty, null, undefined, 'N/A', or whitespace
+    const itemsToShow = items.filter(item => {
+        // Check all columns using extractors
+        return config.extractors.every(extractor => {
+            const value = extractor(item);
+            // Return true if value exists, is not 'N/A', and is not empty/whitespace
+            return value && value !== 'N/A' && String(value).trim() !== '';
         });
-        
-        // If ALL rows have N/A in Location, don't render the table at all
-        if (itemsToShow.length === 0) {
-            console.log('Skipping table - all rows have N/A in Location column');
-            return; // Exit without rendering anything
-        }
+    });
+    
+    // If ALL rows have empty columns, don't render the table at all
+    if (itemsToShow.length === 0) {
+        console.log('Skipping table - all rows have empty columns');
+        return; // Exit without rendering anything
     }
     
     const startY = this.currentY;
@@ -2447,7 +2441,7 @@ addOverallScoreDisplay(scoreData) {
             const stream = fs.createWriteStream(finalOutputPath);
             this.doc.pipe(stream);
 
-            console.log('Generating senior-friendly accessibility report...');
+            console.log('Generating older adult-friendly accessibility report...');
             console.log(`Overall Score Calculated: ${scoreData.finalScore.toFixed(0)}`);
 
             this.addIntroPage(reportData, scoreData, options.planType || 'pro');
@@ -2472,7 +2466,7 @@ addOverallScoreDisplay(scoreData) {
                 stream.on('finish', () => {
                     const successMessage = {
                         success: true,
-                        message: 'Senior accessibility report generated successfully',
+                        message: 'Older adult accessibility report generated successfully',
                         reportPath: finalOutputPath,
                         clientFolder: clientFolder,
                         fileName: fileName,
@@ -2480,14 +2474,14 @@ addOverallScoreDisplay(scoreData) {
                         url: url,
                         score: scoreData.finalScore.toFixed(0)
                     };
-                    console.log(`Senior accessibility report generated successfully: ${finalOutputPath}`);
+                    console.log(`Older adult accessibility report generated successfully: ${finalOutputPath}`);
                     resolve(successMessage);
                 });
                 stream.on('error', reject);
             });
 
         } catch (error) {
-            console.error('Error generating senior accessibility report:', error.message);
+            console.error('Error generating older adult accessibility report:', error.message);
             throw error;
         }
     }

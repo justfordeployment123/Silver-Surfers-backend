@@ -96,7 +96,7 @@ const PREMIUM_FEATURES = {
         'Font size analysis overlays'
     ],
     detailedAnalysis: [
-        'Comprehensive explanations of why each issue matters for seniors',
+        'Comprehensive explanations of why each issue matters for older adults',
         'Specific code recommendations and fixes',
         'Detailed impact assessments for each accessibility barrier',
         'Step-by-step improvement guides',
@@ -110,11 +110,11 @@ const PREMIUM_FEATURES = {
         'Downloadable client folders organized by website and device type'
     ],
     categories: {
-        'Vision Accessibility': 'Complete analysis of all visual barriers affecting seniors',
+        'Vision Accessibility': 'Complete analysis of all visual barriers affecting older adults',
         'Motor Accessibility': 'Comprehensive motor skill and dexterity assessments',
         'Cognitive Accessibility': 'Full cognitive load and usability evaluation',
-        'Performance for Seniors': 'Detailed speed and responsiveness optimization',
-        'Security for Seniors': 'Complete privacy and security audit',
+        'Performance for Older Adults': 'Detailed speed and responsiveness optimization',
+        'Security for Older Adults': 'Complete privacy and security audit',
         'Technical Accessibility': 'Full technical compliance and stability check'
     }
 };
@@ -434,7 +434,7 @@ class LiteAccessibilityPDFGenerator {
         this.doc.fontSize(16).font('BoldFont').fillColor('white')
             .text('Upgrade to Premium Today!', this.margin + 10, this.currentY + 10);
         this.doc.fontSize(14).font('RegularFont').fillColor('#D5F4E6')
-            .text('Get the complete senior accessibility analysis your website deserves.', this.margin + 10, this.currentY + 35);
+            .text('Get the complete older adult accessibility analysis your website deserves.', this.margin + 10, this.currentY + 35);
         this.currentY += 80;
 
         // Comparison summary
