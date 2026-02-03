@@ -209,6 +209,113 @@ export class ElderlyAccessibilityPDFGenerator {
         this.pageNumber = 0;
     }
 
+    addTitlePage(reportData) {
+        // Helper function to extract site name from URL
+        function extractSiteName(url) {
+            try {
+                const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+                let hostname = urlObj.hostname.replace(/^www\./, '');
+                // Convert domain to title case with spaces
+                let name = hostname.split('.')[0]; // Get the main part before .com
+                // Add spaces before capital letters and before numbers
+                name = name.replace(/([A-Z])/g, ' $1').replace(/([0-9]+)/g, ' $1');
+                // Split by common separators
+                name = name.replace(/[-_]/g, ' ');
+                // Title case each word
+                name = name.split(' ').map(word => {
+                    if (!word) return '';
+                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                }).join(' ').trim();
+                return name || hostname;
+            } catch (e) {
+                return 'Website';
+            }
+        }
+
+        const siteName = extractSiteName(reportData.finalUrl || reportData.url || '');
+        const pageHeight = this.doc.page.height;
+        const pageWidth = this.doc.page.width;
+
+        // Draw thick black vertical border on the left (20px wide)
+        this.doc.rect(0, 0, 20, pageHeight).fill('#000000');
+
+        // White background for the rest of the page
+        this.doc.rect(20, 0, pageWidth - 20, pageHeight).fill('#FFFFFF');
+
+        // Title: "SilverSurfers Website Accessibility Audit Report" - centered, stacked
+        const titleY = pageHeight * 0.35; // Upper-middle section
+        const titleX = 40; // Start after the black border
+        const titleWidth = pageWidth - 60; // Account for margins
+
+        // Stack the title lines vertically
+        this.doc.fontSize(36).font('BoldFont').fillColor('#2C3E50')
+            .text('SilverSurfers', titleX, titleY, { width: titleWidth, align: 'center' });
+        
+        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+            .text('Website', titleX, titleY + 50, { width: titleWidth, align: 'center' });
+        
+        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+            .text('Accessibility', titleX, titleY + 90, { width: titleWidth, align: 'center' });
+        
+        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+            .text('Audit Report', titleX, titleY + 130, { width: titleWidth, align: 'center' });
+
+        // Lower left: "Prepared for [Website] on [Date]"
+        const preparedY = pageHeight - 120;
+        const preparedX = 40;
+        
+        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            .text('Prepared for', preparedX, preparedY);
+        
+        this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
+            .text(siteName, preparedX, preparedY + 18, { width: 200 });
+        
+        const dateStr = new Date(reportData.fetchTime || new Date()).toLocaleDateString('en-US', { 
+            year: 'numeric', month: 'long', day: 'numeric' 
+        });
+        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            .text('on', preparedX, preparedY + 40);
+        
+        this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
+            .text(dateStr, preparedX, preparedY + 58, { width: 200 });
+
+        // Lower right: Logo
+        // Try multiple possible paths for the logo
+        const possibleLogoPaths = [
+            path.join(__dirname, '../../../assets/Logo.png'), // From report_generation: up 3 levels to backend-silver-surfers
+            path.join(__dirname, '../../assets/Logo.png'),    // Alternative path
+            path.join(process.cwd(), 'assets/Logo.png'),      // From project root
+            path.join(process.cwd(), 'backend-silver-surfers/assets/Logo.png') // Explicit backend path
+        ];
+        
+        const logoX = pageWidth - 180;
+        const logoY = pageHeight - 150;
+        const logoSize = 120;
+        let logoLoaded = false;
+
+        for (const logoPath of possibleLogoPaths) {
+            try {
+                if (fs.existsSync(logoPath)) {
+                    this.doc.image(logoPath, logoX, logoY, { 
+                        fit: [logoSize, logoSize],
+                        align: 'right'
+                    });
+                    logoLoaded = true;
+                    break;
+                }
+            } catch (error) {
+                // Continue to next path
+            }
+        }
+
+        if (!logoLoaded) {
+            console.warn(`Logo not found. Tried paths: ${possibleLogoPaths.join(', ')}`);
+        }
+
+        // Reset currentY for next page (don't increment pageNumber here - let addPage() handle it)
+        this.currentY = this.margin;
+    }
+
     addFooter() {
         // Save current Y position to restore after drawing footer
         const savedY = this.doc.y;
@@ -437,88 +544,87 @@ addOverallScoreDisplay(scoreData) {
             else if (planType.toLowerCase().includes('pro')) packageText = 'Pro';
         }
 
-        // Start with site name as main heading (dark blue color matching image)
-        this.currentY = 80;
-        this.doc.fontSize(32).font('BoldFont').fillColor('#2C5F9C')
-            .text(siteName, this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
-        this.currentY += 50;
-
-        // Subtitle: "Website Accessibility Audit Report – (List platform here)"
-        this.doc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
-            .text(`Website Accessibility Audit Report – (${formFactorDisplay})`, this.margin, this.currentY, 
-                { width: this.pageWidth, align: 'center' });
-        this.currentY += 40;
-
-        // URL (gray, smaller)
-        this.doc.fontSize(11).font('RegularFont').fillColor('#7F8C8D')
-            .text(reportData.finalUrl || '', this.margin, this.currentY, 
-                { width: this.pageWidth, align: 'center' });
-        this.currentY += 25;
-
-        // Generated date (italic gray)
-        const timestamp = new Date(reportData.fetchTime || new Date()).toLocaleDateString('en-US', { 
-            year: 'numeric', month: 'long', day: 'numeric' 
-        });
-        this.doc.fontSize(10).font('RegularFont').fillColor('#95A5A6')
-            .text(`Generated: ${timestamp}`, this.margin, this.currentY, 
-                { width: this.pageWidth, align: 'center' });
-        this.currentY += 60;
-
-        // Overall Accessibility Score box with border
-        const scoreBoxHeight = 160;
-        const scoreBoxY = this.currentY;
+        // Dark blue header bar at top
+        const headerHeight = 50;
+        const headerY = this.margin;
+        this.doc.rect(0, headerY, this.doc.page.width, headerHeight)
+            .fill('#1E3A8A'); // Dark blue
         
-        // Draw border for the score box
-        this.doc.rect(this.margin + 50, scoreBoxY, this.pageWidth - 100, scoreBoxHeight)
-            .strokeColor('#E8D5D0')
-            .lineWidth(2)
+        // Header text: "Website Accessibility Audit Report – (Desktop)" in white
+        this.doc.fontSize(16).font('BoldFont').fillColor('#FFFFFF')
+            .text(`Website Accessibility Audit Report – (${formFactorDisplay})`, this.margin, headerY + 15, 
+                { width: this.pageWidth, align: 'left' });
+        
+        // Separator lines: white line then thin red line
+        const separatorY = headerY + headerHeight;
+        this.doc.strokeColor('#FFFFFF')
+            .lineWidth(1)
+            .moveTo(0, separatorY)
+            .lineTo(this.doc.page.width, separatorY)
             .stroke();
         
-        // Light beige background
-        this.doc.rect(this.margin + 50, scoreBoxY, this.pageWidth - 100, scoreBoxHeight)
-            .fillOpacity(0.3)
-            .fill('#FCF3EF')
-            .fillOpacity(1);
-
-        // "Overall Accessibility Score (list platform here)" heading
-        this.doc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
-            .text(`Overall Accessibility Score (${formFactorDisplay})`, this.margin + 70, scoreBoxY + 20, 
-                { width: this.pageWidth - 140, align: 'center' });
-
-        // Large score percentage - three tier color system
-        let scoreColor;
+        this.doc.strokeColor('#DC3545') // Red
+            .lineWidth(0.5)
+            .moveTo(0, separatorY + 1)
+            .lineTo(this.doc.page.width, separatorY + 1)
+            .stroke();
+        
+        // Light red/pink main content area with red border
+        const contentStartY = separatorY + 2;
+        const contentHeight = 200;
+        const contentMargin = 20;
+        const contentX = contentMargin;
+        const contentWidth = this.doc.page.width - (contentMargin * 2);
+        
+        // Light red/pink background
+        this.doc.rect(contentX, contentStartY, contentWidth, contentHeight)
+            .fill('#FFE5E5'); // Light red/pink
+        
+        // Red border around content area
+        this.doc.rect(contentX, contentStartY, contentWidth, contentHeight)
+            .strokeColor('#DC3545')
+            .lineWidth(1)
+            .stroke();
+        
+        // "Overall Accessibility Score (Desktop)" heading - top-left of content area
+        this.doc.fontSize(14).font('BoldFont').fillColor('#000000')
+            .text(`Overall Accessibility Score (${formFactorDisplay})`, contentX + 15, contentStartY + 15, 
+                { width: contentWidth - 30 });
+        
+        // Large score percentage - centered, red color
+        const scoreY = contentStartY + 50;
+        let scoreColor = '#DC3545'; // Red (always red as shown in image)
         if (score >= 80) {
-            scoreColor = '#28A745'; // Green for Strong Pass
+            scoreColor = '#28A745'; // Green for Pass
         } else if (score >= 70) {
-            scoreColor = '#FD7E14'; // Yellow/Orange for Meets Minimum but needs improvement
-        } else {
-            scoreColor = '#DC3545'; // Red for Below Minimum
+            scoreColor = '#FD7E14'; // Orange for Needs Improvement
         }
+        
         this.doc.fontSize(72).font('BoldFont').fillColor(scoreColor)
-            .text(`${score}%`, this.margin + 70, scoreBoxY + 50, 
-                { width: this.pageWidth - 140, align: 'center' });
-
-        // Determine if score meets the 80% minimum recommended standard (Pass threshold)
+            .text(`${score}%`, contentX, scoreY, 
+                { width: contentWidth, align: 'center' });
+        
+        // Determine if score meets the 80% minimum recommended standard
         const isPassing = score >= 80;
-
-        // Warning message if below 80% minimum
+        
+        // Warning or Pass message - centered
+        const warningY = contentStartY + 140;
         if (!isPassing) {
-            this.doc.fontSize(12).font('BoldFont').fillColor('#C0392B')
-                .text('WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
-                    { width: this.pageWidth - 140, align: 'center' });
-            this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
-                .text('Minimum recommended score: 80%', this.margin + 70, scoreBoxY + 143, 
-                    { width: this.pageWidth - 140, align: 'center' });
+            this.doc.fontSize(12).font('BoldFont').fillColor('#DC3545')
+                .text('WARNING: Below Recommended Standard', contentX, warningY, 
+                    { width: contentWidth, align: 'center' });
         } else {
-            this.doc.fontSize(12).font('BoldFont').fillColor('#27AE60')
-                .text('PASS: Meets Recommended Standard', this.margin + 70, scoreBoxY + 125, 
-                    { width: this.pageWidth - 140, align: 'center' });
-            this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
-                .text('Minimum recommended score: 80%', this.margin + 70, scoreBoxY + 143, 
-                    { width: this.pageWidth - 140, align: 'center' });
+            this.doc.fontSize(12).font('BoldFont').fillColor('#28A745')
+                .text('PASS: Meets Recommended Standard', contentX, warningY, 
+                    { width: contentWidth, align: 'center' });
         }
-
-        this.currentY = scoreBoxY + scoreBoxHeight + 30;
+        
+        // Minimum recommended score text - centered
+        this.doc.fontSize(10).font('RegularFont').fillColor('#000000')
+            .text('Minimum recommended score: 80%', contentX, warningY + 20, 
+                { width: contentWidth, align: 'center' });
+        
+        this.currentY = contentStartY + contentHeight + 30;
 
         // Report prepared for (left-aligned)
         const clientEmail = this.options?.clientEmail || reportData.clientEmail || 'client@email.com';
@@ -2529,6 +2635,10 @@ addOverallScoreDisplay(scoreData) {
             console.log('Generating older adult-friendly accessibility report...');
             console.log(`Overall Score Calculated: ${scoreData.finalScore.toFixed(0)}`);
 
+            // Add standardized title page as the first page
+            this.addTitlePage(reportData);
+            this.addPage(); // Add a new page after title page
+            
             this.addIntroPage(reportData, scoreData, options.planType || 'pro');
             this.addExecutiveSummary(reportData, scoreData);
             this.addScoreCalculationPage(reportData, scoreData);

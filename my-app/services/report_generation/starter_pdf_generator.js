@@ -1,7 +1,12 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import customConfig from '../load_and_audit/custom-config.js';
+
+// Helper to get __dirname in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper function to sanitize text for PDF rendering
 function sanitizeText(text) {
@@ -172,6 +177,113 @@ export class StarterAccessibilityPDFGenerator {
         this.pageNumber = 0;
     }
 
+    addTitlePage(reportData) {
+        // Helper function to extract site name from URL
+        function extractSiteName(url) {
+            try {
+                const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+                let hostname = urlObj.hostname.replace(/^www\./, '');
+                // Convert domain to title case with spaces
+                let name = hostname.split('.')[0]; // Get the main part before .com
+                // Add spaces before capital letters and before numbers
+                name = name.replace(/([A-Z])/g, ' $1').replace(/([0-9]+)/g, ' $1');
+                // Split by common separators
+                name = name.replace(/[-_]/g, ' ');
+                // Title case each word
+                name = name.split(' ').map(word => {
+                    if (!word) return '';
+                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                }).join(' ').trim();
+                return name || hostname;
+            } catch (e) {
+                return 'Website';
+            }
+        }
+
+        const siteName = extractSiteName(reportData.finalUrl || reportData.url || '');
+        const pageHeight = this.doc.page.height;
+        const pageWidth = this.doc.page.width;
+
+        // Draw thick black vertical border on the left (20px wide)
+        this.doc.rect(0, 0, 20, pageHeight).fill('#000000');
+
+        // White background for the rest of the page
+        this.doc.rect(20, 0, pageWidth - 20, pageHeight).fill('#FFFFFF');
+
+        // Title: "SilverSurfers Website Accessibility Audit Report" - centered, stacked
+        const titleY = pageHeight * 0.35; // Upper-middle section
+        const titleX = 40; // Start after the black border
+        const titleWidth = pageWidth - 60; // Account for margins
+
+        // Stack the title lines vertically
+        this.doc.fontSize(36).font('BoldFont').fillColor('#2C3E50')
+            .text('SilverSurfers', titleX, titleY, { width: titleWidth, align: 'center' });
+        
+        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+            .text('Website', titleX, titleY + 50, { width: titleWidth, align: 'center' });
+        
+        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+            .text('Accessibility', titleX, titleY + 90, { width: titleWidth, align: 'center' });
+        
+        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+            .text('Audit Report', titleX, titleY + 130, { width: titleWidth, align: 'center' });
+
+        // Lower left: "Prepared for [Website] on [Date]"
+        const preparedY = pageHeight - 120;
+        const preparedX = 40;
+        
+        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            .text('Prepared for', preparedX, preparedY);
+        
+        this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
+            .text(siteName, preparedX, preparedY + 18, { width: 200 });
+        
+        const dateStr = new Date(reportData.fetchTime || new Date()).toLocaleDateString('en-US', { 
+            year: 'numeric', month: 'long', day: 'numeric' 
+        });
+        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            .text('on', preparedX, preparedY + 40);
+        
+        this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
+            .text(dateStr, preparedX, preparedY + 58, { width: 200 });
+
+        // Lower right: Logo
+        // Try multiple possible paths for the logo
+        const possibleLogoPaths = [
+            path.join(__dirname, '../../../assets/Logo.png'), // From report_generation: up 3 levels to backend-silver-surfers
+            path.join(__dirname, '../../assets/Logo.png'),    // Alternative path
+            path.join(process.cwd(), 'assets/Logo.png'),      // From project root
+            path.join(process.cwd(), 'backend-silver-surfers/assets/Logo.png') // Explicit backend path
+        ];
+        
+        const logoX = pageWidth - 180;
+        const logoY = pageHeight - 150;
+        const logoSize = 120;
+        let logoLoaded = false;
+
+        for (const logoPath of possibleLogoPaths) {
+            try {
+                if (fs.existsSync(logoPath)) {
+                    this.doc.image(logoPath, logoX, logoY, { 
+                        fit: [logoSize, logoSize],
+                        align: 'right'
+                    });
+                    logoLoaded = true;
+                    break;
+                }
+            } catch (error) {
+                // Continue to next path
+            }
+        }
+
+        if (!logoLoaded) {
+            console.warn(`Logo not found. Tried paths: ${possibleLogoPaths.join(', ')}`);
+        }
+
+        // Reset currentY for next page (don't increment pageNumber here - let addPage() handle it)
+        this.currentY = this.margin;
+    }
+
     addFooter() {
         // Save current Y position to restore after drawing footer
         const savedY = this.doc.y;
@@ -230,6 +342,10 @@ export class StarterAccessibilityPDFGenerator {
             const writeStream = fs.createWriteStream(finalOutputPath);
             this.doc.pipe(writeStream);
 
+            // Add standardized title page as the first page
+            this.addTitlePage(reportData);
+            this.addPage(); // Add a new page after title page
+
             // Add pages in Starter order: Title, Score Calculation, Summary, Summary Table, Detailed Results
             this.addIntroPage(reportData, scoreData);
             this.addScoreCalculationPage(reportData, scoreData);
@@ -273,58 +389,89 @@ export class StarterAccessibilityPDFGenerator {
     }
 
     addIntroPage(reportData, scoreData) {
-        // Header background with gradient effect (simulate with overlapping rectangles)
-        this.doc.rect(0, 0, this.doc.page.width, 220).fill('#6366F1');
-        this.doc.rect(0, 180, this.doc.page.width, 40).fillOpacity(0.3).fill('#8B5CF6');
-        this.doc.fillOpacity(1);
-        
-        this.doc.fontSize(32).font('BoldFont').fillColor('white').text('SilverSurfers Starter Audit', this.margin, 30, { width: this.pageWidth, align: 'center' });
-        this.doc.fontSize(14).font('RegularFont').fillColor('white').text('Accessibility Audit Report', this.margin, 70, { width: this.pageWidth, align: 'center' });
-        
-        this.currentY = 110;
-
-        // Website analyzed box with rounded corners (simulated)
-        const boxX = (this.doc.page.width - 280) / 2;
-        this.doc.roundedRect(boxX, this.currentY, 280, 50, 8).fill('#7C3AED').fillOpacity(0.9);
-        this.doc.fillOpacity(1);
-        this.doc.fontSize(11).font('RegularFont').fillColor('#E0E7FF').text('Website Analyzed', boxX + 20, this.currentY + 12);
-        this.doc.fontSize(13).font('BoldFont').fillColor('white').text(reportData.finalUrl || 'Website', boxX + 20, this.currentY + 28, { width: 240 });
-        this.currentY += 85;
-
-        // Score display box with rounded background
-        const scoreBoxX = (this.doc.page.width - 440) / 2;
-        const scoreBoxY = this.currentY;
-        this.doc.roundedRect(scoreBoxX, scoreBoxY, 440, 120, 12).fill('#E0E7FF').fillOpacity(0.8);
-        this.doc.fillOpacity(1);
-
+        const formFactor = reportData.configSettings?.formFactor || 'desktop';
+        const formFactorDisplay = formFactor.charAt(0).toUpperCase() + formFactor.slice(1);
         const score = Math.round(scoreData.finalScore);
-        // Three-tier system: 80-100% Pass, 70-79% Needs Improvement, Below 69% Fail
         const isPassing = score >= 80;
-        let scoreColor, statusText;
+
+        // Dark blue header bar at top
+        const headerHeight = 50;
+        const headerY = this.margin;
+        this.doc.rect(0, headerY, this.doc.page.width, headerHeight)
+            .fill('#1E3A8A'); // Dark blue
+        
+        // Header text: "Website Accessibility Audit Report – (Desktop)" in white
+        this.doc.fontSize(16).font('BoldFont').fillColor('#FFFFFF')
+            .text(`Website Accessibility Audit Report – (${formFactorDisplay})`, this.margin, headerY + 15, 
+                { width: this.pageWidth, align: 'left' });
+        
+        // Separator lines: white line then thin red line
+        const separatorY = headerY + headerHeight;
+        this.doc.strokeColor('#FFFFFF')
+            .lineWidth(1)
+            .moveTo(0, separatorY)
+            .lineTo(this.doc.page.width, separatorY)
+            .stroke();
+        
+        this.doc.strokeColor('#DC3545') // Red
+            .lineWidth(0.5)
+            .moveTo(0, separatorY + 1)
+            .lineTo(this.doc.page.width, separatorY + 1)
+            .stroke();
+        
+        // Light red/pink main content area with red border
+        const contentStartY = separatorY + 2;
+        const contentHeight = 200;
+        const contentMargin = 20;
+        const contentX = contentMargin;
+        const contentWidth = this.doc.page.width - (contentMargin * 2);
+        
+        // Light red/pink background
+        this.doc.rect(contentX, contentStartY, contentWidth, contentHeight)
+            .fill('#FFE5E5'); // Light red/pink
+        
+        // Red border around content area
+        this.doc.rect(contentX, contentStartY, contentWidth, contentHeight)
+            .strokeColor('#DC3545')
+            .lineWidth(1)
+            .stroke();
+        
+        // "Overall Accessibility Score (Desktop)" heading - top-left of content area
+        this.doc.fontSize(14).font('BoldFont').fillColor('#000000')
+            .text(`Overall Accessibility Score (${formFactorDisplay})`, contentX + 15, contentStartY + 15, 
+                { width: contentWidth - 30 });
+        
+        // Large score percentage - centered, color based on score
+        const scoreY = contentStartY + 50;
+        let scoreColor = '#DC3545'; // Red (default)
         if (score >= 80) {
-            scoreColor = '#6366F1'; // Blue/Purple for Pass
-            statusText = 'PASS';
+            scoreColor = '#28A745'; // Green for Pass
         } else if (score >= 70) {
-            scoreColor = '#F59E0B'; // Orange for Needs Improvement
-            statusText = 'NEEDS IMPROVEMENT';
-        } else {
-            scoreColor = '#EF4444'; // Red for Fail
-            statusText = 'FAIL';
+            scoreColor = '#FD7E14'; // Orange for Needs Improvement
         }
-
-        // Large score circle
-        this.doc.circle(scoreBoxX + 80, scoreBoxY + 60, 45).fill('white');
-        this.doc.fontSize(42).font('BoldFont').fillColor(scoreColor).text(score + '%', scoreBoxX + 35, scoreBoxY + 38, { width: 90, align: 'center' });
-        this.doc.fontSize(12).font('BoldFont').fillColor(scoreColor).text(statusText, scoreBoxX + 35, scoreBoxY + 75, { width: 90, align: 'center' });
-
-        // Score description
-        this.doc.fontSize(15).font('BoldFont').fillColor('#1F2937').text('Overall SilverSurfers Score', scoreBoxX + 180, scoreBoxY + 25);
-        const descText = isPassing 
-            ? 'This website meets SilverSurfers accessibility\nstandards for older adult-friendly design'
-            : 'This website needs improvements to meet\nSilverSurfers accessibility standards';
-        this.doc.fontSize(11).font('RegularFont').fillColor('#4B5563').text(descText, scoreBoxX + 180, scoreBoxY + 50, { width: 240 });
-
-        this.currentY += 150;
+        
+        this.doc.fontSize(72).font('BoldFont').fillColor(scoreColor)
+            .text(`${score}%`, contentX, scoreY, 
+                { width: contentWidth, align: 'center' });
+        
+        // Warning or Pass message - centered
+        const warningY = contentStartY + 140;
+        if (!isPassing) {
+            this.doc.fontSize(12).font('BoldFont').fillColor('#DC3545')
+                .text('WARNING: Below Recommended Standard', contentX, warningY, 
+                    { width: contentWidth, align: 'center' });
+        } else {
+            this.doc.fontSize(12).font('BoldFont').fillColor('#28A745')
+                .text('PASS: Meets Recommended Standard', contentX, warningY, 
+                    { width: contentWidth, align: 'center' });
+        }
+        
+        // Minimum recommended score text - centered
+        this.doc.fontSize(10).font('RegularFont').fillColor('#000000')
+            .text('Minimum recommended score: 80%', contentX, warningY + 20, 
+                { width: contentWidth, align: 'center' });
+        
+        this.currentY = contentStartY + contentHeight + 30;
         
         // Report generated timestamp
         const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });

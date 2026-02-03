@@ -267,58 +267,52 @@ async function mergePDFsByPlatform(options) {
     : 0;
   const isPassing = avgScore >= 80;
 
-  // Cover page content matching individual report format
-  coverY = 80;
-  coverDoc.fontSize(32).font('BoldFont').fillColor('#2C5F9C')
-    .text(siteName, coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 50;
-
-  // Determine package type display text
-  let packageText = 'Pro';
-  if (planType && typeof planType === 'string') {
-    if (planType.toLowerCase().includes('starter')) packageText = 'Starter';
-    else if (planType.toLowerCase().includes('onetime') || planType === 'oneTime') packageText = 'One-Time';
-    else if (planType.toLowerCase().includes('pro')) packageText = 'Pro';
-  }
-
-  coverDoc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
-    .text(`Website Accessibility Audit Report – (${deviceCapitalized})`, coverMargin, coverY, 
-      { width: coverWidth, align: 'center' });
-  coverY += 25;
+  // Dark blue header bar at top
+  const headerHeight = 50;
+  const headerY = coverMargin;
+  coverDoc.rect(0, headerY, coverDoc.page.width, headerHeight)
+    .fill('#1E3A8A'); // Dark blue
   
-  // Package type indicator
-  coverDoc.fontSize(11).font('RegularFont').fillColor('#3498DB')
-    .text(`${packageText} Package`, coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 30;
-
-  coverDoc.fontSize(11).font('RegularFont').fillColor('#7F8C8D')
-    .text(baseUrl, coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 25;
-
-  const genDate = new Date().toLocaleDateString('en-US', { 
-    year: 'numeric', month: 'long', day: 'numeric' 
-  });
-  coverDoc.fontSize(10).font('RegularFont').fillColor('#95A5A6')
-    .text(`Generated: ${genDate}`, coverMargin, coverY, { width: coverWidth, align: 'center' });
-  coverY += 60;
-
-  // Overall Accessibility Score box
-  const scoreBoxHeight = 160;
-  const scoreBoxY = coverY;
+  // Header text: "Website Accessibility Audit Report – (Desktop)" in white
+  coverDoc.fontSize(16).font('BoldFont').fillColor('#FFFFFF')
+    .text(`Website Accessibility Audit Report – (${deviceCapitalized})`, coverMargin, headerY + 15, 
+      { width: coverWidth, align: 'left' });
   
-  coverDoc.rect(coverMargin + 50, scoreBoxY, coverWidth - 100, scoreBoxHeight)
-    .strokeColor('#E8D5D0')
-    .lineWidth(2)
+  // Separator lines: white line then thin red line
+  const separatorY = headerY + headerHeight;
+  coverDoc.strokeColor('#FFFFFF')
+    .lineWidth(1)
+    .moveTo(0, separatorY)
+    .lineTo(coverDoc.page.width, separatorY)
     .stroke();
   
-  coverDoc.rect(coverMargin + 50, scoreBoxY, coverWidth - 100, scoreBoxHeight)
-    .fillOpacity(0.3)
-    .fill('#FCF3EF')
-    .fillOpacity(1);
-
-  coverDoc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
-    .text(`Overall Accessibility Score (${deviceCapitalized})`, coverMargin + 70, scoreBoxY + 20, 
-      { width: coverWidth - 140, align: 'center' });
+  coverDoc.strokeColor('#DC3545') // Red
+    .lineWidth(0.5)
+    .moveTo(0, separatorY + 1)
+    .lineTo(coverDoc.page.width, separatorY + 1)
+    .stroke();
+  
+  // Light red/pink main content area with red border
+  const contentStartY = separatorY + 2;
+  const contentHeight = 200;
+  const contentMargin = 20;
+  const contentX = contentMargin;
+  const contentWidth = coverDoc.page.width - (contentMargin * 2);
+  
+  // Light red/pink background
+  coverDoc.rect(contentX, contentStartY, contentWidth, contentHeight)
+    .fill('#FFE5E5'); // Light red/pink
+  
+  // Red border around content area
+  coverDoc.rect(contentX, contentStartY, contentWidth, contentHeight)
+    .strokeColor('#DC3545')
+    .lineWidth(1)
+    .stroke();
+  
+  // "Overall Accessibility Score (Desktop)" heading - top-left of content area
+  coverDoc.fontSize(14).font('BoldFont').fillColor('#000000')
+    .text(`Overall Accessibility Score (${deviceCapitalized})`, contentX + 15, contentStartY + 15, 
+      { width: contentWidth - 30 });
 
   // Three-tier color system
   let scoreColor;
@@ -331,25 +325,30 @@ async function mergePDFsByPlatform(options) {
     scoreColor = '#DC3545'; // Red for Fail
   }
   
+  // Large score percentage - centered
+  const scoreY = contentStartY + 50;
   coverDoc.fontSize(72).font('BoldFont').fillColor(scoreColor)
-    .text(`${roundedScore}%`, coverMargin + 70, scoreBoxY + 50, 
-      { width: coverWidth - 140, align: 'center' });
+    .text(`${roundedScore}%`, contentX, scoreY, 
+      { width: contentWidth, align: 'center' });
 
+  // Warning or Pass message - centered
+  const warningY = contentStartY + 140;
   if (!isPassing) {
-    coverDoc.fontSize(12).font('BoldFont').fillColor('#C0392B')
-      .text('WARNING: Below Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
-        { width: coverWidth - 140, align: 'center' });
-    coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
-      .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
-        { width: coverWidth - 140, align: 'center' });
+    coverDoc.fontSize(12).font('BoldFont').fillColor('#DC3545')
+      .text('WARNING: Below Recommended Standard', contentX, warningY, 
+        { width: contentWidth, align: 'center' });
   } else {
-    coverDoc.fontSize(12).font('BoldFont').fillColor('#27AE60')
-      .text('PASS: Meets Recommended Standard', coverMargin + 70, scoreBoxY + 125, 
-        { width: coverWidth - 140, align: 'center' });
-    coverDoc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
-      .text('Minimum recommended score: 80%', coverMargin + 70, scoreBoxY + 143, 
-        { width: coverWidth - 140, align: 'center' });
+    coverDoc.fontSize(12).font('BoldFont').fillColor('#28A745')
+      .text('PASS: Meets Recommended Standard', contentX, warningY, 
+        { width: contentWidth, align: 'center' });
   }
+  
+  // Minimum recommended score text - centered
+  coverDoc.fontSize(10).font('RegularFont').fillColor('#000000')
+    .text('Minimum recommended score: 80%', contentX, warningY + 20, 
+      { width: contentWidth, align: 'center' });
+  
+  coverY = contentStartY + contentHeight + 30;
 
   coverY = scoreBoxY + scoreBoxHeight + 30;
 
