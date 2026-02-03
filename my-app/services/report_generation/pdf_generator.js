@@ -236,16 +236,13 @@ export class ElderlyAccessibilityPDFGenerator {
         const pageHeight = this.doc.page.height;
         const pageWidth = this.doc.page.width;
 
-        // Draw thick black vertical border on the left (20px wide)
-        this.doc.rect(0, 0, 20, pageHeight).fill('#000000');
-
-        // White background for the rest of the page
-        this.doc.rect(20, 0, pageWidth - 20, pageHeight).fill('#FFFFFF');
+        // White background for the entire page
+        this.doc.rect(0, 0, pageWidth, pageHeight).fill('#FFFFFF');
 
         // Title: "SilverSurfers Website Accessibility Audit Report" - centered, stacked
         const titleY = pageHeight * 0.35; // Upper-middle section
-        const titleX = 40; // Start after the black border
-        const titleWidth = pageWidth - 60; // Account for margins
+        const titleX = this.margin; // Start at margin
+        const titleWidth = this.pageWidth; // Use full page width minus margins
 
         // Stack the title lines vertically
         this.doc.fontSize(36).font('BoldFont').fillColor('#2C3E50')
@@ -262,7 +259,7 @@ export class ElderlyAccessibilityPDFGenerator {
 
         // Lower left: "Prepared for [Website] on [Date]"
         const preparedY = pageHeight - 120;
-        const preparedX = 40;
+        const preparedX = this.margin;
         
         this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
             .text('Prepared for', preparedX, preparedY);
@@ -544,9 +541,9 @@ addOverallScoreDisplay(scoreData) {
             else if (planType.toLowerCase().includes('pro')) packageText = 'Pro';
         }
 
-        // Dark blue header bar at top
+        // Dark blue header bar at top - full width (edge to edge)
         const headerHeight = 50;
-        const headerY = this.margin;
+        const headerY = 0; // Start at top edge
         this.doc.rect(0, headerY, this.doc.page.width, headerHeight)
             .fill('#1E3A8A'); // Dark blue
         

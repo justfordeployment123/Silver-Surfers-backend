@@ -225,19 +225,18 @@ async function mergePDFsByPlatform(options) {
   // Create a new PDF document for the combined report
   const mergedPdf = await PDFLib.create();
   
-  // Add a cover page using PDFKit (easier for text formatting)
-  // We'll create a simple cover page PDF first, then merge it
-  const coverPagePath = path.join(outputDir, `cover-${device}-${Date.now()}.pdf`);
-  const coverDoc = new PDFDocument({ margin: 40, size: 'A4' });
-  const coverStream = fsSync.createWriteStream(coverPagePath);
-  coverDoc.pipe(coverStream);
+  // STEP 1: Create title page (cover page) - same format as individual reports
+  const titlePagePath = path.join(outputDir, `title-${device}-${Date.now()}.pdf`);
+  const titleDoc = new PDFDocument({ margin: 40, size: 'A4' });
+  const titleStream = fsSync.createWriteStream(titlePagePath);
+  titleDoc.pipe(titleStream);
   
-  coverDoc.registerFont('RegularFont', 'Helvetica');
-  coverDoc.registerFont('BoldFont', 'Helvetica-Bold');
+  titleDoc.registerFont('RegularFont', 'Helvetica');
+  titleDoc.registerFont('BoldFont', 'Helvetica-Bold');
   
-  let coverY = 40;
-  const coverMargin = 40;
-  const coverWidth = 515;
+  const titleMargin = 40;
+  const titlePageWidth = 515;
+  const titlePageHeight = titleDoc.page.height;
   
   // Helper to extract site name from URL
   function extractSiteName(url) {
@@ -261,15 +260,108 @@ async function mergePDFsByPlatform(options) {
   const baseUrl = reports[0]?.url || 'website';
   const siteName = extractSiteName(baseUrl);
   
+  // White background for the entire page
+  titleDoc.rect(0, 0, titleDoc.page.width, titlePageHeight).fill('#FFFFFF');
+
+  // Title: "SilverSurfers Website Accessibility Audit Report" - centered, stacked
+  const titleY = titlePageHeight * 0.35;
+  const titleX = titleMargin;
+  const titleWidth = titlePageWidth;
+
+  // Stack the title lines vertically
+  titleDoc.fontSize(36).font('BoldFont').fillColor('#2C3E50')
+    .text('SilverSurfers', titleX, titleY, { width: titleWidth, align: 'center' });
+  
+  titleDoc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+    .text('Website', titleX, titleY + 50, { width: titleWidth, align: 'center' });
+  
+  titleDoc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+    .text('Accessibility', titleX, titleY + 90, { width: titleWidth, align: 'center' });
+  
+  titleDoc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
+    .text('Audit Report', titleX, titleY + 130, { width: titleWidth, align: 'center' });
+
+  // Lower left: "Prepared for [Website] on [Date]"
+  const preparedY = titlePageHeight - 120;
+  const preparedX = titleMargin;
+  
+  titleDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+    .text('Prepared for', preparedX, preparedY);
+  
+  titleDoc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
+    .text(siteName, preparedX, preparedY + 18, { width: 200 });
+  
+  const dateStr = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', month: 'long', day: 'numeric' 
+  });
+  titleDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+    .text('on', preparedX, preparedY + 40);
+  
+  titleDoc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
+    .text(dateStr, preparedX, preparedY + 58, { width: 200 });
+
+  // Lower right: Logo
+  const possibleLogoPaths = [
+    path.join(process.cwd(), 'assets/Logo.png'),
+    path.join(process.cwd(), 'backend-silver-surfers/assets/Logo.png'),
+    path.join(__dirname, '../../../assets/Logo.png'),
+    path.join(__dirname, '../../assets/Logo.png')
+  ];
+  
+  const logoX = titleDoc.page.width - 180;
+  const logoY = titlePageHeight - 150;
+  const logoSize = 120;
+  let logoLoaded = false;
+
+  for (const logoPath of possibleLogoPaths) {
+    try {
+      if (fsSync.existsSync(logoPath)) {
+        titleDoc.image(logoPath, logoX, logoY, { 
+          fit: [logoSize, logoSize],
+          align: 'right'
+        });
+        logoLoaded = true;
+        break;
+      }
+    } catch (error) {
+      // Continue to next path
+    }
+  }
+
+  if (!logoLoaded) {
+    console.warn(`Logo not found. Tried paths: ${possibleLogoPaths.join(', ')}`);
+  }
+
+  titleDoc.end();
+  
+  // Wait for title page to be written
+  await new Promise((resolve, reject) => {
+    titleStream.on('finish', resolve);
+    titleStream.on('error', reject);
+  });
+
+  // STEP 2: Create score page (cover page with score display)
+  const coverPagePath = path.join(outputDir, `cover-${device}-${Date.now()}.pdf`);
+  const coverDoc = new PDFDocument({ margin: 40, size: 'A4' });
+  const coverStream = fsSync.createWriteStream(coverPagePath);
+  coverDoc.pipe(coverStream);
+  
+  coverDoc.registerFont('RegularFont', 'Helvetica');
+  coverDoc.registerFont('BoldFont', 'Helvetica-Bold');
+  
+  let coverY = 40;
+  const coverMargin = 40;
+  const coverWidth = 515;
+  
   // Calculate average score
   const avgScore = reports.length > 0 
     ? reports.reduce((sum, r) => sum + (r.score || 0), 0) / reports.length 
     : 0;
   const isPassing = avgScore >= 80;
 
-  // Dark blue header bar at top
+  // Dark blue header bar at top - full width (edge to edge)
   const headerHeight = 50;
-  const headerY = coverMargin;
+  const headerY = 0; // Start at top edge
   coverDoc.rect(0, headerY, coverDoc.page.width, headerHeight)
     .fill('#1E3A8A'); // Dark blue
   
@@ -358,8 +450,8 @@ async function mergePDFsByPlatform(options) {
   coverDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
     .text(`Pages audited: ${reports.length}`, coverMargin + 60, coverY, { width: coverWidth - 120 });
   
-  // Add footer to cover page (page 1)
-  addFooterToPDFDoc(coverDoc, 1);
+  // Add footer to score page (page 2)
+  addFooterToPDFDoc(coverDoc, 2);
   
   coverDoc.end();
   
@@ -428,9 +520,9 @@ async function mergePDFsByPlatform(options) {
     }
   };
   
-  // Calculate starting page numbers (Cover = 1, TOC = 2, Content starts at 3)
+  // Calculate starting page numbers (Title = 1, Score = 2, TOC = 3, Content starts at 4)
   const tocEntries = [];
-  let currentPageNumber = 3; // Content starts at page 3 (after cover and TOC)
+  let currentPageNumber = 4; // Content starts at page 4 (after title, score, and TOC)
   
   for (let i = 0; i < validReports.length; i++) {
     const report = validReports[i];
@@ -438,25 +530,35 @@ async function mergePDFsByPlatform(options) {
     const score = report.score !== null && report.score !== undefined ? `${Math.round(report.score)}%` : 'N/A';
     const startPage = currentPageNumber;
     
+    // Account for skipping the first page (title page) - if PDF has only 1 page, skip it entirely
+    const actualPageCount = pageCounts[i] > 1 ? pageCounts[i] - 1 : 0;
+    
     tocEntries.push({
       pageName,
       score,
       startPage,
-      pageCount: pageCounts[i]
+      pageCount: actualPageCount
     });
     
-    // Move to next report's starting page
-    currentPageNumber += pageCounts[i];
+    // Move to next report's starting page (skip title page)
+    currentPageNumber += actualPageCount;
   }
   
-  // STEP 2: Create cover page
+  // STEP 3: Add title page to merged PDF
+  const titleBytes = await fs.readFile(titlePagePath);
+  const titleDocLib = await PDFLib.load(titleBytes);
+  const [titlePage] = await mergedPdf.copyPages(titleDocLib, [0]);
+  mergedPdf.addPage(titlePage);
+  await fs.unlink(titlePagePath).catch(() => {});
+
+  // STEP 4: Add score page (cover page) to merged PDF
   const coverBytes = await fs.readFile(coverPagePath);
   const coverDocLib = await PDFLib.load(coverBytes);
   const [coverPage] = await mergedPdf.copyPages(coverDocLib, [0]);
   mergedPdf.addPage(coverPage);
   await fs.unlink(coverPagePath).catch(() => {});
   
-  // STEP 3: Create Table of Contents page with accurate page numbers
+  // STEP 5: Create Table of Contents page with accurate page numbers
   const tocPagePath = path.join(outputDir, `toc-${device}-${Date.now()}.pdf`);
   const tocDoc = new PDFDocument({ margin: 40, size: 'A4' });
   const tocStream = fsSync.createWriteStream(tocPagePath);
@@ -555,8 +657,8 @@ async function mergePDFsByPlatform(options) {
     tocY += rowHeight;
   });
   
-  // Add footer to TOC page (page 2)
-  addFooterToPDFDoc(tocDoc, 2);
+  // Add footer to TOC page (page 3)
+  addFooterToPDFDoc(tocDoc, 3);
   
   tocDoc.end();
   
@@ -573,7 +675,7 @@ async function mergePDFsByPlatform(options) {
   mergedPdf.addPage(tocPage);
   await fs.unlink(tocPagePath).catch(() => {});
   
-  // STEP 4: Merge all individual PDFs in order
+  // STEP 6: Merge all individual PDFs in order (skip first page which is the title page)
   for (let i = 0; i < validPdfPaths.length; i++) {
     const pdfPath = validPdfPaths[i];
     const entry = tocEntries[i];
@@ -583,14 +685,18 @@ async function mergePDFsByPlatform(options) {
       const pdfDoc = await PDFLib.load(pdfBytes);
       const pageCount = pdfDoc.getPageCount();
       
-      // Copy all pages from this PDF to the merged PDF
-      const pageIndices = Array.from({ length: pageCount }, (_, i) => i);
-      const copiedPages = await mergedPdf.copyPages(pdfDoc, pageIndices);
-      copiedPages.forEach((page) => {
-        mergedPdf.addPage(page);
-      });
-      
-      console.log(`   ✅ Merged: ${entry.pageName} - starts at page ${entry.startPage} (${pageCount} pages)`);
+      // Skip the first page (title page) and copy remaining pages
+      // If PDF has only 1 page, skip it entirely (it's just the title page)
+      if (pageCount > 1) {
+        const pageIndices = Array.from({ length: pageCount - 1 }, (_, i) => i + 1);
+        const copiedPages = await mergedPdf.copyPages(pdfDoc, pageIndices);
+        copiedPages.forEach((page) => {
+          mergedPdf.addPage(page);
+        });
+        console.log(`   ✅ Merged: ${entry.pageName} - starts at page ${entry.startPage} (${pageCount - 1} pages, skipped title page)`);
+      } else {
+        console.log(`   ⚠️ Skipped: ${entry.pageName} - only contains title page`);
+      }
     } catch (error) {
       console.error(`   ❌ Failed to merge ${pdfPath}:`, error.message);
       // Continue with other PDFs even if one fails
