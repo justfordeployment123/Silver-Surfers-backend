@@ -350,8 +350,6 @@ async function mergePDFsByPlatform(options) {
   
   coverY = contentStartY + contentHeight + 30;
 
-  coverY = scoreBoxY + scoreBoxHeight + 30;
-
   coverDoc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
     .text(`Report prepared for: ${email_address}`, coverMargin + 60, coverY);
   coverY += 25;
@@ -477,12 +475,12 @@ async function mergePDFsByPlatform(options) {
   tocY += 50;
   
   // TOC Table
-  const headerHeight = 35;
+  const tocHeaderHeight = 35;
   const rowHeight = 28;
   const colWidths = [320, 100, 95]; // Page Name, Score, Page #
   
   // Header
-  tocDoc.rect(tocMargin, tocY, tocWidth, headerHeight).fill('#6366F1');
+  tocDoc.rect(tocMargin, tocY, tocWidth, tocHeaderHeight).fill('#6366F1');
   tocDoc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
   let x = tocMargin;
   tocDoc.text('Page', x + 15, tocY + 12, { width: colWidths[0] - 30, align: 'left' });
@@ -490,7 +488,7 @@ async function mergePDFsByPlatform(options) {
   tocDoc.text('Score', x, tocY + 12, { width: colWidths[1], align: 'center' });
   x += colWidths[1];
   tocDoc.text('Page #', x, tocY + 12, { width: colWidths[2], align: 'center' });
-  tocY += headerHeight + 5;
+  tocY += tocHeaderHeight + 5;
   
   // TOC rows with accurate page numbers
   tocDoc.fontSize(11).font('RegularFont').fillColor('#1F2937');
@@ -501,7 +499,7 @@ async function mergePDFsByPlatform(options) {
       tocDoc.addPage();
       tocY = tocMargin;
       // Redraw header
-      tocDoc.rect(tocMargin, tocY, tocWidth, headerHeight).fill('#6366F1');
+      tocDoc.rect(tocMargin, tocY, tocWidth, tocHeaderHeight).fill('#6366F1');
       tocDoc.fontSize(12).font('BoldFont').fillColor('#FFFFFF');
       x = tocMargin;
       tocDoc.text('Page', x + 15, tocY + 12, { width: colWidths[0] - 30, align: 'left' });
@@ -509,7 +507,7 @@ async function mergePDFsByPlatform(options) {
       tocDoc.text('Score', x, tocY + 12, { width: colWidths[1], align: 'center' });
       x += colWidths[1];
       tocDoc.text('Page #', x, tocY + 12, { width: colWidths[2], align: 'center' });
-      tocY += headerHeight + 5;
+      tocY += tocHeaderHeight + 5;
     }
     
     // Alternate row background
