@@ -68,6 +68,26 @@ def safe_text(value: Any) -> str:
         return "Unknown error"
 
 
+def sanitize_report_data(data: Any) -> Any:
+    """
+    Recursively sanitize all string values in a data structure (dict, list, etc.)
+    to ensure they're safe for JSON serialization. This prevents UnicodeEncodeError
+    when FastAPI/Starlette serializes the response body.
+    
+    The report data from Lighthouse or custom audits may contain text from websites
+    that includes invalid Unicode surrogates, which will cause encoding errors.
+    """
+    if isinstance(data, dict):
+        return {key: sanitize_report_data(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_report_data(item) for item in data]
+    elif isinstance(data, str):
+        return safe_text(data)
+    else:
+        # For other types (int, float, bool, None), return as-is
+        return data
+
+
 class AuditRequest(BaseModel):
     url: str
     device: str = "desktop"  # desktop, mobile, tablet
@@ -1551,17 +1571,20 @@ async def perform_audit(request: AuditRequest):
                         print(f"📊 Score: {final_score}%")
                         print(f"📄 Report saved to: {report_path}")
                         
+                        # Sanitize report data to prevent UnicodeEncodeError during JSON serialization
+                        sanitized_report = sanitize_report_data(lighthouse_report)
+                        
                         return AuditResponse(
                             success=True,
-                            reportPath=report_path,
-                            report=lighthouse_report,
+                            reportPath=safe_text(report_path),
+                            report=sanitized_report,
                             isLiteVersion=request.isLiteVersion,
-                            version=version,
-                            url=final_url,
-                            device=request.device,
+                            version=safe_text(version),
+                            url=safe_text(final_url),
+                            device=safe_text(request.device),
                             strategy="Camoufox+Lighthouse-Hybrid",
                             attemptNumber=1,
-                            message=f"{version} audit completed successfully using Camoufox navigation + Lighthouse audit",
+                            message=safe_text(f"{version} audit completed successfully using Camoufox navigation + Lighthouse audit"),
                         )
                     else:
                         raise Exception("Lighthouse score is 0")
@@ -1626,17 +1649,20 @@ async def perform_audit(request: AuditRequest):
         print(f"📊 Score: {final_score}%")
         print(f"📄 Report saved to: {report_path}")
         
+        # Sanitize report data to prevent UnicodeEncodeError during JSON serialization
+        sanitized_report = sanitize_report_data(report)
+        
         return AuditResponse(
             success=True,
-            reportPath=report_path,
-            report=report,
+            reportPath=safe_text(report_path),
+            report=sanitized_report,
             isLiteVersion=request.isLiteVersion,
-            version=version,
-            url=url,
-            device=request.device,
+            version=safe_text(version),
+            url=safe_text(url),
+            device=safe_text(request.device),
             strategy="Python-Camoufox",
             attemptNumber=1,
-            message=f"{version} audit completed successfully using Python/Camoufox strategy",
+            message=safe_text(f"{version} audit completed successfully using Python/Camoufox strategy"),
         )
                 
     except Exception as e:
