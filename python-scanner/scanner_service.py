@@ -44,6 +44,30 @@ app = FastAPI(title="SilverSurfers Python Scanner", version="1.0.0")
 _precheck_lock = threading.Lock()  # Thread-safe lock for synchronous code
 
 
+def safe_text(value: Any) -> str:
+    """
+    Safely convert any value to a UTF-8 encodable string.
+
+    Some upstream libraries (e.g., Playwright / Camoufox or Chrome DevTools)
+    occasionally return strings that contain invalid surrogate code points.
+    When FastAPI / Starlette tries to encode these into a JSON response, the
+    default UTF-8 encoder raises:
+        UnicodeEncodeError: 'utf-8' codec can't encode character '\\ud83d' ...
+
+    This helper normalizes such strings by replacing invalid bytes with the
+    standard replacement character so responses always serialize correctly.
+    """
+    if value is None:
+        return ""
+    try:
+        # Convert to str, then re-encode/decode with "replace" to drop/replace
+        # any invalid surrogate code points.
+        return str(value).encode("utf-8", "replace").decode("utf-8")
+    except Exception:
+        # As an absolute fallback, return a generic placeholder
+        return "Unknown error"
+
+
 class AuditRequest(BaseModel):
     url: str
     device: str = "desktop"  # desktop, mobile, tablet
@@ -1616,7 +1640,11 @@ async def perform_audit(request: AuditRequest):
         )
                 
     except Exception as e:
-        error_msg = str(e)
+        # IMPORTANT: Always sanitize error messages to avoid UnicodeEncodeError
+        # when FastAPI/Starlette serializes the response body. Some upstream
+        # exceptions can contain invalid surrogate code points.
+        raw_error_msg = str(e)
+        error_msg = safe_text(raw_error_msg)
         print(f"❌ Audit failed: {error_msg}")
         return AuditResponse(
             success=False,
@@ -1624,11 +1652,11 @@ async def perform_audit(request: AuditRequest):
             errorCode="AUDIT_FAILED",
             isLiteVersion=request.isLiteVersion,
             version="Lite" if request.isLiteVersion else "Full",
-            url=request.url,
-            device=request.device,
+            url=safe_text(request.url),
+            device=safe_text(request.device),
             strategy="Python-Camoufox",
             attemptNumber=1,
-            message=f"Audit failed: {error_msg}",
+            message=safe_text(f"Audit failed: {error_msg}"),
         )
 
 

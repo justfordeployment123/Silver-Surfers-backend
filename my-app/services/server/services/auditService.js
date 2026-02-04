@@ -1468,7 +1468,19 @@ export const runQuickScanProcess = async (job) => {
         });
 
         if (!liteAuditResult.success) {
-            throw new Error(`Lite audit failed: ${liteAuditResult.error}`);
+            // Provide clear error message based on error code
+            let errorMessage = liteAuditResult.error || 'Lite audit failed';
+            
+            if (liteAuditResult.errorCode === 'SCAN_TIMEOUT' || liteAuditResult.errorCode === 'REQUEST_TIMEOUT') {
+                errorMessage = `The website scan timed out. The website may be slow to load or experiencing issues. Please try again in a few moments.`;
+            } else if (liteAuditResult.errorCode === 'SERVICE_UNAVAILABLE') {
+                errorMessage = `The scanner service is temporarily unavailable. Please try again in a few moments.`;
+            } else if (liteAuditResult.errorCode === 'SERVER_ERROR') {
+                errorMessage = `The scanner service encountered an error. Please try again later or contact support if the issue persists.`;
+            }
+            
+            console.error(`❌ Lite audit failed for ${url}: ${errorMessage}`);
+            throw new Error(errorMessage);
         }
 
         jsonReportPath = liteAuditResult.reportPath;
