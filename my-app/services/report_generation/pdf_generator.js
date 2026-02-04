@@ -1494,15 +1494,12 @@ addOverallScoreDisplay(scoreData) {
                 return; // Skip this audit entirely
             }
             
-            // Calculate height needed: heading + content
+            // Check if section heading fits on current page (only check after first item)
+            // Don't estimate table height here - let drawEnhancedTable handle its own pagination
             const headingHeight = 20;
-            // Estimate content height (will be calculated more precisely in drawEnhancedTable)
-            const estimatedContentHeight = 100; // Conservative estimate
-            const totalHeight = headingHeight + estimatedContentHeight;
-            
-            // Check if section fits on current page (only check after first item)
             if (index > 0) {
-                this.checkPageBreak(totalHeight);
+                // Only check if heading fits, not the entire table
+                this.checkPageBreak(headingHeight + 10);
             }
 
             // Audit name as section heading
@@ -1513,7 +1510,7 @@ addOverallScoreDisplay(scoreData) {
                 this.currentY += headingHeight;
             }
 
-            // Add the table for this audit
+            // Add the table for this audit - let it handle pagination naturally
             this.addTablePages(audit.id, audit.data, true); // Pass true for appendix mode
         });
     }
@@ -2142,13 +2139,20 @@ addOverallScoreDisplay(scoreData) {
         this.currentY += 25;
     }
 
-    const itemsPerPage = 12;
-    for (let i = 0; i < filteredItems.length; i += itemsPerPage) {
-        if (i > 0) {
-            this.addPage();
-            // Removed "Detailed Findings - Continued" heading
+    // In appendix mode, don't artificially chunk items - let drawEnhancedTable handle page breaks naturally
+    // Pass all items at once and let the table drawing logic handle pagination
+    if (isAppendixMode) {
+        this.drawEnhancedTable(filteredItems, tableConfig, info?.category);
+    } else {
+        // For non-appendix mode, keep the chunking behavior
+        const itemsPerPage = 12;
+        for (let i = 0; i < filteredItems.length; i += itemsPerPage) {
+            if (i > 0) {
+                this.addPage();
+                // Removed "Detailed Findings - Continued" heading
+            }
+            this.drawEnhancedTable(filteredItems.slice(i, i + itemsPerPage), tableConfig, info?.category);
         }
-        this.drawEnhancedTable(filteredItems.slice(i, i + itemsPerPage), tableConfig, info?.category);
     }
 }
     
@@ -2518,14 +2522,18 @@ addOverallScoreDisplay(scoreData) {
         
         // Check if row would exceed page bottom margin (with safety buffer for footer)
         // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
-        // Also check if rendering this row would leave less than minimum space for next row
-        // This prevents single-row pages
-        const minSpaceForNextRow = 60; // Minimum space needed for next row (40px row + 20px buffer)
+        // Only check minimum space for next row if there actually is a next row
         pageBottom = this.doc.page.height - 50;
-        const spaceAfterRow = pageBottom - (tableY + finalRowHeight);
+        const isLastRow = rowIndex === itemsToShow.length - 1;
         
-        // If row doesn't fit OR if it would leave less than minimum space for next row, move to new page
-        if (tableY + finalRowHeight > pageBottom || (spaceAfterRow < minSpaceForNextRow && rowIndex < itemsToShow.length - 1)) {
+        // For last row, only check if it fits (don't worry about space after)
+        // For other rows, check if there's enough space for the next row
+        const minSpaceForNextRow = 50; // Reduced from 60px - minimum space needed for next row (40px row + 10px buffer)
+        const spaceAfterRow = pageBottom - (tableY + finalRowHeight);
+        const needsPageBreak = tableY + finalRowHeight > pageBottom || 
+                              (!isLastRow && spaceAfterRow < minSpaceForNextRow);
+        
+        if (needsPageBreak) {
             this.addPage();
             // Removed "Detailed Findings - Continued" heading
             tableY = this.currentY;
