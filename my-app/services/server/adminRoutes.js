@@ -25,7 +25,10 @@ router.get('/blog', authRequired, adminOnly, asyncH(async (req, res) => {
 
 router.post('/blog', authRequired, adminOnly, asyncH(async (req, res) => {
   let { title, slug, excerpt, content, category, author, date, readTime, featured, published } = req.body || {};
-  if (!title || !slug) return res.status(400).json({ error: 'title and slug required' });
+  if (!title || !slug) {
+    return res.status(400).json({ error: 'Title and slug are required to create a blog post.' });
+  }
+
   slug = String(slug).toLowerCase().trim();
   const payload = {
     title: String(title).trim(),
@@ -39,14 +42,47 @@ router.post('/blog', authRequired, adminOnly, asyncH(async (req, res) => {
     featured: !!featured,
     published: !!published,
   };
-  const created = await BlogPost.create(payload);
-  res.status(201).json({ item: created });
+
+  try {
+    const created = await BlogPost.create(payload);
+    return res.status(201).json({ item: created });
+  } catch (err) {
+    // Handle duplicate slug error with a clear, user-friendly message
+    if (err && err.code === 11000) {
+      // Try to extract slug value from the error if available
+      const duplicateSlug =
+        err.keyValue?.slug ||
+        (typeof err.message === 'string'
+          ? (err.message.match(/dup key.*slug["']?\s*:\s*["'](.+?)["']/)?.[1] || slug)
+          : slug);
+
+      return res.status(400).json({
+        error: `The blog URL slug "${duplicateSlug}" is already being used by another post. Please choose a different slug (or slightly change the title).`,
+      });
+    }
+
+    // Handle generic validation errors from Mongoose
+    if (err && err.name === 'ValidationError') {
+      const messages = Object.values(err.errors || {}).map((e) => e.message).filter(Boolean);
+      return res.status(400).json({
+        error: messages.length
+          ? `There was a problem with your blog post: ${messages.join(' ')}`
+          : 'There was a problem with the blog data you entered. Please review the fields and try again.',
+      });
+    }
+
+    console.error('Error creating blog post:', err);
+    return res.status(500).json({
+      error: 'We ran into a technical problem while saving this blog post. Please try again, and if it continues, contact support.',
+    });
+  }
 }));
 
 router.put('/blog/:id', authRequired, adminOnly, asyncH(async (req, res) => {
   const { id } = req.params;
   const body = req.body || {};
   const update = {};
+
   if (body.title != null) update.title = String(body.title).trim();
   if (body.slug != null) update.slug = String(body.slug).toLowerCase().trim();
   if (body.excerpt != null) update.excerpt = String(body.excerpt);
@@ -57,9 +93,40 @@ router.put('/blog/:id', authRequired, adminOnly, asyncH(async (req, res) => {
   if (body.readTime != null) update.readTime = String(body.readTime);
   if (body.featured != null) update.featured = !!body.featured;
   if (body.published != null) update.published = !!body.published;
-  const updated = await BlogPost.findByIdAndUpdate(id, update, { new: true });
-  if (!updated) return res.status(404).json({ error: 'Not found' });
-  res.json({ item: updated });
+
+  try {
+    const updated = await BlogPost.findByIdAndUpdate(id, update, { new: true });
+    if (!updated) {
+      return res.status(404).json({ error: 'We could not find that blog post. It may have been deleted.' });
+    }
+    return res.json({ item: updated });
+  } catch (err) {
+    if (err && err.code === 11000) {
+      const duplicateSlug =
+        err.keyValue?.slug ||
+        (typeof err.message === 'string'
+          ? (err.message.match(/dup key.*slug["']?\s*:\s*["'](.+?)["']/)?.[1] || update.slug)
+          : update.slug);
+
+      return res.status(400).json({
+        error: `Another blog post is already using the slug "${duplicateSlug}". Please choose a different slug.`,
+      });
+    }
+
+    if (err && err.name === 'ValidationError') {
+      const messages = Object.values(err.errors || {}).map((e) => e.message).filter(Boolean);
+      return res.status(400).json({
+        error: messages.length
+          ? `There was a problem updating this blog post: ${messages.join(' ')}`
+          : 'There was a problem with the blog data you entered. Please review the fields and try again.',
+      });
+    }
+
+    console.error('Error updating blog post:', err);
+    return res.status(500).json({
+      error: 'We ran into a technical problem while updating this blog post. Please try again, and if it continues, contact support.',
+    });
+  }
 }));
 
 router.delete('/blog/:id', authRequired, adminOnly, asyncH(async (req, res) => {
