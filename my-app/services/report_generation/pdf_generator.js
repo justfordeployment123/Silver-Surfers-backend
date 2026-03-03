@@ -206,170 +206,11 @@ export class ElderlyAccessibilityPDFGenerator {
         this.currentY = 40;
         this.pageWidth = 515; // Adjusted for margins
         this.margin = 40;
-        this.pageNumber = 0;
-    }
-
-    addTitlePage(reportData) {
-        // Helper function to extract site name from URL
-        function extractSiteName(url) {
-            try {
-                const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
-                let hostname = urlObj.hostname.replace(/^www\./, '');
-                // Convert domain to title case with spaces
-                let name = hostname.split('.')[0]; // Get the main part before .com
-                // Add spaces before capital letters and before numbers
-                name = name.replace(/([A-Z])/g, ' $1').replace(/([0-9]+)/g, ' $1');
-                // Split by common separators
-                name = name.replace(/[-_]/g, ' ');
-                // Title case each word
-                name = name.split(' ').map(word => {
-                    if (!word) return '';
-                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-                }).join(' ').trim();
-                return name || hostname;
-            } catch (e) {
-                return 'Website';
-            }
-        }
-
-        const siteName = extractSiteName(reportData.finalUrl || reportData.url || '');
-        const pageHeight = this.doc.page.height;
-        const pageWidth = this.doc.page.width;
-
-        // White background for the entire page
-        this.doc.rect(0, 0, pageWidth, pageHeight).fill('#FFFFFF');
-
-        // Title: "SilverSurfers Website Accessibility Audit Report" - centered, stacked
-        const titleY = pageHeight * 0.35; // Upper-middle section
-        const titleX = this.margin; // Start at margin
-        const titleWidth = this.pageWidth; // Use full page width minus margins
-
-        // Stack the title lines vertically
-        this.doc.fontSize(36).font('BoldFont').fillColor('#2C3E50')
-            .text('SilverSurfers', titleX, titleY, { width: titleWidth, align: 'center' });
-        
-        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
-            .text('Website', titleX, titleY + 50, { width: titleWidth, align: 'center' });
-        
-        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
-            .text('Accessibility', titleX, titleY + 90, { width: titleWidth, align: 'center' });
-        
-        this.doc.fontSize(28).font('BoldFont').fillColor('#2C3E50')
-            .text('Audit Report', titleX, titleY + 130, { width: titleWidth, align: 'center' });
-
-        // Lower left: "Prepared for [Website] on [Date]"
-        const preparedY = pageHeight - 120;
-        const preparedX = this.margin;
-        
-        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
-            .text('Prepared for', preparedX, preparedY);
-        
-        this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
-            .text(siteName, preparedX, preparedY + 18, { width: 200 });
-        
-        const dateStr = new Date(reportData.fetchTime || new Date()).toLocaleDateString('en-US', { 
-            year: 'numeric', month: 'long', day: 'numeric' 
-        });
-        this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
-            .text('on', preparedX, preparedY + 40);
-        
-        this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
-            .text(dateStr, preparedX, preparedY + 58, { width: 200 });
-
-        // Lower right: Logo
-        // Try multiple possible paths for the logo
-        const possibleLogoPaths = [
-            path.join(__dirname, '../../../assets/Logo.png'), // From report_generation: up 3 levels to backend-silver-surfers
-            path.join(__dirname, '../../assets/Logo.png'),    // Alternative path
-            path.join(process.cwd(), 'assets/Logo.png'),      // From project root
-            path.join(process.cwd(), 'backend-silver-surfers/assets/Logo.png') // Explicit backend path
-        ];
-        
-        const logoX = pageWidth - 180;
-        const logoY = pageHeight - 150;
-        const logoSize = 120;
-        let logoLoaded = false;
-
-        for (const logoPath of possibleLogoPaths) {
-            try {
-                if (fs.existsSync(logoPath)) {
-                    this.doc.image(logoPath, logoX, logoY, { 
-                        fit: [logoSize, logoSize],
-                        align: 'right'
-                    });
-                    logoLoaded = true;
-                    break;
-                }
-            } catch (error) {
-                // Continue to next path
-            }
-        }
-
-        if (!logoLoaded) {
-            console.warn(`Logo not found. Tried paths: ${possibleLogoPaths.join(', ')}`);
-        }
-
-        // Reset currentY for next page (don't increment pageNumber here - let addPage() handle it)
-        this.currentY = this.margin;
-    }
-
-    addFooter() {
-        // Save current Y position to restore after drawing footer
-        const savedY = this.doc.y;
-        
-        const pageHeight = this.doc.page.height;
-        const footerY = pageHeight - 30; // 30px from bottom
-        const pageWidth = this.doc.page.width;
-        const leftMargin = this.margin;
-        const rightMargin = pageWidth - this.margin;
-        
-        // Draw horizontal line (border)
-        this.doc.strokeColor('#666666')
-            .lineWidth(0.5)
-            .moveTo(leftMargin, footerY - 5)
-            .lineTo(rightMargin, footerY - 5)
-            .stroke();
-        
-        // Left text: "SilverSurfers.ai" - use lineBreak: false to prevent cursor advancement
-        this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text('SilverSurfers.ai', leftMargin, footerY, { lineBreak: false });
-        
-        // Center: Page number - use lineBreak: false to prevent cursor advancement
-        const pageNumText = String(this.pageNumber);
-        const pageNumWidth = this.doc.widthOfString(pageNumText);
-        this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text(pageNumText, (pageWidth / 2) - (pageNumWidth / 2), footerY, { lineBreak: false });
-        
-        // Right text: "Website Accessibility Audit Report" - use lineBreak: false to prevent cursor advancement
-        const rightText = 'Website Accessibility Audit Report';
-        const rightTextWidth = this.doc.widthOfString(rightText);
-        this.doc.fontSize(9).font('RegularFont').fillColor('#666666')
-            .text(rightText, rightMargin - rightTextWidth, footerY, { lineBreak: false });
-        
-        // Restore Y position to prevent affecting document flow
-        this.doc.y = savedY;
     }
 
     addPage() {
-        // Add footer to previous page if it exists
-        if (this.pageNumber > 0) {
-            this.addFooter();
-        }
-        
         this.doc.addPage();
-        this.pageNumber++;
         this.currentY = this.margin;
-    }
-
-    // Helper function to check if content fits on current page and add new page if needed
-    checkPageBreak(neededHeight) {
-        // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
-        const pageBottom = this.doc.page.height - 50;
-        if (this.currentY + neededHeight > pageBottom) {
-            this.addPage();
-            return true; // Page was added
-        }
-        return false; // No page break needed
     }
 
     drawColorBar(category, y = null) {
@@ -393,25 +234,13 @@ export class ElderlyAccessibilityPDFGenerator {
     }
 
     addHeading(text, fontSize = 16, color = '#34495E') {
-        const headingHeight = fontSize + 12;
-        
-        // Check if heading fits on current page
-        this.checkPageBreak(headingHeight);
-        
         this.doc.fontSize(fontSize).font('BoldFont').fillColor(color).text(text, this.margin, this.currentY, { width: this.pageWidth });
-        this.currentY += headingHeight;
+        this.currentY += fontSize + 12;
     }
 
     addBodyText(text, fontSize = 11, color = '#2C3E50') {
-        // Set font size before calculating height
-        this.doc.fontSize(fontSize);
-        const textHeight = this.doc.heightOfString(text, { width: this.pageWidth, lineGap: 3 }) + 12;
-        
-        // Check if text fits on current page
-        this.checkPageBreak(textHeight);
-        
-        this.doc.font('RegularFont').fillColor(color).text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'justify', lineGap: 3 });
-        this.currentY += textHeight;
+        this.doc.fontSize(fontSize).font('RegularFont').fillColor(color).text(text, this.margin, this.currentY, { width: this.pageWidth, align: 'justify', lineGap: 3 });
+        this.currentY += this.doc.heightOfString(text, { width: this.pageWidth, lineGap: 3 }) + 12;
     }
 
     addScoreBar(score, label) {
@@ -497,7 +326,7 @@ addOverallScoreDisplay(scoreData) {
         this.currentY += 20;
     } else {
         this.doc.fontSize(12).font('RegularFont').fillColor('#27AE60')
-            .text('This website meets SilverSurfers accessibility standards for older adult-friendly design',
+            .text('This website meets SilverSurfers accessibility standards for senior-friendly design',
                 this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
         this.currentY += 20;
     }
@@ -541,87 +370,88 @@ addOverallScoreDisplay(scoreData) {
             else if (planType.toLowerCase().includes('pro')) packageText = 'Pro';
         }
 
-        // Dark blue header bar at top - full width (edge to edge)
-        const headerHeight = 50;
-        const headerY = 0; // Start at top edge
-        this.doc.rect(0, headerY, this.doc.page.width, headerHeight)
-            .fill('#1E3A8A'); // Dark blue
+        // Start with site name as main heading (dark blue color matching image)
+        this.currentY = 80;
+        this.doc.fontSize(32).font('BoldFont').fillColor('#2C5F9C')
+            .text(siteName, this.margin, this.currentY, { width: this.pageWidth, align: 'center' });
+        this.currentY += 50;
+
+        // Subtitle: "Website Accessibility Audit Report – (List platform here)"
+        this.doc.fontSize(16).font('BoldFont').fillColor('#2C3E50')
+            .text(`Website Accessibility Audit Report – (${formFactorDisplay})`, this.margin, this.currentY, 
+                { width: this.pageWidth, align: 'center' });
+        this.currentY += 40;
+
+        // URL (gray, smaller)
+        this.doc.fontSize(11).font('RegularFont').fillColor('#7F8C8D')
+            .text(reportData.finalUrl || '', this.margin, this.currentY, 
+                { width: this.pageWidth, align: 'center' });
+        this.currentY += 25;
+
+        // Generated date (italic gray)
+        const timestamp = new Date(reportData.fetchTime || new Date()).toLocaleDateString('en-US', { 
+            year: 'numeric', month: 'long', day: 'numeric' 
+        });
+        this.doc.fontSize(10).font('RegularFont').fillColor('#95A5A6')
+            .text(`Generated: ${timestamp}`, this.margin, this.currentY, 
+                { width: this.pageWidth, align: 'center' });
+        this.currentY += 60;
+
+        // Overall Accessibility Score box with border
+        const scoreBoxHeight = 160;
+        const scoreBoxY = this.currentY;
         
-        // Header text: "Website Accessibility Audit Report – (Desktop)" in white
-        this.doc.fontSize(16).font('BoldFont').fillColor('#FFFFFF')
-            .text(`Website Accessibility Audit Report – (${formFactorDisplay})`, this.margin, headerY + 15, 
-                { width: this.pageWidth, align: 'left' });
-        
-        // Separator lines: white line then thin red line
-        const separatorY = headerY + headerHeight;
-        this.doc.strokeColor('#FFFFFF')
-            .lineWidth(1)
-            .moveTo(0, separatorY)
-            .lineTo(this.doc.page.width, separatorY)
+        // Draw border for the score box
+        this.doc.rect(this.margin + 50, scoreBoxY, this.pageWidth - 100, scoreBoxHeight)
+            .strokeColor('#E8D5D0')
+            .lineWidth(2)
             .stroke();
         
-        this.doc.strokeColor('#DC3545') // Red
-            .lineWidth(0.5)
-            .moveTo(0, separatorY + 1)
-            .lineTo(this.doc.page.width, separatorY + 1)
-            .stroke();
-        
-        // Light red/pink main content area with red border
-        const contentStartY = separatorY + 2;
-        const contentHeight = 200;
-        const contentMargin = 20;
-        const contentX = contentMargin;
-        const contentWidth = this.doc.page.width - (contentMargin * 2);
-        
-        // Light red/pink background
-        this.doc.rect(contentX, contentStartY, contentWidth, contentHeight)
-            .fill('#FFE5E5'); // Light red/pink
-        
-        // Red border around content area
-        this.doc.rect(contentX, contentStartY, contentWidth, contentHeight)
-            .strokeColor('#DC3545')
-            .lineWidth(1)
-            .stroke();
-        
-        // "Overall Accessibility Score (Desktop)" heading - top-left of content area
-        this.doc.fontSize(14).font('BoldFont').fillColor('#000000')
-            .text(`Overall Accessibility Score (${formFactorDisplay})`, contentX + 15, contentStartY + 15, 
-                { width: contentWidth - 30 });
-        
-        // Large score percentage - centered, red color
-        const scoreY = contentStartY + 50;
-        let scoreColor = '#DC3545'; // Red (always red as shown in image)
+        // Light beige background
+        this.doc.rect(this.margin + 50, scoreBoxY, this.pageWidth - 100, scoreBoxHeight)
+            .fillOpacity(0.3)
+            .fill('#FCF3EF')
+            .fillOpacity(1);
+
+        // "Overall Accessibility Score (list platform here)" heading
+        this.doc.fontSize(14).font('BoldFont').fillColor('#2C3E50')
+            .text(`Overall Accessibility Score (${formFactorDisplay})`, this.margin + 70, scoreBoxY + 20, 
+                { width: this.pageWidth - 140, align: 'center' });
+
+        // Large score percentage - three tier color system
+        let scoreColor;
         if (score >= 80) {
-            scoreColor = '#28A745'; // Green for Pass
+            scoreColor = '#28A745'; // Green for Strong Pass
         } else if (score >= 70) {
-            scoreColor = '#FD7E14'; // Orange for Needs Improvement
-        }
-        
-        this.doc.fontSize(72).font('BoldFont').fillColor(scoreColor)
-            .text(`${score}%`, contentX, scoreY, 
-                { width: contentWidth, align: 'center' });
-        
-        // Determine if score meets the 80% minimum recommended standard
-        const isPassing = score >= 80;
-        
-        // Warning or Pass message - centered
-        const warningY = contentStartY + 140;
-        if (!isPassing) {
-            this.doc.fontSize(12).font('BoldFont').fillColor('#DC3545')
-                .text('WARNING: Below Recommended Standard', contentX, warningY, 
-                    { width: contentWidth, align: 'center' });
+            scoreColor = '#FD7E14'; // Yellow/Orange for Meets Minimum but needs improvement
         } else {
-            this.doc.fontSize(12).font('BoldFont').fillColor('#28A745')
-                .text('PASS: Meets Recommended Standard', contentX, warningY, 
-                    { width: contentWidth, align: 'center' });
+            scoreColor = '#DC3545'; // Red for Below Minimum
         }
-        
-        // Minimum recommended score text - centered
-        this.doc.fontSize(10).font('RegularFont').fillColor('#000000')
-            .text('Minimum recommended score: 80%', contentX, warningY + 20, 
-                { width: contentWidth, align: 'center' });
-        
-        this.currentY = contentStartY + contentHeight + 30;
+        this.doc.fontSize(72).font('BoldFont').fillColor(scoreColor)
+            .text(`${score}%`, this.margin + 70, scoreBoxY + 50, 
+                { width: this.pageWidth - 140, align: 'center' });
+
+        // Determine if score meets the 80% minimum recommended standard (Pass threshold)
+        const isPassing = score >= 80;
+
+        // Warning message if below 80% minimum
+        if (!isPassing) {
+            this.doc.fontSize(12).font('BoldFont').fillColor('#C0392B')
+                .text('WARNING: Below Recommended Standard', this.margin + 70, scoreBoxY + 125, 
+                    { width: this.pageWidth - 140, align: 'center' });
+            this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
+                .text('Minimum recommended score: 80%', this.margin + 70, scoreBoxY + 143, 
+                    { width: this.pageWidth - 140, align: 'center' });
+        } else {
+            this.doc.fontSize(12).font('BoldFont').fillColor('#27AE60')
+                .text('PASS: Meets Recommended Standard', this.margin + 70, scoreBoxY + 125, 
+                    { width: this.pageWidth - 140, align: 'center' });
+            this.doc.fontSize(10).font('RegularFont').fillColor('#7F8C8D')
+                .text('Minimum recommended score: 80%', this.margin + 70, scoreBoxY + 143, 
+                    { width: this.pageWidth - 140, align: 'center' });
+        }
+
+        this.currentY = scoreBoxY + scoreBoxHeight + 30;
 
         // Report prepared for (left-aligned)
         const clientEmail = this.options?.clientEmail || reportData.clientEmail || 'client@email.com';
@@ -893,15 +723,15 @@ addOverallScoreDisplay(scoreData) {
         this.addPage();
         
         // Page title
-        this.doc.fontSize(22).font('BoldFont').fillColor('#2C5F9C')
+        this.doc.fontSize(20).font('BoldFont').fillColor('#2C5F9C')
             .text('Priority Recommendations', this.margin, this.currentY);
-        this.currentY += 35;
+        this.currentY += 30;
         
         // Description
-        this.doc.fontSize(12).font('RegularFont').fillColor('#2C3E50')
+        this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
             .text('Based on the audit findings, here are the priority improvements organized by impact and implementation effort.',
                 this.margin, this.currentY, { width: this.pageWidth, lineGap: 2 });
-        this.currentY += 40;
+        this.currentY += 35;
 
         const audits = reportData.audits || {};
         
@@ -926,9 +756,6 @@ addOverallScoreDisplay(scoreData) {
                 criticalIssues.push({ id: auditId, score: scorePercent, data: auditData });
             } else if (scorePercent < 80) {
                 mediumIssues.push({ id: auditId, score: scorePercent, data: auditData });
-            } else {
-                // Low priority: score >= 80% (Passing but can still be improved)
-                lowIssues.push({ id: auditId, score: scorePercent, data: auditData });
             }
         });
 
@@ -942,9 +769,9 @@ addOverallScoreDisplay(scoreData) {
             // Draw red circle (no character)
             this.doc.circle(iconX, iconY, iconRadius).fill('#DC3545');
             
-            this.doc.fontSize(16).font('BoldFont').fillColor('#DC3545')
+            this.doc.fontSize(14).font('BoldFont').fillColor('#DC3545')
                 .text('Critical Priority (High Impact)', this.margin + 32, this.currentY);
-            this.currentY += 35;
+            this.currentY += 30;
 
             // Add numbered critical issues
             criticalIssues.slice(0, 5).forEach((issue, index) => {
@@ -954,18 +781,9 @@ addOverallScoreDisplay(scoreData) {
 
         // Medium Priority Section
         if (mediumIssues.length > 0) {
-            // Calculate height needed: icon + heading + items
-            const sectionHeaderHeight = 35;
-            const itemsHeight = mediumIssues.slice(0, 3).reduce((total, issue) => {
-                this.doc.fontSize(11);
-                const info = AUDIT_INFO[issue.id];
-                if (!info) return total;
-                return total + this.doc.heightOfString(info.recommendation, { width: this.pageWidth }) + 20;
-            }, 0);
-            const totalHeight = sectionHeaderHeight + itemsHeight;
-            
-            // Check if entire section fits on current page
-            this.checkPageBreak(totalHeight);
+            if (this.currentY > 650) {
+                this.addPage();
+            }
 
             const iconRadius = 12;
             const iconX = this.margin + iconRadius;
@@ -974,9 +792,9 @@ addOverallScoreDisplay(scoreData) {
             // Draw yellow/orange circle (no character)
             this.doc.circle(iconX, iconY, iconRadius).fill('#FD7E14');
             
-            this.doc.fontSize(16).font('BoldFont').fillColor('#2C5F9C')
+            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
                 .text('Medium Priority (Moderate Impact)', this.margin + 32, this.currentY);
-            this.currentY += 35;
+            this.currentY += 30;
 
             mediumIssues.slice(0, 3).forEach((issue, index) => {
                 this.addRecommendationItem(issue.id, index + 1, issue.data, true);
@@ -984,21 +802,8 @@ addOverallScoreDisplay(scoreData) {
         }
 
         // Low Priority Section (optional, if there are any low priority items)
-        if (lowIssues.length > 0) {
-            // Calculate height needed: icon + heading + items (no description text)
-            const sectionHeaderHeight = 25;
-            const itemsToShow = Math.min(lowIssues.length, 10);
-            const itemsHeight = lowIssues.slice(0, itemsToShow).reduce((total, issue) => {
-                this.doc.fontSize(11);
-                const info = AUDIT_INFO[issue.id];
-                if (!info) return total;
-                return total + this.doc.heightOfString(info.recommendation, { width: this.pageWidth }) + 20;
-            }, 0);
-            const totalHeight = sectionHeaderHeight + itemsHeight;
-            
-            // Check if entire section fits on current page
-            this.checkPageBreak(totalHeight);
-
+        const lowPriorityCount = Object.keys(AUDIT_INFO).length - criticalIssues.length - mediumIssues.length;
+        if (lowPriorityCount > 0 && this.currentY < 650) {
             const iconRadius = 12;
             const iconX = this.margin + iconRadius;
             const iconY = this.currentY + 7; // Center vertically with text (14px font height / 2 ≈ 7)
@@ -1006,14 +811,14 @@ addOverallScoreDisplay(scoreData) {
             // Draw green circle (no character)
             this.doc.circle(iconX, iconY, iconRadius).fill('#28A745');
             
-            this.doc.fontSize(16).font('BoldFont').fillColor('#2C5F9C')
+            this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
                 .text('Low Priority (Minor Improvements)', this.margin + 32, this.currentY);
-            this.currentY += 25;
+            this.currentY += 20;
             
-            // Display all low priority items (or up to 10 to keep report manageable)
-            lowIssues.slice(0, itemsToShow).forEach((issue, index) => {
-                this.addRecommendationItem(issue.id, index + 1, issue.data, true);
-            });
+            this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
+                .text(`${lowPriorityCount} items are performing well with only minor improvements needed.`,
+                    this.margin, this.currentY, { width: this.pageWidth });
+            this.currentY += 30;
         }
     }
 
@@ -1021,123 +826,56 @@ addOverallScoreDisplay(scoreData) {
         const info = AUDIT_INFO[auditId];
         if (!info) return;
 
-        // Calculate total height needed for this item BEFORE adding it
-        this.doc.fontSize(13); // Set font size for title height calculation
-        const titleHeight = 22;
-        
-        let totalHeight = titleHeight;
-        
-        if (!isCompact) {
-            // Calculate heights for full version
-            const issueDesc = this.getIssueDescription(auditId, auditData);
-            this.doc.fontSize(11);
-            const issueHeight = this.doc.heightOfString(issueDesc, { width: this.pageWidth - this.margin }) + 18;
-            const whyHeight = this.doc.heightOfString(info.why, { width: this.pageWidth - this.margin }) + 18;
-            const recommendationHeight = this.doc.heightOfString(info.recommendation, { width: this.pageWidth - this.margin }) + 18;
-            totalHeight += issueHeight + whyHeight + recommendationHeight;
-        } else {
-            // Calculate height for compact version
-            this.doc.fontSize(11);
-            const recommendationHeight = this.doc.heightOfString(info.recommendation, { width: this.pageWidth }) + 20;
-            totalHeight += recommendationHeight;
+        // Check if we need a new page
+        if (this.currentY > 650) {
+            this.addPage();
         }
 
-        // Check if entire item fits on current page
-        this.checkPageBreak(totalHeight);
-
         // Number and title
-        this.doc.fontSize(13).font('BoldFont').fillColor('#2C3E50')
+        this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
             .text(`${number}. ${info.title}`, this.margin, this.currentY);
-        this.currentY += titleHeight;
+        this.currentY += 18;
 
         if (!isCompact) {
-            // Standard spacing between sections (18px) - consistent spacing after each section
-            const sectionSpacing = 18;
-            const textOptions = { lineGap: 1 };
-            
             // Issue
             const issueDesc = this.getIssueDescription(auditId, auditData);
-            const issueHeading = 'Issue: ';
-            // Calculate height: heading + text combined
-            this.doc.fontSize(11).font('BoldFont');
-            const headingWidth = this.doc.widthOfString(issueHeading);
-            const availableTextWidth = this.pageWidth - this.margin - headingWidth;
-            this.doc.font('RegularFont');
-            const issueTextHeight = this.doc.heightOfString(issueDesc, { 
-                width: availableTextWidth,
-                ...textOptions
-            });
-            
-            const startYIssue = this.currentY;
-            this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
-                .text(issueHeading, this.margin, this.currentY, { continued: true })
+            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+                .text('Issue: ', this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
-                .text(issueDesc, { width: availableTextWidth, ...textOptions });
-            // Calculate actual height used and add consistent spacing
-            this.currentY = startYIssue + issueTextHeight + sectionSpacing;
+                .text(issueDesc, { width: this.pageWidth - this.margin });
+            this.currentY += this.doc.heightOfString(issueDesc, 
+                { width: this.pageWidth - this.margin }) + 15;
 
             // Why it matters
-            const whyHeading = 'Why it matters: ';
-            this.doc.fontSize(11).font('BoldFont');
-            const whyHeadingWidth = this.doc.widthOfString(whyHeading);
-            const whyTextWidth = this.pageWidth - this.margin - whyHeadingWidth;
-            this.doc.font('RegularFont');
-            const whyTextHeight = this.doc.heightOfString(info.why, { 
-                width: whyTextWidth,
-                ...textOptions
-            });
-            
-            const startYWhy = this.currentY;
-            this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
-                .text(whyHeading, this.margin, this.currentY, { continued: true })
+            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+                .text('Why it matters: ', this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
-                .text(info.why, { width: whyTextWidth, ...textOptions });
-            // Calculate actual height used and add consistent spacing
-            this.currentY = startYWhy + whyTextHeight + sectionSpacing;
+                .text(info.why, { width: this.pageWidth - this.margin });
+            this.currentY += this.doc.heightOfString(info.why, 
+                { width: this.pageWidth - this.margin }) + 15;
 
             // Recommendation
-            const recHeading = 'Recommendation: ';
-            this.doc.fontSize(11).font('BoldFont');
-            const recHeadingWidth = this.doc.widthOfString(recHeading);
-            const recTextWidth = this.pageWidth - this.margin - recHeadingWidth;
-            this.doc.font('RegularFont');
-            const recTextHeight = this.doc.heightOfString(info.recommendation, { 
-                width: recTextWidth,
-                ...textOptions
-            });
-            
-            const startYRec = this.currentY;
-            this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
-                .text(recHeading, this.margin, this.currentY, { continued: true })
+            this.doc.fontSize(9).font('BoldFont').fillColor('#2C3E50')
+                .text('Recommendation: ', this.margin, this.currentY, { continued: true })
                 .font('RegularFont')
-                .text(info.recommendation, { width: recTextWidth, ...textOptions });
-            // Calculate actual height used and add consistent spacing
-            this.currentY = startYRec + recTextHeight + sectionSpacing;
+                .text(info.recommendation, { width: this.pageWidth - this.margin });
+            this.currentY += this.doc.heightOfString(info.recommendation, 
+                { width: this.pageWidth - this.margin }) + 20;
         } else {
-            // Compact version for medium and low priority
-            this.doc.fontSize(11).font('RegularFont').fillColor('#2C3E50')
+            // Compact version for medium priority
+            this.doc.fontSize(9).font('RegularFont').fillColor('#2C3E50')
                 .text(info.recommendation, this.margin, this.currentY, { width: this.pageWidth });
             this.currentY += this.doc.heightOfString(info.recommendation, 
-                { width: this.pageWidth }) + 20;
+                { width: this.pageWidth }) + 15;
         }
     }
 
     getIssueDescription(auditId, auditData) {
         // Try to use actual audit description first
         if (auditData && auditData.description) {
-            // Clean markdown links: [text](url) -> text
-            let cleanDesc = auditData.description.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
-            
             // Return first 2 sentences for issue description
-            const sentences = cleanDesc.split('. ');
-            let result = sentences.slice(0, 2).join('. ');
-            
-            // Only add period if it doesn't already end with one (avoid double dots)
-            if (result && !result.trim().endsWith('.')) {
-                result += '.';
-            }
-            
-            return result;
+            const sentences = auditData.description.split('. ');
+            return sentences.slice(0, 2).join('. ') + '.';
         }
         
         // Fallback to hardcoded descriptions if audit data not available
@@ -1197,16 +935,9 @@ addOverallScoreDisplay(scoreData) {
                     this.margin, this.currentY, { width: this.pageWidth });
         } else {
             strengths.forEach(strength => {
-                // Calculate full item height including title and description
-                const description = this.getStrengthDescription(strength.id, strength.score);
-                this.doc.fontSize(11);
-                const titleHeight = 20;
-                this.doc.fontSize(9);
-                const descriptionHeight = this.doc.heightOfString(description, { width: this.pageWidth }) + 15;
-                const fullItemHeight = titleHeight + descriptionHeight;
-                
-                // Check if full item fits on current page
-                this.checkPageBreak(fullItemHeight);
+                if (this.currentY > 700) {
+                    this.addPage();
+                }
 
                 // Green circle (no character)
                 const checkRadius = 10;
@@ -1219,9 +950,10 @@ addOverallScoreDisplay(scoreData) {
                 this.doc.fontSize(11).font('BoldFont').fillColor('#2C3E50')
                     .text(`${strength.info.title} (${strength.score}%)`, 
                         this.margin + 28, this.currentY);
-                this.currentY += titleHeight;
+                this.currentY += 20;
 
                 // Description
+                const description = this.getStrengthDescription(strength.id, strength.score);
                 this.doc.fontSize(9).font('RegularFont').fillColor('#2C3E50')
                     .text(description, this.margin, this.currentY, { 
                         width: this.pageWidth,
@@ -1494,12 +1226,8 @@ addOverallScoreDisplay(scoreData) {
                 return; // Skip this audit entirely
             }
             
-            // Check if section heading fits on current page (only check after first item)
-            // Don't estimate table height here - let drawEnhancedTable handle its own pagination
-            const headingHeight = 20;
-            if (index > 0) {
-                // Only check if heading fits, not the entire table
-                this.checkPageBreak(headingHeight + 10);
+            if (index > 0 && this.currentY > 650) {
+                this.addPage();
             }
 
             // Audit name as section heading
@@ -1507,10 +1235,10 @@ addOverallScoreDisplay(scoreData) {
             if (info) {
                 this.doc.fontSize(12).font('BoldFont').fillColor('#2C5F9C')
                     .text(info.title, this.margin, this.currentY);
-                this.currentY += headingHeight;
+                this.currentY += 20;
             }
 
-            // Add the table for this audit - let it handle pagination naturally
+            // Add the table for this audit
             this.addTablePages(audit.id, audit.data, true); // Pass true for appendix mode
         });
     }
@@ -1573,14 +1301,10 @@ addOverallScoreDisplay(scoreData) {
 
             const categoryAudits = categories[categoryName];
             
-            // Calculate height needed: heading + table
-            const headingHeight = 25;
-            // Estimate table height (will be calculated more precisely in drawCategoryTables)
-            const estimatedTableHeight = 150; // Conservative estimate for a few rows
-            const totalHeight = headingHeight + estimatedTableHeight;
-            
-            // Check if category section fits on current page
-            this.checkPageBreak(totalHeight);
+            // Check if we need a new page
+            if (this.currentY > 650) {
+                this.addPage();
+            }
 
             // Category heading
             this.doc.fontSize(14).font('BoldFont').fillColor('#2C5F9C')
@@ -1588,38 +1312,27 @@ addOverallScoreDisplay(scoreData) {
             this.currentY += 25;
 
             // Table headers - ensure total width doesn't exceed pageWidth (515)
-            // Component (100), Rating (85), Actual (50), Standard (70), Details (210) = 515
-            // Increased Rating from 70 to 85 to ensure "Needs Improvement" fits on one line
-            const colWidths = [100, 85, 50, 70, 210]; // Component, Rating, Actual, Standard, Details
-            const rowMinHeight = 28;
-            
-            // Calculate header height dynamically based on text wrapping
-            this.doc.fontSize(11).font('BoldFont');
-            const headers = ['Component', 'Rating', 'Actual', 'Standard', 'Details'];
-            let maxHeaderHeight = 0;
-            headers.forEach((header, index) => {
-                const headerTextHeight = this.doc.heightOfString(header, { 
-                    width: colWidths[index] - 10,
-                    lineGap: 2
-                });
-                if (headerTextHeight > maxHeaderHeight) {
-                    maxHeaderHeight = headerTextHeight;
-                }
-            });
-            // Add padding: 12px top + 12px bottom = 24px total padding
-            const headerHeight = Math.max(maxHeaderHeight + 24, 40);
+            // Component (120), Rating (50), Actual (50), Standard (70), Details (225) = 515
+            const colWidths = [120, 50, 50, 70, 225]; // Component, Rating, Actual, Standard, Details
+            const headerHeight = 25;
+            const rowMinHeight = 22;
             
             // Draw header background
             this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
             
-            // Header text - all centered for consistency
+            // Header text
+            const headers = ['Component', 'Rating', 'Actual', 'Standard', 'Details'];
             let currentX = this.margin;
-            this.doc.fillColor('#FFFFFF');
+            
+            this.doc.fontSize(9).font('BoldFont').fillColor('#FFFFFF');
             headers.forEach((header, index) => {
-                // Center text horizontally using align: 'center' with column width
-                this.doc.text(header, currentX + 5, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), {
+                const align = index === headers.length - 1 ? 'left' : 'center';
+                const xPos = align === 'center' 
+                    ? currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2)
+                    : currentX + 5;
+                this.doc.text(header, xPos, this.currentY + 8, {
                     width: colWidths[index] - 10,
-                    align: 'center'
+                    align: align
                 });
                 currentX += colWidths[index];
             });
@@ -1655,24 +1368,11 @@ addOverallScoreDisplay(scoreData) {
                 
                 // Try to use actual audit description or displayValue first
                 if (auditData.description) {
-                    // Clean markdown links: [text](url) -> text
-                    let cleanDesc = auditData.description.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
-                    
-                    // Use first sentence(s) of description - split on '. ' (period + space) to avoid splitting on version numbers
-                    const sentences = cleanDesc.split('. ');
-                    // Take first 2 sentences for better context, or first sentence if it's long enough
-                    if (sentences.length > 1 && sentences[0].length < 100) {
-                        details = sentences.slice(0, 2).join('. ');
-                    } else {
-                        details = sentences[0];
-                    }
-                    // Only add period if it doesn't already end with one (avoid double dots)
-                    if (details && !details.trim().endsWith('.')) {
-                        details += '.';
-                    }
-                    // Only truncate if extremely long (allow more text to wrap naturally)
-                    if (details.length > 300) {
-                        details = details.substring(0, 297) + '...';
+                    // Use first sentence of description for brevity
+                    details = auditData.description.split('.')[0] + '.';
+                    // Truncate if too long
+                    if (details.length > 200) {
+                        details = details.substring(0, 197) + '...';
                     }
                 } else if (auditData.displayValue) {
                     // Use displayValue if available
@@ -1689,31 +1389,20 @@ addOverallScoreDisplay(scoreData) {
                 }
 
                 // Calculate row height based on details text and component name
-                // IMPORTANT: Set font size first for accurate height calculation
-                this.doc.fontSize(10).font('RegularFont');
                 const detailsHeight = this.doc.heightOfString(details, { 
-                    width: colWidths[4] - 10,
+                    width: colWidths[4] - 10, 
+                    fontSize: 8,
                     lineGap: 1
                 });
                 const componentNameHeight = this.doc.heightOfString(audit.info.title, {
                     width: colWidths[0] - 10,
-                    lineGap: 1
+                    fontSize: 8
                 });
-                // Add generous padding: 6px top (tableY + 6) + text height + 10px bottom padding for safety
-                // This ensures text never gets clipped
-                const calculatedHeight = Math.max(detailsHeight, componentNameHeight) + 16;
-                const rowHeight = Math.max(rowMinHeight, calculatedHeight);
+                const rowHeight = Math.max(rowMinHeight, Math.max(detailsHeight, componentNameHeight) + 12);
 
-                // Check if we need a new page (reserve space for footer at bottom)
-                // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
-                // Also check if rendering this row would leave less than minimum space for next row
-                // This prevents single-row pages
-                const pageBottom = this.doc.page.height - 50;
-                const minSpaceForNextRow = 60; // Minimum space needed for next row (40px row + 20px buffer)
-                const spaceAfterRow = pageBottom - (tableY + rowHeight);
-                const isLastRow = rowIndex === categoryAudits.length - 1;
-                
-                if (tableY + rowHeight > pageBottom || (!isLastRow && spaceAfterRow < minSpaceForNextRow)) {
+                // Check if we need a new page (use consistent margin check)
+                const pageBottom = this.doc.page.height - this.margin;
+                if (tableY + rowHeight > pageBottom) {
                     this.addPage();
                     
                     // Redraw category heading and table header
@@ -1723,12 +1412,15 @@ addOverallScoreDisplay(scoreData) {
                     
                     this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
                     currentX = this.margin;
-                    this.doc.fontSize(11).font('BoldFont').fillColor('#FFFFFF');
+                    this.doc.fontSize(9).font('BoldFont').fillColor('#FFFFFF');
                     headers.forEach((header, index) => {
-                        // Center text horizontally using align: 'center' with column width
-                        this.doc.text(header, currentX + 5, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), {
+                        const align = index === headers.length - 1 ? 'left' : 'center';
+                        const xPos = align === 'center' 
+                            ? currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2)
+                            : currentX + 5;
+                        this.doc.text(header, xPos, this.currentY + 8, {
                             width: colWidths[index] - 10,
-                            align: 'center'
+                            align: align
                         });
                         currentX += colWidths[index];
                     });
@@ -1742,49 +1434,42 @@ addOverallScoreDisplay(scoreData) {
 
                 currentX = this.margin;
 
-                // Component name - ensure full text wrapping (no height limit)
-                const componentTitle = String(audit.info.title || '').trim();
-                this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                    .text(componentTitle, currentX + 5, tableY + 6, {
+                // Component name - remove height constraint to allow full text
+                this.doc.fontSize(8).font('RegularFont').fillColor('#2C3E50')
+                    .text(audit.info.title, currentX + 5, tableY + 6, {
                         width: colWidths[0] - 10,
                         align: 'left',
-                        lineGap: 1,
                         ellipsis: false
                     });
                 currentX += colWidths[0];
 
-                // Rating (colored) - allow "Needs Improvement" to wrap between "Needs" and "Improvement"
-                // Use regular space (not non-breaking) so it wraps naturally at that point
-                const ratingText = String(rating === 'Needs Improvement' ? 'Needs Improvement' : rating || '').trim();
-                this.doc.fontSize(10).font('BoldFont').fillColor(ratingColor)
-                    .text(ratingText, currentX + 5, tableY + 6, {
+                // Rating (colored)
+                this.doc.fontSize(8).font('BoldFont').fillColor(ratingColor)
+                    .text(rating, currentX + 5, tableY + 6, {
                         width: colWidths[1] - 10,
                         align: 'center'
                     });
                 currentX += colWidths[1];
 
                 // Actual (colored)
-                const actualText = String(`${scorePercent}%` || '').trim();
-                this.doc.fontSize(10).font('BoldFont').fillColor(actualColor)
-                    .text(actualText, currentX + 5, tableY + 6, {
+                this.doc.fontSize(8).font('BoldFont').fillColor(actualColor)
+                    .text(`${scorePercent}%`, currentX + 5, tableY + 6, {
                         width: colWidths[2] - 10,
                         align: 'center'
                     });
                 currentX += colWidths[2];
 
                 // Standard
-                const standardText = String(standard || '').trim();
-                this.doc.fontSize(10).font('BoldFont').fillColor('#28A745')
-                    .text(standardText, currentX + 5, tableY + 6, {
+                this.doc.fontSize(8).font('BoldFont').fillColor('#28A745')
+                    .text(standard, currentX + 5, tableY + 6, {
                         width: colWidths[3] - 10,
                         align: 'center'
                     });
                 currentX += colWidths[3];
 
-                // Details - ensure full text wrapping (no height limit to prevent clipping)
-                const detailsText = String(details || '').trim();
-                this.doc.fontSize(10).font('RegularFont').fillColor('#2C3E50')
-                    .text(detailsText, currentX + 5, tableY + 6, {
+                // Details - remove height constraint to allow full text wrapping
+                this.doc.fontSize(8).font('RegularFont').fillColor('#2C3E50')
+                    .text(details, currentX + 5, tableY + 6, {
                         width: colWidths[4] - 10,
                         align: 'left',
                         lineGap: 1,
@@ -1824,6 +1509,12 @@ addOverallScoreDisplay(scoreData) {
             const column = cardIndex % 2;
             const cardX = this.margin + (column * (cardWidth + cardGap));
             
+            // Check if we need a new page
+            if (this.currentY > 650) {
+                this.addPage();
+                cardIndex = 0;
+            }
+            
             const categoryAudits = categories[categoryName];
             
             // Score badge dimensions
@@ -1836,10 +1527,10 @@ addOverallScoreDisplay(scoreData) {
             
             // Calculate actual card height based on text wrapping
             let totalAuditHeight = 0;
-            this.doc.fontSize(10).font('RegularFont'); // Set font for accurate height calculation
             categoryAudits.forEach(audit => {
                 const textHeight = this.doc.heightOfString(audit.info.title, { 
-                    width: textWidth,
+                    width: textWidth, 
+                    fontSize: 10,
                     lineGap: 2 
                 });
                 const auditItemHeight = Math.max(textHeight + 4, badgeHeight + 4); // At least badge height + padding
@@ -1847,17 +1538,6 @@ addOverallScoreDisplay(scoreData) {
             });
             
             const cardHeight = 60 + totalAuditHeight; // Header + dynamic audit heights
-            const totalHeight = cardHeight + 10; // Add some margin for page break check
-            
-            // Check if card fits on current page (or if we need to start a new row)
-            if (column === 0) {
-                // First column - check if we need a new page
-                this.checkPageBreak(totalHeight);
-            } else if (this.currentY + totalHeight > this.doc.page.height - 80) {
-                // Second column but doesn't fit - move to next page
-                this.addPage();
-                cardIndex = 0;
-            }
             
             // Draw card background
             this.doc.roundedRect(cardX, this.currentY, cardWidth, cardHeight, 8)
@@ -1892,9 +1572,9 @@ addOverallScoreDisplay(scoreData) {
                 }
                 
                 // Calculate text height for this specific audit title
-                this.doc.fontSize(10).font('RegularFont'); // Set font for accurate height
                 const textHeight = this.doc.heightOfString(audit.info.title, { 
-                    width: textWidth,
+                    width: textWidth, 
+                    fontSize: 10,
                     lineGap: 2 
                 });
                 const auditItemHeight = Math.max(textHeight + 4, badgeHeight + 4);
@@ -2102,31 +1782,28 @@ addOverallScoreDisplay(scoreData) {
     const tableConfig = this.getTableConfig(auditId);
     const items = auditData.details.items;
     
-    // Filter out rows where ANY column is empty, null, undefined, 'N/A', or whitespace
-    const filteredItems = items.filter(item => {
-        // Check all columns using extractors
-        return tableConfig.extractors.every(extractor => {
-            const value = extractor(item);
-            // Return true if value exists, is not 'N/A', and is not empty/whitespace
-            return value && value !== 'N/A' && String(value).trim() !== '';
-        });
-    });
+    // PRE-CHECK: Determine if table would be skipped due to all N/A locations
+    const locationIndex = tableConfig.headers.findIndex(h => 
+        h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
+    );
     
-    // If all rows would be filtered out, skip the entire page
-    if (filteredItems.length === 0) {
-        console.log(`Skipping table for ${auditId} - all rows have empty columns`);
-        return; // Exit without adding any content
+    if (locationIndex !== -1) {
+        const itemsWithValidLocation = items.filter(item => {
+            const locationValue = tableConfig.extractors[locationIndex](item);
+            return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
+        });
+        
+        // If all rows would be filtered out, skip the entire page
+        if (itemsWithValidLocation.length === 0) {
+            console.log(`Skipping table for ${auditId} - all locations are N/A`);
+            return; // Exit without adding any content
+        }
     }
     
         // In appendix mode, don't add heading (it's already added by addAppendix)
         // In non-appendix mode, check if we need a new page and add heading
         if (!isAppendixMode) {
-        // Check if we have enough space for header + at least one table row
-        // Footer is at pageHeight - 30, so we need to reserve ~100px (header + row + buffer)
-        const pageBottom = this.doc.page.height - 100;
-        const headerHeight = 25;
-        const minRowHeight = 40;
-        const needsNewPage = this.currentY + headerHeight + minRowHeight > pageBottom;
+        const needsNewPage = this.currentY > 600;
         
         if (needsNewPage) {
             this.addPage();
@@ -2139,20 +1816,15 @@ addOverallScoreDisplay(scoreData) {
         this.currentY += 25;
     }
 
-    // In appendix mode, don't artificially chunk items - let drawEnhancedTable handle page breaks naturally
-    // Pass all items at once and let the table drawing logic handle pagination
-    if (isAppendixMode) {
-        this.drawEnhancedTable(filteredItems, tableConfig, info?.category);
-    } else {
-        // For non-appendix mode, keep the chunking behavior
-        const itemsPerPage = 12;
-        for (let i = 0; i < filteredItems.length; i += itemsPerPage) {
-            if (i > 0) {
-                this.addPage();
-                // Removed "Detailed Findings - Continued" heading
-            }
-            this.drawEnhancedTable(filteredItems.slice(i, i + itemsPerPage), tableConfig, info?.category);
+    const itemsPerPage = 12;
+    for (let i = 0; i < items.length; i += itemsPerPage) {
+        if (i > 0) {
+            this.addPage();
+            const headerText = isAppendixMode ? info.title + ' (Continued)' : 'Detailed Findings - Continued';
+            this.doc.fontSize(12).font('BoldFont').fillColor(isAppendixMode ? '#2C5F9C' : '#3B82F6').text(headerText, this.margin, this.currentY);
+            this.currentY += 25;
         }
+        this.drawEnhancedTable(items.slice(i, i + itemsPerPage), tableConfig, info?.category);
     }
 }
     
@@ -2164,28 +1836,28 @@ addOverallScoreDisplay(scoreData) {
                     headers: ['Text Content', 'Element Selector', 'Reason'],
                     widths: [170, 190, 155], // Total: 515
                     extractors: [
-                        item => String(item.textSnippet || 'N/A').trim(),
-                        item => String(item.containerSelector || 'N/A').trim(),
+                        item => item.textSnippet || 'N/A',
+                        item => item.containerSelector || 'N/A',
                         item => 'Font smaller than 16px - difficult for older adults to read'
                     ]
                 };
             case 'interactive-color-audit':
                 return {
-                    headers: ['Interactive Text', 'Element Location', 'Accessibility Issue'],
+                    headers: ['Interactive Text', 'Element Location', 'Senior Accessibility Issue'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
-                        item => String(item.text || 'Interactive Element').trim(),
-                        item => String(this.extractSelector(item.node) || 'N/A').trim(),
-                        item => String(item.explanation || 'Insufficient visual distinction for older adult users').trim()
+                        item => item.text || 'Interactive Element',
+                        item => this.extractSelector(item.node) || 'N/A',
+                        item => item.explanation || 'Insufficient visual distinction for older adult users'
                     ]
                 };
             case 'layout-brittle-audit':
                 return {
-                    headers: ['Page Element', 'Element Location', 'Accessibility Impact'],
+                    headers: ['Page Element', 'Element Location', 'Senior Impact'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
-                        item => String(this.extractNodeLabel(item.node) || 'Layout Element').trim(),
-                        item => String(this.extractSelector(item.node) || 'N/A').trim(),
+                        item => this.extractNodeLabel(item.node) || 'Layout Element',
+                        item => this.extractSelector(item.node) || 'N/A',
                         item => 'Layout may break when older adults adjust text size for better readability'
                     ]
                 };
@@ -2194,18 +1866,18 @@ addOverallScoreDisplay(scoreData) {
                     headers: ['Metric', 'Value'],
                     widths: [257, 258], // Total: 515
                     extractors: [
-                        item => String(item.metric || 'N/A').trim(),
-                        item => String(item.value || 'N/A').trim()
+                        item => item.metric || 'N/A',
+                        item => item.value || 'N/A'
                     ]
                 };
             default:
                 return {
-                    headers: ['Element', 'Location', 'Accessibility Issue'],
+                    headers: ['Element', 'Location', 'Senior Accessibility Issue'],
                     widths: [150, 200, 165], // Total: 515
                     extractors: [
-                        item => String(item.node?.nodeLabel || item.nodeLabel || 'Page Element').trim(),
-                        item => String(item.node?.selector || item.selector || 'N/A').trim(),
-                        item => String(item.node?.explanation || item.explanation || 'May impact older adult users').trim()
+                        item => item.node?.nodeLabel || item.nodeLabel || 'Page Element',
+                        item => item.node?.selector || item.selector || 'N/A',
+                        item => item.node?.explanation || item.explanation || 'May impact older adult users'
                     ]
                 };
         }
@@ -2225,42 +1897,24 @@ addOverallScoreDisplay(scoreData) {
         if (!items || items.length === 0) return;
         
         const startY = this.currentY;
-        const rowHeight = 28;
-        // Adjusted column widths: Audit Component (290), Score (70), Weight (70), Weighted (85) = 515
-        // Increased Weighted from 70 to 85 to prevent "Weighted" from wrapping
-        const colWidths = [290, 70, 70, 85]; // Audit Component, Score, Weight, Weighted
-        // Reserve space for footer at bottom (footer at pageHeight - 30, so reserve 50px)
-        const pageBottom = this.doc.page.height - 50;
-        
-        // Calculate header height dynamically based on text wrapping
-        this.doc.font('BoldFont').fontSize(11);
-        const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
-        let maxHeaderHeight = 0;
-        headers.forEach((header, index) => {
-            const headerTextHeight = this.doc.heightOfString(header, { 
-                width: colWidths[index] - 20,
-                lineGap: 2
-            });
-            if (headerTextHeight > maxHeaderHeight) {
-                maxHeaderHeight = headerTextHeight;
-            }
-        });
-        // Add padding: 12px top + 12px bottom = 24px total padding
-        const headerHeight = Math.max(maxHeaderHeight + 24, 40);
+        const headerHeight = 30;
+        const rowHeight = 22;
+        const colWidths = [300, 75, 70, 70]; // Audit Component, Score, Weight, Weighted
+        const pageBottom = this.doc.page.height - this.margin; // Calculate once for the function
         
         // Draw header with dark blue background
         this.doc.rect(this.margin, startY, this.pageWidth, headerHeight).fill('#3D5A80');
-        this.doc.fillColor('#FFFFFF');
+        this.doc.font('BoldFont').fontSize(10).fillColor('#FFFFFF');
         
+        const headers = ['Audit Component', 'Score', 'Weight', 'Weighted'];
         let currentX = this.margin;
+        
         headers.forEach((header, index) => {
-            // Center text horizontally using align: 'center' with column width
-            // Use lineBreak: false for "Weighted" to ensure it stays on one line
-            const useLineBreak = header === 'Weighted' ? false : true;
-            this.doc.text(header, currentX + 10, startY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
+            const align = index === 0 ? 'left' : 'center';
+            const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+            this.doc.text(header, xPos, startY + 10, { 
                 width: colWidths[index] - 20,
-                align: 'center',
-                lineBreak: useLineBreak
+                align: align
             });
             currentX += colWidths[index];
         });
@@ -2270,40 +1924,29 @@ addOverallScoreDisplay(scoreData) {
         // Draw rows with alternating background
         items.forEach((item, rowIndex) => {
             // Calculate actual row height needed for Audit Component name FIRST
-            // Set font size before calculating height for accuracy
-            this.doc.fontSize(10).font('RegularFont');
             const componentNameHeight = this.doc.heightOfString(item.name, { 
-                width: colWidths[0] - 20
+                width: colWidths[0] - 20,
+                fontSize: 9
             });
             const actualRowHeight = Math.max(rowHeight, componentNameHeight + 12);
             
             // Check if row would exceed page bottom margin (with safety buffer)
-            // Also check if rendering this row would leave less than minimum space for next row
-            // This prevents single-row pages
-            const minSpaceForNextRow = 60; // Minimum space needed for next row (40px row + 20px buffer)
-            const spaceAfterRow = pageBottom - (tableY + actualRowHeight);
-            const isLastRow = rowIndex === items.length - 1;
-            
-            if (tableY + actualRowHeight > pageBottom || (!isLastRow && spaceAfterRow < minSpaceForNextRow)) {
+            if (tableY + actualRowHeight > pageBottom) {
                 this.addPage();
                 // Redraw header on new page
                 this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
-                this.doc.font('BoldFont').fontSize(11).fillColor('#FFFFFF');
+                this.doc.font('BoldFont').fontSize(10).fillColor('#FFFFFF');
                 currentX = this.margin;
                 headers.forEach((header, index) => {
-                    // Center text horizontally using align: 'center' with column width
-                    // Use lineBreak: false for "Weighted" to ensure it stays on one line
-                    const useLineBreak = header === 'Weighted' ? false : true;
-                    this.doc.text(header, currentX + 10, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
+                    const align = index === 0 ? 'left' : 'center';
+                    const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                    this.doc.text(header, xPos, this.currentY + 10, { 
                         width: colWidths[index] - 20,
-                        align: 'center',
-                        lineBreak: useLineBreak
+                        align: align
                     });
                     currentX += colWidths[index];
                 });
                 tableY = this.currentY + headerHeight;
-                // Recalculate pageBottom after adding new page
-                pageBottom = this.doc.page.height - 50;
             }
             
             // Alternating light gray background - use actual row height
@@ -2312,8 +1955,7 @@ addOverallScoreDisplay(scoreData) {
             currentX = this.margin;
             
             // Audit Component (left-aligned) - remove height constraint
-            const componentName = String(item.name || '').trim();
-            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(componentName, currentX + 10, tableY + 6, {
+            this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(item.name, currentX + 10, tableY + 6, {
                 width: colWidths[0] - 20,
                 align: 'left',
                 ellipsis: false
@@ -2328,24 +1970,21 @@ addOverallScoreDisplay(scoreData) {
             } else if (scoreValue >= 70) {
                 scoreColor = '#FD7E14'; // Yellow/Orange for Needs Improvement (70-79%)
             }
-            const scoreText = String(item.score || '').trim();
-            this.doc.font('BoldFont').fontSize(10).fillColor(scoreColor).text(scoreText, currentX + 10, tableY + 6, {
+            this.doc.font('BoldFont').fontSize(9).fillColor(scoreColor).text(item.score, currentX + 10, tableY + 6, {
                 width: colWidths[1] - 20,
                 align: 'center'
             });
             currentX += colWidths[1];
             
             // Weight (center-aligned)
-            const weightText = String(item.weight || '').trim();
-            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(weightText, currentX + 10, tableY + 6, {
+            this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(String(item.weight), currentX + 10, tableY + 6, {
                 width: colWidths[2] - 20,
                 align: 'center'
             });
             currentX += colWidths[2];
             
             // Weighted (center-aligned)
-            const contributionText = String(item.contribution || '').trim();
-            this.doc.font('RegularFont').fontSize(10).fillColor('#2C3E50').text(contributionText, currentX + 10, tableY + 6, {
+            this.doc.font('RegularFont').fontSize(9).fillColor('#2C3E50').text(item.contribution, currentX + 10, tableY + 6, {
                 width: colWidths[3] - 20,
                 align: 'center'
             });
@@ -2367,13 +2006,14 @@ addOverallScoreDisplay(scoreData) {
             this.addPage();
             // Redraw header on new page
             this.doc.rect(this.margin, this.currentY, this.pageWidth, headerHeight).fill('#3D5A80');
-            this.doc.font('BoldFont').fontSize(11).fillColor('#FFFFFF');
+            this.doc.font('BoldFont').fontSize(10).fillColor('#FFFFFF');
             currentX = this.margin;
             headers.forEach((header, index) => {
-                // Center text horizontally using align: 'center' with column width
-                this.doc.text(header, currentX + 10, this.currentY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
+                const align = index === 0 ? 'left' : 'center';
+                const xPos = index === 0 ? currentX + 10 : currentX + (colWidths[index] / 2) - (this.doc.widthOfString(header) / 2);
+                this.doc.text(header, xPos, this.currentY + 10, { 
                     width: colWidths[index] - 20,
-                    align: 'center'
+                    align: align
                 });
                 currentX += colWidths[index];
             });
@@ -2383,27 +2023,25 @@ addOverallScoreDisplay(scoreData) {
         this.doc.rect(this.margin, tableY, this.pageWidth, totalRowHeight).fill('#D6EAF8');
         
         currentX = this.margin;
-        this.doc.font('BoldFont').fontSize(11).fillColor('#2C3E50').text('TOTAL CALCULATION', currentX + 10, tableY + 7);
+        this.doc.font('BoldFont').fontSize(10).fillColor('#2C3E50').text('TOTAL CALCULATION', currentX + 10, tableY + 7);
         currentX += colWidths[0];
         
         // Empty cell for Score column
-        this.doc.fontSize(10).text('—', currentX + 10, tableY + 7, {
+        this.doc.text('—', currentX + 10, tableY + 7, {
             width: colWidths[1] - 20,
             align: 'center'
         });
         currentX += colWidths[1];
         
         // Total Weight
-        const totalWeightText = String(scoreData.totalWeight || '').trim();
-        this.doc.fontSize(10).text(totalWeightText, currentX + 10, tableY + 7, {
+        this.doc.text(String(scoreData.totalWeight), currentX + 10, tableY + 7, {
             width: colWidths[2] - 20,
             align: 'center'
         });
         currentX += colWidths[2];
         
         // Total Weighted
-        const totalWeightedText = String(scoreData.totalWeightedScore.toFixed(2) || '').trim();
-        this.doc.fontSize(10).text(totalWeightedText, currentX + 10, tableY + 7, {
+        this.doc.text(scoreData.totalWeightedScore.toFixed(2), currentX + 10, tableY + 7, {
             width: colWidths[3] - 20,
             align: 'center'
         });
@@ -2414,8 +2052,7 @@ addOverallScoreDisplay(scoreData) {
         this.currentY = tableY + 15;
         
         // Check if final score text would exceed page bottom margin
-        this.doc.fontSize(11);
-        const finalScoreTextHeight = this.doc.heightOfString('Final Score: 100.00 ÷ 100 = 100%');
+        const finalScoreTextHeight = this.doc.heightOfString('Final Score: 100.00 ÷ 100 = 100%', { fontSize: 11 });
         if (this.currentY + finalScoreTextHeight > pageBottom) {
             this.addPage();
         }
@@ -2433,70 +2070,55 @@ addOverallScoreDisplay(scoreData) {
     drawEnhancedTable(items, config, category) {
     if (!items || items.length === 0) return;
     
-    // Filter out rows where ANY column is empty, null, undefined, 'N/A', or whitespace
-    const itemsToShow = items.filter(item => {
-        // Check all columns using extractors
-        return config.extractors.every(extractor => {
-            const value = extractor(item);
-            // Return true if value exists, is not 'N/A', and is not empty/whitespace
-            return value && value !== 'N/A' && String(value).trim() !== '';
-        });
-    });
+    // Find the Location column index
+    const locationIndex = config.headers.findIndex(h => 
+        h.toLowerCase().includes('location') || h.toLowerCase().includes('element location')
+    );
     
-    // If ALL rows have empty columns, don't render the table at all
-    if (itemsToShow.length === 0) {
-        console.log('Skipping table - all rows have empty columns');
-        return; // Exit without rendering anything
+    // Filter out rows where "Location" column has N/A
+    let itemsToShow = items;
+    if (locationIndex !== -1) {
+        itemsToShow = items.filter(item => {
+            const locationValue = config.extractors[locationIndex](item);
+            return locationValue && locationValue !== 'N/A' && locationValue.trim() !== '';
+        });
+        
+        // If ALL rows have N/A in Location, don't render the table at all
+        if (itemsToShow.length === 0) {
+            console.log('Skipping table - all rows have N/A in Location column');
+            return; // Exit without rendering anything
+        }
     }
     
     const startY = this.currentY;
+    const headerHeight = 30;
     let tableY = startY;
     const auditInfo = AUDIT_INFO[config.auditId];
-    // Reserve space for footer at bottom (footer at pageHeight - 30, so reserve 50px)
-    let pageBottom = this.doc.page.height - 50;
-    
-    // Calculate header height dynamically based on text wrapping
-    this.doc.font('BoldFont').fontSize(11);
-    let maxHeaderHeight = 0;
-    config.headers.forEach((header, index) => {
-        const cellPadding = 10;
-        const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-        const headerTextHeight = this.doc.heightOfString(header, { 
-            width: availableWidth,
-            lineGap: 2
-        });
-        if (headerTextHeight > maxHeaderHeight) {
-            maxHeaderHeight = headerTextHeight;
-        }
-    });
-    // Add padding: 12px top + 12px bottom = 24px total padding
-    const headerHeight = Math.max(maxHeaderHeight + 24, 40);
+    // Calculate page bottom once - will be recalculated after page breaks
+    let pageBottom = this.doc.page.height - this.margin;
     
     // Draw header with light gray background
     this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
-    this.doc.fillColor('#374151');
+    this.doc.font('BoldFont').fontSize(10).fillColor('#374151');
     let currentX = this.margin;
     
     config.headers.forEach((header, index) => {
         const cellPadding = 10;
         const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-        // Center text horizontally using align: 'center' with column width
-        this.doc.text(header, currentX + cellPadding, tableY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
+        this.doc.text(header, currentX + cellPadding, tableY + 10, { 
             width: availableWidth, 
-            align: 'center' 
+            align: 'left' 
         });
         currentX += config.widths[index];
     });
     
     tableY += headerHeight;
-    this.doc.font('RegularFont').fontSize(10);
+    this.doc.font('RegularFont').fontSize(9);
     
     // Draw rows with alternating white background and bottom borders
     itemsToShow.forEach((item, rowIndex) => {
         const rowData = config.extractors.map(extractor => {
-            let value = String(extractor(item) || 'N/A').trim();
-            // Replace "Senior" with "Accessibility" in table cell text
-            value = value.replace(/\bSenior\b/gi, 'Accessibility');
+            const value = String(extractor(item) || 'N/A');
             return value;
         });
         let maxRowHeight = 0;
@@ -2504,8 +2126,6 @@ addOverallScoreDisplay(scoreData) {
         rowData.forEach((cellValue, colIndex) => {
             const cellWidth = config.widths[colIndex] - 20;
             // Calculate height using same parameters as text rendering (lineGap: 2)
-            // Ensure font size is 10pt for accurate height calculation
-            this.doc.fontSize(10).font('RegularFont');
             const cellHeight = this.doc.heightOfString(cellValue, { 
                 width: cellWidth,
                 lineGap: 2
@@ -2516,61 +2136,78 @@ addOverallScoreDisplay(scoreData) {
         });
         
         // Add padding (10px top + 10px bottom) and ensure minimum row height
-        const rowHeight = Math.max(maxRowHeight + 20, 40);
+        const rowHeight = Math.max(maxRowHeight + 20, 35);
         // Don't cap row height - allow full text to display
         const finalRowHeight = rowHeight;
         
-        // Check if row would exceed page bottom margin (with safety buffer for footer)
-        // Footer is at pageHeight - 30, so reserve 50px (30px footer + 20px buffer)
-        // Only check minimum space for next row if there actually is a next row
-        pageBottom = this.doc.page.height - 50;
-        const isLastRow = rowIndex === itemsToShow.length - 1;
-        
-        // For last row, only check if it fits (don't worry about space after)
-        // For other rows, check if there's enough space for the next row
-        const minSpaceForNextRow = 50; // Reduced from 60px - minimum space needed for next row (40px row + 10px buffer)
-        const spaceAfterRow = pageBottom - (tableY + finalRowHeight);
-        const needsPageBreak = tableY + finalRowHeight > pageBottom || 
-                              (!isLastRow && spaceAfterRow < minSpaceForNextRow);
-        
-        if (needsPageBreak) {
+        // Check if row would exceed page bottom margin (with safety buffer)
+        // Recalculate pageBottom in case we're on a new page
+        pageBottom = this.doc.page.height - this.margin;
+        if (tableY + finalRowHeight > pageBottom) {
             this.addPage();
-            // Removed "Detailed Findings - Continued" heading
+            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings - Continued`, this.margin, this.currentY);
+            this.currentY += 25;
             tableY = this.currentY;
             
             // Redraw header on new page
             this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
-            this.doc.font('BoldFont').fontSize(11).fillColor('#374151');
+            this.doc.font('BoldFont').fontSize(10).fillColor('#374151');
             currentX = this.margin;
             config.headers.forEach((header, index) => {
                 const cellPadding = 10;
                 const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
-                // Center text horizontally using align: 'center' with column width
-                this.doc.text(header, currentX + cellPadding, tableY + (headerHeight / 2) - (maxHeaderHeight / 2), { 
+                this.doc.text(header, currentX + cellPadding, tableY + 10, { 
                     width: availableWidth, 
-                    align: 'center' 
+                    align: 'left' 
                 });
                 currentX += config.widths[index];
             });
             tableY += headerHeight;
-            this.doc.font('RegularFont').fontSize(10);
+            this.doc.font('RegularFont').fontSize(9);
             // Recalculate pageBottom after adding new page
-            pageBottom = this.doc.page.height - 50;
+            pageBottom = this.doc.page.height - this.margin;
+        }
+        
+        // Double-check that row won't exceed page bottom before drawing
+        pageBottom = this.doc.page.height - this.margin;
+        if (tableY + finalRowHeight > pageBottom) {
+            // If somehow we still exceed, add a new page
+            this.addPage();
+            this.doc.fontSize(12).font('BoldFont').fillColor('#3B82F6').text(`Detailed Findings - Continued`, this.margin, this.currentY);
+            this.currentY += 25;
+            tableY = this.currentY;
+            
+            // Redraw header on new page
+            this.doc.rect(this.margin, tableY, this.pageWidth, headerHeight).fill('#F3F4F6');
+            this.doc.font('BoldFont').fontSize(10).fillColor('#374151');
+            currentX = this.margin;
+            config.headers.forEach((header, index) => {
+                const cellPadding = 10;
+                const availableWidth = Math.max(config.widths[index] - (cellPadding * 2), 20);
+                this.doc.text(header, currentX + cellPadding, tableY + 10, { 
+                    width: availableWidth, 
+                    align: 'left' 
+                });
+                currentX += config.widths[index];
+            });
+            tableY += headerHeight;
+            this.doc.font('RegularFont').fontSize(9);
+            pageBottom = this.doc.page.height - this.margin;
         }
         
         // White background for all rows
         this.doc.rect(this.margin, tableY, this.pageWidth, finalRowHeight).fill('#FFFFFF');
         
-        // Draw cell content - ensure full text wrapping (no height limit to prevent clipping)
+        // Draw cell content - text is already constrained by row height calculation
         currentX = this.margin;
         rowData.forEach((cellValue, colIndex) => {
             // Calculate available width for text (column width minus padding)
             const cellPadding = 10;
             const availableWidth = Math.max(config.widths[colIndex] - (cellPadding * 2), 20);
             
-            // Draw text without height constraint - row height was already calculated to fit all text
-            // Ensure font size is consistently 10pt for all table cells
-            this.doc.fontSize(10).font('RegularFont').fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
+            // Draw text - it will wrap within the available width
+            // The row height was already calculated to accommodate all wrapped text
+            this.doc.fillColor('#374151').text(cellValue, currentX + cellPadding, tableY + 10, {
                 width: availableWidth,
                 lineGap: 2,
                 align: 'left',
@@ -2637,13 +2274,9 @@ addOverallScoreDisplay(scoreData) {
             const stream = fs.createWriteStream(finalOutputPath);
             this.doc.pipe(stream);
 
-            console.log('Generating older adult-friendly accessibility report...');
+            console.log('Generating senior-friendly accessibility report...');
             console.log(`Overall Score Calculated: ${scoreData.finalScore.toFixed(0)}`);
 
-            // Add standardized title page as the first page
-            this.addTitlePage(reportData);
-            this.addPage(); // Add a new page after title page
-            
             this.addIntroPage(reportData, scoreData, options.planType || 'pro');
             this.addExecutiveSummary(reportData, scoreData);
             this.addScoreCalculationPage(reportData, scoreData);
@@ -2656,9 +2289,6 @@ addOverallScoreDisplay(scoreData) {
 
             const audits = reportData.audits || {};
             
-            // Add footer to the last page before ending
-            this.addFooter();
-            
             // End the document
             this.doc.end();
 
@@ -2666,7 +2296,7 @@ addOverallScoreDisplay(scoreData) {
                 stream.on('finish', () => {
                     const successMessage = {
                         success: true,
-                        message: 'Older adult accessibility report generated successfully',
+                        message: 'Senior accessibility report generated successfully',
                         reportPath: finalOutputPath,
                         clientFolder: clientFolder,
                         fileName: fileName,
@@ -2674,14 +2304,14 @@ addOverallScoreDisplay(scoreData) {
                         url: url,
                         score: scoreData.finalScore.toFixed(0)
                     };
-                    console.log(`Older adult accessibility report generated successfully: ${finalOutputPath}`);
+                    console.log(`Senior accessibility report generated successfully: ${finalOutputPath}`);
                     resolve(successMessage);
                 });
                 stream.on('error', reject);
             });
 
         } catch (error) {
-            console.error('Error generating older adult accessibility report:', error.message);
+            console.error('Error generating senior accessibility report:', error.message);
             throw error;
         }
     }

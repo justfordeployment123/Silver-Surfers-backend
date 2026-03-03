@@ -111,12 +111,28 @@ export async function handleSubscriptionCreated(subscription) {
 
 export async function handleSubscriptionUpdated(subscription) {
   console.log('Subscription updated:', subscription.id);
-  
-  const localSubscription = await Subscription.findOne({ 
-    stripeSubscriptionId: subscription.id 
+
+  const localSubscription = await Subscription.findOne({
+    stripeSubscriptionId: subscription.id
   });
-  
+
   if (localSubscription) {
+    const isAdminCreated =
+      subscription?.metadata?.createdBy === 'admin' ||
+      localSubscription?.metadata?.createdBy === 'admin';
+
+    const isDowngradeStatus = !['active', 'trialing', 'past_due'].includes(
+      subscription.status
+    );
+
+    if (isAdminCreated && isDowngradeStatus) {
+      console.log(
+        `⚠️ Skipping status downgrade from Stripe for admin-created subscription ${subscription.id} (status: ${subscription.status})`
+      );
+      // Do not let Stripe auto-cancel admin-assigned manual subscriptions
+      return;
+    }
+
     const priceId = subscription?.items?.data?.[0]?.price?.id;
     const plan = priceId ? getPlanByPriceId(priceId) : null;
 
@@ -215,6 +231,15 @@ export async function handleSubscriptionUpdated(subscription) {
 
 export async function handleSubscriptionDeleted(subscription) {
   console.log('Subscription deleted:', subscription.id);
+
+  const isAdminCreated = subscription?.metadata?.createdBy === 'admin';
+
+  if (isAdminCreated) {
+    console.log(
+      `⚠️ Ignoring Stripe deletion for admin-created subscription ${subscription.id}; keeping local subscription active until changed in admin panel.`
+    );
+    return;
+  }
 
   await Subscription.findOneAndUpdate(
     { stripeSubscriptionId: subscription.id },

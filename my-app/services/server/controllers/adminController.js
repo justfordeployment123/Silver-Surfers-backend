@@ -627,7 +627,11 @@ export async function updateUserSubscription(req, res) {
         },
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
-        cancelAtPeriodEnd: false
+        cancelAtPeriodEnd: false,
+        metadata: {
+          createdBy: 'admin',
+          notes: 'Created via admin panel without user checkout'
+        }
       });
 
       await newSubscription.save();
